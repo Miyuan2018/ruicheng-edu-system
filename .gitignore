@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.eggs/
+
+# Database
+*.db
+*.db.*
+*.sqlite3
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code settings (contains API keys)
+.claude/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite-tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/tmp/
+
+# Uploads
+uploads/

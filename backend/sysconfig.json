@@ -1,0 +1,19 @@
+{
+  "llm": {
+    "provider": "ollama",
+    "endpoint": "http://127.0.0.1:11434/v1",
+    "model": "nemotron-3-super:120b",
+    "available_models": [
+      "llama3.3:latest",
+      "gpt-oss:120b",
+      "gemma4:e4b",
+      "nemotron-3-super:120b",
+      "gpt-oss:20b",
+      "qwen3-coder:30b",
+      "qwen3.6:35b",
+      "qwen3.6:27b",
+      "gemma4:31b"
+    ]
+  },
+  "export_max": 196
+}

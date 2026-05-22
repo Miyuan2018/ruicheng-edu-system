@@ -1,0 +1,323 @@
+# 需求分析报告 – edu_system（睿承教育平台--培养学生学习习惯的 B/S 平台）
+*版本：V1.0　日期：2026‑05‑12*
+
+> **注意**：此文件为 V1.0 初版需求，最新版为 `Raw_Customer_Requirements.md` (V2.0)。当前实现状态详见 `docs/PROJECT_STATUS.md`。
+
+---
+
+## 1. 项目概述
+- **目标**：通过“测验 → 整理错题 → 订正 → 加深训练”闭环，帮助学生养成良好的学习习惯。
+- **核心场景**：
+  1. 教师在线生成试题/试卷（可直接导出 Word/PDF 打印）。
+  2. 学生在线作答或通过拍照/扫描提交纸质答卷，系统自动判卷并生成错题本。
+  3. 错题本包含本节错题 + 针对对应知识点的加强练习题（练习题数量由系统管理员配置）。
+  4. 系统具备自学能力（二期）：在硬件空闲、非工作时间自动抓取上海八年级数学知识点及热点习题，更新试题库并进行模型微调。
+- **部署平台**：NVIDIA DGX Spark（含 GPU、CPU、高速互联、大容量存储），确保模型推理与训练在同一套硬件上完成。
+- **角色**：老师、学生、系统管理员。
+
+---
+
+## 2. 角色与职责
+
+| 角色 | 主要职责 | 系统权限 |
+|--|------|------|
+| **老师** | - 注册/登录 <br>- 在线创建/编辑试题（单选、多选、填空、解答等）<br>- 组装试卷并设置难度、分值、时间限制<br>- 导出试卷（Word/PDF）供打印<br>- 查看班级学生答题情况、错题统计<br>- 可下载或打印学生错题本 | - 试题库：增删改查（仅本人创建的）<br>- 试卷库：增删改查（仅本人创建的）<br>- 学生作答：只读（查看）<br>- 错题本：生成/下载 |
+| **学生** | - 注册/登录 <br>- 在线作答（电脑/平板）<br>- 通过手机拍照/扫描提交纸质答卷（图片 → OCR → 文本）<br>- 查看即时判卷结果、错题本<br>- 可下载/打印错题本（含加强练习）<br>- 个人学习记录（做题次数、正确率等） | - 个人作答：增删改查（仅自身）<br>- 错题本：只读（自身）<br>- 试题/试卷：只读（浏览） |
+| **系统管理员** | - 系统参数配置（大模型选择、推理批次、训练触发时间、OCR 引擐、试题库同步频率等）<br>- 用户角色管理（增删冻结、权限分配）<br>- 系统监控（GPU/CPU 负载、存储使用、服务日志）<br>- 二期自学任务的调度与模型更新审核 | - 全系统：增删改查（所有实体）<br>- 模型管理：上传、切换、回滚<br>- 定时任务：创建/修改/删除<br>- 安全审计：查看日志、导出报表 |
+
+---
+
+## 3. 功能需求
+
+### 3.1 一期（核心闭环）
+
+| 模块 | 功能点 | 说明 |
+|--|------|------|
+| **用户管理** | 注册、登录、密码找回、角色切换、个人信息维护 | 基于 JWT/OAuth2 实现无状态登录 |
+| **试题库管理** | - 题型定义（选择、判断、填空、解答、图形等）<br>- 题目属性：知识点、难度、分值、来源、标签、答案、解析<br>- 增删改查、批量导入（Excel/JSON）<br>- 支持 LaTeX 公式编辑（前端使用 MathJax/KaTeX）<br>- 题目去重检测（基于文本指纹） | 后端用关系型数据库（PostgreSQL）存储题目；文件存储（图片、公式）使用对象存储（MinIO） |
+| **试卷管理** | - 试卷模板：题目抽取方式（随机、按知识点、按难度）<br>- 试卷属性：名称、所属学科、年级、适用时间、总分、时长<br>- 预览（HTML）并导出 Word（使用 python-docx）或 PDF（WeasyPrint / wkhtmltopdf）<br>- 增删改查、版本控制（可回退） | 试卷与题目通过中间表关联，支持同一题目在多套试卷中复用 |
+| **在线作答** | - 前端渲染试题（支持答题卡布局）<br>- 实时保存（localStorage → 每 30s 上传）<br>- 提交后进入判卷队列 | 前端使用 React/Vue + Ant Design；后端提供 RESTful API |
+| **纸质答卷上传 & OCR** | - 手机端或网页端上传图片（JPG/PNG）<br>- 调用本地 OCR 引擎（如 PaddleOCR、Tesseract + 自定义规则）<br>- 将识别结果转为结构化答案（选择题填选项、解答题保留原文）<br>- 人工校验入口（低置信度自动标记待审） | OCR 服务可独立微服务，GPU 加速（DGX Spark） |
+| **自动判卷** | - 选择/判断/填空：直接比对答案（规则匹配）<br>- 解答题：调用本地大模型（如 qwen3-coder:30b）进行语义相似度评分（基于 BERT‑Score 或自建评估模型）<br>- 返回：得分、正确/错误、反馈文字（可选）<br>- 支持批量判卷（并发数由管理员配置） | 判卷服务为无状态微服务，通过消息队列（RabbitMQ/Kafka）实现削峰 |
+| **错题本生成** | - 自动收集学生错误题目<br>- 根据知识点匹配，从试题库抽取对应知识点的加强练习题（数量由管理员配置，默认 3‑5 题）<br>- 生成错题本（PDF/Word）并提供下载/打印<br>- 支持按章节、时间范围过滤 | 错题本服务同样基于后端任务队列，生成后存入对象存储并返回下载链接 |
+| **教师后台** | - 班级管理（创建班级、添加/移除学生）<br>- 答题统计（正确率、错题热点、时间分布）<br>- 导出成绩表（Excel）<br>- 试卷发布（分配给班级、设定开始/结束时间） | 权限基于 RBAC（Role‑Based Access Control） |
+| **系统设置（管理员）** | - 大模型选择（推理/判卷）<br>- OCR 引擎选择及参数阈值<br>- 自学任务调度（ cron 表达式）<br>- 系统日志级别、告警阈值<br>- 备份/恢复策略 | 设置保存在配置中心（Consul/Etcd）或数据库表 |
+| **通知与提醒** | - 试卷到期提醒（邮件/站内信）<br>- 错题本生成完成通知<br>- 系统维护窗口预告 | 使用 SMTP 或企业微信/钉钉机器人 |
+
+### 3.2 二期（自学与模型优化）
+
+| 模块 | 功能点 | 说明 |
+|--|------|------|
+| **网络爬虫/知识抓取** | - 按预定义来源（上海教委、名校试卷、在线题库）定时抓取数学知识点、例题、历年真题<br>- 内容去噪、结构化（知识点 → 题目 → 答案/解析）<br>- 存入暂存区待审 | 使用 Scrapy 或 Playwright，运行在 DGX Spark 的 CPU 节点；抓取频率由管理员配置（如每周一次） |
+| **知识点建模** | - 利用 NER、主题聚类（LDA/BERT）自动抽取知识点标签<br>- 人工校验后写入试题库的知识点字段 | 为后续智能押题提供语义基础 |
+| **模型微调 / 增量训练** | - 在非工作时间（如 02:00‑05:00）利用 DGX Spark GPU 进行：<br>  • 题目生成模型（如 Qwen‑Coder）在新抓取的题目上做指令微调<br>  • 判卷模型（基于同上或专门的评估模型）在标准答案/学生答案对上做对比学习<br>- 采用 LoRA/QLoRA 等参数高效微调方案，显存占用可控<br>- 生成新模型后进行 A/B 测试（少量流量）并自动切换 | 训练任务由调度系统（Airflow 或 Prefect）触发，产出模型注册到模型仓库（MLflow） |
+| **自学反馈闭环** | - 新模型上线后，系统自动使用新模型生成一批试题并入库<br>- 教师可在后台查看“自学来源”标签，决定是否采用<br>- 若模型表现下降（判卷准确率下降 >5%），自动回滚至上一版本 | 监控指标：判卷 F1 分数、题目多样性（self‑BLEU）、延迟 |
+| **模型治理** | - 模型版本管理（回滚、标记）<br>- 训练日志、指标可视化（Grafana）<br>- 安全审计：确保训练数据不含违规内容 | 与管理员设置页面一体化 |
+
+> **注**：二期功能在一期上线稳定后才启动，以免影响核心教学闭环的可用性。
+
+---
+
+## 4. 非功能需求
+
+| 类别 | 指标 | 目标值 / 说明 |
+|--|------|------|
+| **性能** | 试卷生成延迟（10 题） | ≤ 2 s（单节点 GPU 推理） |
+| | 单份答卷判卷时间（含 OCR） | ≤ 5 s（OCR 2 s + 模型判卷 3 s） |
+| | 并发判卷数（峰值） | ≥ 30 路（依据 DGX Spark GPU 数量） |
+| | 系统响应时长（API） | ≤ 200 ms（95% ） |
+| **可用性** | 月平均可用率 | ≥ 99.5% |
+| | 故障恢复时间（RTO） | ≤ 10 min |
+| **可扩展性** | 水平扩展 | 前端可通过 Nginx 负载均衡；判卷服务支持多实例、消息队列削峰 |
+| **安全** | 数据传输 | 全站 HTTPS（TLS 1.3） |
+| | 存储加密 | 对象存储（MinIO）启用服务端加密；数据库启用 Transparent Data Encryption |
+| | 用户鉴权 | JWT + Refresh Token，密码采用 bcrypt 加盐存储 |
+| | 日志审计 | 所有关键操作（增删改、模型切换）审计日志留存 6 个月 |
+| **可维护性** | 代码结构 | 前后端分离，采用微服务或模块化 monolithic（视团队规模） |
+| | 自动化部署 | Docker‑Compose / Kubernetes Helm Chart；CI/CD（GitLab CI / GitHub Actions） |
+| | 监控告警 | Prometheus + Grafana；关键指标（GPU 利用率、队列长度、错误率）设定阈值告警 |
+| **兼容性** | 浏览器 | Chrome、Edge、Firefox 最新两个版本 |
+| | 移动端 | 响应式布局；提供微信小程序或 H5 页面供拍照上传 |
+| **法规合规** | 数据隐私 | 符合《个人信息保护法》（PIP），学生答卷仅用于教学评估，不外泄 |
+| | 内容安全 | 抓取内容需经过敏感词过滤（如基于 DFA） |
+
+---
+
+## 5. 系统架构（逻辑视图）
+
+```
++---------------------------------------------------------------+
+|                     前端层 (SPA)                              |
+|  - React/Vue + Ant Design                                     |
+|  - 试题编辑器 (MathJax/KaTeX)                                 |
+|  - 答题页面、错题本预览、试卷导出 (Word/PDF)                  |
+|  - 移动端 H5 / 小程序（拍照/OCR 上传）                        |
++---------------------------+-----------------------------------+
+                            |  API Gateway (Nginx / Kong)
+                            |
++---------------------------v-----------------------------------+
+|                    后端服务层 (RESTful / gRPC)               |
+|  - 用户服务 (Auth, RBAC)                                      |
+|  - 题目服务 (CRUD, 搜索, 去重)                                 |
+|  - 试卷服务 (模板, 抽题, 导出)                                |
+|  - 作答服务 (提交, 暂存, 回调)                                 |
+|  - OCR 服务 (GPU 加速, PaddleOCR/Tesseract)                    |
+|  - 判卷服务 (规则匹配 + 大模型语义评分)                        |
+|  - 错题本服务 (知识点匹配, 加强练习抽取, 生成文档)             |
+|  - 自学调度服务 (Airflow/Prefect, 爬虫, 微调触发)              |
+|  - 模型管理服务 (MLflow 模型仓库, 版本回滚)                    |
+|  - 通知服务 (SMTP, 企业微信/钉钉)                               |
++---------------------------+-----------------------------------+
+                            |  消息队列 (RabbitMQ / Kafka)
+                            |
++---------------------------v-----------------------------------+
+|                    底层基础设施                                 |
+|  - 计算：DGX Spark (8× A100 40GB, 2× Intel Xeon, 2TB NVMe)    |
+|  - 存储：对象存储 (MinIO) + 块存储 (Ceph) + 关系数据库 (PostgreSQL) |
+|  - 缓存：Redis (会话, 预热题目)                                 |
+|  - 监控：Prometheus + Grafana + Loki (日志)                    |
+|  - 安全：HashiCorp Vault (密钥管理), Falco (运行时检测)       |
++---------------------------------------------------------------+
+```
+
+**关键交互流程**（以学生提交纸质答卷为例）：
+
+1. 前端 → API Gateway → 作答服务（创建空答卷记录，返回 upload URL）
+2. 前端 → 对象存储（直接上传图片，预签名 URL）
+3. 对象存储 → 事件通知（MinIO Event） → OCR 服务（消息队列）
+4. OCR 服务 → 识别结果 → 作答服务（填充答案字段）
+5. 作答服务 → 判卷服务（推送至判卷队列）
+6. 判卷服务 → 大模型推理（GPU） → 返回得分/反馈
+7. 作答服务 → 更新学生成绩 → 错题本服务（若有错题触发）
+8. 错题本服务 → 知识点匹配 → 抽取加强练习 → 生成 PDF/Word → 存储对象存储 → 返回下载链接前端
+
+---
+
+## 6. 技术选型（参考）
+
+| 层次 | 候选技术 | 理由 |
+|--|------|------|
+| 前端框架 | React 18 + Ant Design（或 Vue 3 + Naive UI） | 生态丰富、组件完善、支持 TypeScript |
+| 公式编辑 | MathJax 或 KaTeX（按需加载） | 轻量、支持 LaTeX |
+| 后端语言 | Python 3.11+ (FastAPI) | 与机器学习生态友好，协程高性能 |
+| ORM / 数据库 | SQLite （正式部署 SQLAlchemy） + PostgreSQL（含 PostGIS 可选） | 事务可靠、全文检索、JSONB 用于题目属性 |
+| 缓存 | Redis 7 | 会话、预热题目、计数器 |
+| 对象存储 | MinIO（兼容 S3 API） | 私有化、可装在 DGX Spark 本地 NVMe |
+| 消息队列 | RabbitMQ（易运维）或 Kafka（高吞吐） | 削峰、异步判卷/OCR |
+| OCR 引擎 | PaddleOCR GPU 版（或 Tesseract + 自定义规则） | 中文识别率高，GPU 加速 |
+| 大模型推理 | - 本地：Ollama（qwen3-coder:30b）+ lite llm 代理（如有需要）<br>- 或 vLLM（OpenAI‑compatible）<br>- 模型存放在 `/mnt/models`，通过 `OLLAMA_BASE_URL` 或 `VLLM_ENDPOINT` 调用 | 资源可控、易切换 |
+| 模型微调工具 | HuggingFace Transformers + PEFT (LoRA/QLoRA) + DeepSpeed 或 HuggingFace Accelerate | 参数高效，适合单卡/多卡微调 |
+| 任务调度 | Apache Airflow (CeleryExecutor) 或 Prefect Cloud（免费层） | DAG 管理、时间触发、日志 |
+| 模型仓库 | MLflow 或 DVC | 模型版本、指标、artifact 追踪 |
+| CI/CD | GitLab CI / GitHub Actions + Docker Buildx + Helm | 自动化构建、镜像推送、K8s 部署 |
+| 监控日志 | Prometheus + Grafana + Loki + Promtail | 指标可视化、日志聚合 |
+| 安全 | HashiCorp Vault (Token、密码)、OAuth2/JWT、Falco、Trivy（镜像扫描） | 密钥管理、运行时防护 |
+| 部署平台 | Kubernetes (k3s 或 vanilla) 在 DGX Spark 上，利用 GPU Operator 调度 GPU 工作负载 | 弹性伸缩、资源隔离 |
+
+> **DGX Spark（NVIDIA DGX Spark Founders Edition）硬件介绍**：
+> - **产品概述**：基于 NVIDIA Grace Blackwell 平台，核心采用 GB10 Grace Blackwell 超级芯片，集成 Blackwell 架构 GPU 与第五代 Tensor Core，旨在将云端大规模 AI 模型开发与推理能力延伸至个人桌面及边缘设备。
+> - **核心规格与性能**：
+>   - 计算性能：每秒 1,000 万亿次（1000 AI TOPS），适合处理 1000 亿参数级别的 AI 模型。
+>   - 内存配置：128GB LPDDR5x 统一内存架构，通过 NVLink-C2C 互连实现 CPU 与 GPU 高带宽、一致性内存访问。
+>   - 模型支持：支持最高 2000 亿参数模型的本地推理，以及最高 700 亿参数模型的微调任务。
+>   - 数据格式：采用 NVFP4 数据格式，可在压缩模型体积的同时保持性能。
+>   - 功耗与形态：迷你主机形态，尺寸 150×150×50.5 毫米，额定功耗 170 瓦，重量约 1.2 千克。
+> - **关键技术与功能**：
+>   - NVLink-C2C 互连：提供远超 PCIe 的带宽，实现 CPU 与 GPU 高效协同及统一内存模型。
+>   - 扩展能力：集成 ConnectX-7 智能网卡及双 200GbE 高速网络接口，支持双机互联，可将模型处理能力扩展至 4050 亿参数。
+>   - 全功能接口：提供 10GbE 网口、HDMI 2.1、多个 USB-C 接口，并支持 Wi-Fi 7 与蓝牙 5.3 无线协议。
+>   - 软件生态：预装 NVIDIA DGX OS 操作系统及完整的 AI 软件堆栈，包含 NeMo 框架、RAPIDS 库和 PyTorch 等工具链。
+> - **存储配置**：1TB SSD.
+
+---
+
+## 7. 数据模型（核心表）
+
+| 表名 | 关键字段 | 说明 |
+|--|------|------|
+| `users` | id, username, email, password_hash, role (teacher/student/admin), status, created_at | 认证主体 |
+| `classes` | id, name, grade, subject, teacher_id, created_at | 教师管理的班级 |
+| `class_students` | id, class_id, student_id | 多对多关系 |
+| `questions` | id, content (LaTeX/text), qtype (choice/blank/etc.), knowledge_points (JSONB), difficulty, score, answer, explanation, source, tags, created_at, updated_at | 题目库 |
+| `question_bank` (可选) | id, question_id, source_batch, is_reviewed | 用于二期自学题目入库前的审核 |
+| `papers` | id, title, class_id, creator_id, total_score, duration, start_time, end_time, status (draft/published/archived), created_at | 试卷 |
+| `paper_questions` | id, paper_id, question_id, order_index, score | 试卷‑题目关联 |
+| `submissions` | id, student_id, paper_id, submit_type (online/ocr), submit_time, ip_address, ocr_confidence (JSON), score_total, status (pending/judged/reviewed) | 学生答卷记录 |
+| `answers` | id, submission_id, question_id, student_answer (text/JSON), is_correct, points_earned, feedback (model-generated) | 每题作答与判卷结果 |
+| `mistake_books` | id, student_id, paper_id, generated_at, file_url (MinIO), knowledge_point_counts (JSONB), extra_practice_count (set by admin) | 错题本文件 |
+| `model_registry` | id, name, version, framework (ollama/vllm), path, metrics (accuracy, latency), status (active/staging/archived), created_at | 模型版本管理 |
+| `schedule_jobs` | id, name, cron_expr, command (script), enabled, last_run, next_run | 二期自学任务调度 |
+| `audit_log` | id, user_id, action, entity_type, entity_id, details, ip, timestamp | 操作审计 |
+
+> 所有时间字段采用 UTC；业务层按照时区（如上海）展示。
+
+---
+
+## 8. 接口设计（代表性）
+
+| 方法 | 路径 | 功能 | 备注 |
+|--|------|-----|------|
+| POST | `/api/auth/login` | 用户名/密码 → JWT | 返回 access_token & refresh_token |
+| POST | `/api/questions` | 新建题目（需 teacher 角色） | body: `{content, qtype, knowledge_points, …}` |
+| GET  | `/api/questions?knowledge_point=函数&difficulty=medium&limit=20` | 分页过滤题目 | 支持知识点数组过滤 |
+| POST | `/api/papers` | 新建试卷（自动抽题或手动选题） | 返回 paper_id |
+| POST | `/api/papers/{id}/export?format=word` | 导出试卷为 Word/PDF（异步任务） | 返回任务 ID，轮询下载链接 |
+| POST | `/api/submissions` | 提交在线作答或 OCR 上传（预签名 URL 先上传图片） | 返回 submission_id |
+| GET  | `/api/submissions/{id}/result` | 查询判卷得分、错题列表 | 如未判卷返回状态 pending |
+| POST | `/api/mistake-books/{student_id}/generate` | 触发错题本生成（后台任务） | 返回任务 ID |
+| GET  | `/api/mistake-books/{id}/download` | 下载已生成的错题本文件 | 需鉴权 |
+| POST | `/api/admin/models/switch` | 切换当前判卷/生成模型 | 需管理员角色 |
+| POST | `/api/admin/jobs` | 创建自学爬虫/微调任务 (cron) | 需管理员角色 |
+| WebSocket | `/ws/notifications/{user_id}` | 实时推送（试卷到期、错题本完成等） | 可选，使用 Socket.io 或 native WS |
+
+> **错误码**：采用统一的 `code/message` 结构（如 200 成功，400 参数错误，401 未登录，403 无权限，500 服务器错误）。所有返回均为 `application/json`。
+
+---
+
+## 9. 安全与隐私保护
+
+1. **传输层**：全站强制 HSTS，TLS 1.3，禁用弱套件。
+2. **存储层**：
+   - 对象存储启用服务端 SSE‑S3（AES‑256）。
+   - PostgreSQL 开启 TDE（透明数据加密）或使用 pgcrypto 字段加密（如题目答案）。
+   - 备份数据同样加密并存放于异地（对象存储的不同 bucket）。
+3. **身份认证**：
+   - 密码采用 bcrypt（成本 12）。
+   - JWT 访问令牌有效期 15 min，刷新令牌 7 day，一次性使用后失效。
+   - 登录失败 >5 次临时封锁 IP 15 min（通过 Fail2Ban 或自定义中间件）。
+4. **授权**：RBAC 中间件统一检查；敏感操作（模型切换、任务调度）额外要求管理员角色及双因子确认（可选）。
+5. **数据最小化**：
+   - 学生答卷仅保留得分、是否正确、模型反馈（不保存原始图片超过 30 天，除非教师手动保留）。
+   - OCR 中间产物（原始图片）在处理完后立即删除，仅保留文本结果。
+6. **日志审计**：所有涉及个人数据的操作（读写答卷、错题本）记录用户 ID、操作类型、时间、IP，保存 180 天，定期审计。
+7. **内容安全**：
+   - 抓取网页内容前经过敏感词过滤（基于 DFA+正则），涉及违规、广告、不良信息自动拦截并记录。
+   - 题目库更新前进行人工抽样审核（二期自学任务中加入人工确认步骤）。
+
+---
+
+## 10. 性能与资源规划（基于 DGX Spark）
+
+| 工作负载 | 预估资源占用 | 备注 |
+|--|------|------|
+| **试卷生成（并发 10）** | CPU：2 核，内存：500 MB，GPU：0（纯文本抽题） | 主限制在题目库查询速度。 |
+| **OCR 单张图片（A4，300dpi）** | GPU：1× A100（约 0.8 GB 显存），耗时 ~1.2 s（PaddleOCR） | 可批处理，队列深度决定并发数。 |
+| **判卷（选择/填空）**（规则匹配） | CPU：1 核，内存：200 MB，耗时 <0.1 s/题 | 高并发时主要受 IO（题目读取）限制。 |
+| **判卷（解答题，语义评分）** | GPU：1× A100（模型 Q4 30B ≈ 18‑20GB），批量 4 题 ≈ 2 s/批 | 建议使用 vLLM/TensorRT‑LLM 提升吞吐。 |
+| **错题本生成（PDF）** | CPU：2 核，内存：1 GB，耗时 ~3 s/本（依据题目数） | 可异步后台处理。 |
+| **自学爬虫（每日）** | CPU：4 核，内存：2 GB，网络带宽 10 Mbps（取决于目标站点） | 夜间低流量时段运行。 |
+| **模型微调（LoRA）** | GPU：2× A100（各占 10‑12GB），内存：16 GB，耗时 2‑4 h/轮（依据数据量） | 建议调度在 02:00‑05:00，使用预占 GPU。 |
+
+**资源分配建议（K8s QoS 类）**：
+- **Guaranteed**（判卷、OCR、模型推理）：为每个副本预留完整 GPU/CPU，防止抢占导致延迟抖动。
+- **Burstable**（爬虫、自学任务、后台报表）：可在空闲时抢占剩余资源。
+- **BestEffort**（日志采集、监控探针）：不保证资源，仅占用极少。
+
+通过 **Horizontal Pod Autoscaler (HPA)** 结合自定义指标（队列长度、GPU 利用率）实现弹性伸缩。
+
+---
+
+## 11. 部署与运维方案
+
+1. **容器化**：所有服务编写 Dockerfile，基于 `nvidia/cuda:12.2-runtime-ubuntu22.04`（GPU服务）或 `python:3.11-slim`（CPU服务）。
+2. **Helm Chart**：
+   - `edu-system` 主 chart 包含子 chart：`auth`, `question`, `paper`, `ocr`, `judge`, `mistake`, `scheduler`, `model-registry`, `monitoring`.
+   - 通过 `values.yaml` 统一配置：镜像 tag、资源请求/限制、数据库连接、MinIO 凭证、模型路径、调度 cron 表达式。
+3. **持续集成**：
+   - 代码提交触发 GitLab CI → 构建多架构镜像（amd64） → 推送至私有 Harbor → 自动触发 ArgoCD / Flux 同步至 K8s 集群。
+   - 自动运行单元测试（pytest）、API 契约测试（Postman/Newman）、安全扫描（Trivy）。
+4. **备份策略**：
+   - 数据库每日逻辑备份（pg_dump） → 上传至对象存储的 `backup/db/` 目录（保留 30 天）。
+   - 对象存储的卷宗（学生答案图片、错题本）每周快照（使用 MinIO Bucket Replication）到另一地域（若有多机房）。
+5. **监控告警**：
+   - Prometheus 抓取：`kube_pod_container_resource_requests`, `nvidia_gpu_utilization_seconds_total`, `redis_used_bytes`, `http_requests_total`, `job_latency_seconds`.
+   - Grafana 预设面板：系统概览、GPU 使用、判卷延迟、错题本生成队列、自学任务状态。
+   - Alertmanager 配置：判卷延迟 > 5 s (critical)、GPU 利用率持续 > 90% 5 min (warning)、失败的自学任务 > 2 次 (critical）。
+6. **日志中心**：所有容器输出统一收集到 Loki，通过 Grafana 探索；保留 7 天。
+7. **灾难恢复**：
+   - 集群等价备份（Velero）每日快照 etcd + 持久卷。
+   - 手册记录故障定位步骤（Pod 崩溃、GPU 错误、存储不可达）。
+
+---
+
+## 12. 风险与挑战及应对措施
+
+| 风险 | impact | 应对/缓解措施 |
+|--|------|------|
+| **模型推理延迟波动**（GPU 争用） | 判卷答题等待时间增加，影响课堂使用 | - 为判卷服务设置 GPU 独占（`resources.limits.nvidia.com/gpu: 1`）<br>- 使用 vLLM 的 continuous batching 降低排队延迟<br>- 监控 GPU 负载，触发 HPA 增加判卷副本 |
+| **OCR 识别错误率高**（尤其手写答案） | 错判导致错题本不准确，影响教学效果 | - 引入置信度阈值，低于阈值自动标记待教师复核<br>- 提供在线修正界面，教师可直接编辑识别结果<br>- 持续收集错误样本，用于 OCR 模型微调（二期） |
+| **自学爬虫触发网站反爬或法律风险** | 服务被封、产生法律责任 | - 遵守 robots.txt，限流（每站每秒 ≤1 请求）<br>- 使用代理池并标识 User-Agent 为「edu-system-learning」<br>- 仅抓取公开可访问的教学资源，且标注来源，避免侵权 |
+| **模型微调导致灾难性遗忘**（catastrophic forgetting） | 新模型在旧题目上的表现下降 | - 采用 LoRA/QLoRA 只微调少量参数，保持原模型权重冻结<br>- 在微调数据中混合一定比例的旧题目（经验回放）<br>- 上线前做 A/B 测试（5% 流量）并比对 F1 分数 |
+| **系统并发超出设计极限**（如全校同步考试） | 服务不可用或排队严重 | - 在压力测试中确定峰值 QPS，预留 30% 余量<br>- 使用 CDN（如 Nginx 前端）缓存试卷导出文件（静态）<br>- 对判卷服务启用多实例 + 消息队列削峰 |
+| **数据泄露**（答卷、学生信息） | 法律责任、信任丧失 | - 加密存储、最小化保留、定期审计日志<br>- 实施数据访问审计（谁在何时导出错题本）<br>- 对开发、测试环境实行数据脱敏 |
+| **硬件故障**（GPU 悖变） | 推理服务中断 | - 利用 K8s Node 池和 GPU Operator 实现故障节点自动驱逐，Pod 调度到健康节点<br>- 保持热备模型（至少两份，分别放在不同 NVMe 分区）<br>- 监控 GPU ECC 错误率，超过阈值触发告警并提前迁移 |
+
+---
+
+## 13. 项目里程碑（建议）
+
+| 阶段 | 时间 | 主要里程碑 |
+|--|------|------|
+| **准备** | 第 1 周 | 需求评审、架构决议、环境搭建（K8s on DGX Spark、Harbor、CI/CD 基础） |
+| **一期核心** | 第 2‑6 周 | 用户注册/登录、题目库 CRUD、试卷管理、在线作答、OCR 服务、判卷服务（规则+模型），错题本生成，导出 Word/PDF，基础监控日志 |
+| **一期测试 & 优化** | 第 7‑8 周 | 功能测试（单元+接口）、性能压力测试（模拟 500 并发学生），安全扫描、UI/UX 调整（教师、学生端） |
+| **一期上线** | 第 9 周 | 灰度发布（一个年级/班级），收集反馈，修复 Bug |
+| **二期准备** | 第 10‑12 周 | 自学爬虫框架搭建、知识点抽取算法原型、模型微调管线（LoRA）搭建、任务调度（Airflow） |
+| **二期功能开发** | 第 13‑20 周 | 爬虫定时抓取、知识点标注、自动入库审核流程、模型微调触发、A/B 测试框架、模型版本管理与回滚 |
+| **二期测试 & 优化** | 第 21‑22 周 | 自学任务在非工作时间运行验证、判卷准确率回归测试、模型切换无缝性、资源占用监控 |
+| **二期上线 & 全量推广** | 第 23 周 | 全系统切换至最新模型、开放自学功能给教师查看来源，完成培训与文档交付 |
+| **后期运维** | 第 24 周以后 | 常规监控、补丁更新、性能调优、用户满意度调研、迭代规划（新题型、跨学科） |
+
+> **里程碑中的 “周” 按 5 天工作日计**，实际可依据团队人数和并行度作适当压缩或延伸。
+
+---
+
+## 14. 结论
+
+- **一期** 实现核心闭环：老师在线出题、学生作答（线上或拍照）、系统自动判卷并生成错题本（含加强练习），全部功能可以在 DGX Spark 的 GPU/CPU 上以容器化方式部署，延迟和吞吐均能满足中小规模班级的并发需求。
+- **二期** 赋予系统自我学习能力：通过定时爬虫、知识点抽取、LoRA 高效微调以及模型版本管理，系统在硬件空闲时自行更新题库并优化判卷/生成模型，保持内容的时效性与教学相关性，而不会影响一期服务的可用性。
+- **技术选型** 以 Python/FastAPI + React/Vue 为主流，利用 Ollama/vLLM 实现本地大模型推理，使用 PaddleOCR、MinIO、PostgreSQL、Redis、K8s 等成熟开源栈，确保在 DGX Spark 上可以充分发挥硬件算力。
+- **安全、监控、可运维** 按企业级标准设计，提供完整的鉴权、加密、审计、日志、告警与备份机制，满足数据保护与教学场景的合规需求。
+- **部署与运维** 采用 Helm + GitOps + CI/CD，实现一键交付、弹性伸缩与快速回滚，降低运维复杂度。
+
+如需进一步的 **数据库 ER 图**、**接口 OpenAPI 规范**、**Dockerfile 示例** 或 **K8s Manifest 模板**，请告诉我，我可以补充具体的 artifact。祝项目顺利落地！如果在实际开发过程中遇到任何技术难点（比如模型适配、OCR 精度提升、判卷并发调优等），随时提出，我会提供更细致的方案或代码示例。祝编码愉快 🚀.
