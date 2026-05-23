@@ -124,7 +124,7 @@ export default function LoginPage() {
       </Form.Item>
       {smsSent && (
         <Form.Item name="sms_code" initialValue="111111">
-          <Input prefix={<MobileOutlined />} placeholder="短信验证码" size="large" disabled />
+          <Input prefix={<MobileOutlined />} placeholder="短信验证码" size="large" />
         </Form.Item>
       )}
       <Form.Item>

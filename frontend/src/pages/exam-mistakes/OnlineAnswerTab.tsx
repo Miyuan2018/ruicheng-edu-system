@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Card, Input, Select, Space, Tag, Typography, Radio, message, Progress, Empty, Row, Col, Tooltip } from 'antd';
-import { SearchOutlined, PlayCircleOutlined, PlusOutlined, CheckCircleOutlined, ArrowUpOutlined } from '@ant-design/icons';
+import { Table, Button, Card, Input, Select, Space, Tag, Typography, Radio, message, Progress, Empty, Row, Col, Tooltip, Modal, Descriptions, Popconfirm } from 'antd';
+import { SearchOutlined, PlayCircleOutlined, EyeOutlined, DeleteOutlined, CheckCircleOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 
 var Title = Typography.Title;
@@ -28,6 +28,8 @@ export default function OnlineAnswerTab() {
   var answersState = useState({}); var answers = answersState[0]; var setAnswers = answersState[1];
   var resultState = useState(null); var result = resultState[0]; var setResult = resultState[1];
   var submittingState = useState(false); var submitting = submittingState[0]; var setSubmitting = submittingState[1];
+  var previewOpenState = useState(false); var previewOpen = previewOpenState[0]; var setPreviewOpen = previewOpenState[1];
+  var previewPaperState = useState(null); var previewPaper = previewPaperState[0]; var setPreviewPaper = previewPaperState[1];
   var userId = localStorage.getItem('user_id') || '';
 
   useEffect(function () { loadData(); }, []);
@@ -92,6 +94,22 @@ export default function OnlineAnswerTab() {
     setPendingPapers(pendingPapers.filter(function (p) { return p.id !== paperId; }));
   }
 
+  function handlePreview(paper) {
+    setPreviewPaper(paper);
+    setPreviewOpen(true);
+  }
+
+  async function handleDeletePaper(paperId) {
+    try {
+      await apiClient.delete('/exam-papers/' + paperId);
+      message.success('试卷已删除');
+      setAllPapers(allPapers.filter(function (p) { return p.id !== paperId; }));
+      setPendingPapers(pendingPapers.filter(function (p) { return p.id !== paperId; }));
+    } catch (e) {
+      message.error('删除失败');
+    }
+  }
+
   function goBack() { setAnsweringPaper(null); setResult(null); setQuestions([]); loadData(); }
 
   function filterPapers(list, title, subject) {
@@ -124,6 +142,15 @@ export default function OnlineAnswerTab() {
   var allColumns = paperColumns.concat([
     { title: '状态', dataIndex: 'status', width: 70, render: function () {
       return React.createElement(Tag, { color: 'green' }, '可作答');
+    }},
+    { title: '操作', width: 130, render: function (_, r) {
+      return React.createElement(Space, { size: 2 },
+        React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(EyeOutlined),
+          onClick: function () { handlePreview(r); } }, '预览'),
+        React.createElement(Popconfirm, { title: '确定删除该试卷？', onConfirm: function () { handleDeletePaper(r.id); } },
+          React.createElement(Button, { type: 'link', size: 'small', danger: true, icon: React.createElement(DeleteOutlined) }, '删除')
+        )
+      );
     }},
   ]);
 
@@ -282,6 +309,21 @@ export default function OnlineAnswerTab() {
             }
           })
         : React.createElement(Empty, { description: '暂无试卷', image: Empty.PRESENTED_IMAGE_SIMPLE, style: { padding: '20px 0' } })
+    ),
+
+    // Preview Modal
+    React.createElement(Modal, { title: '试卷预览', open: previewOpen, onCancel: function () { setPreviewOpen(false); },
+      footer: React.createElement(Button, { onClick: function () { setPreviewOpen(false); } }, '关闭'),
+      width: 500
+    },
+      previewPaper ? React.createElement(Descriptions, { column: 1, bordered: true, size: 'small' },
+        React.createElement(Descriptions.Item, { label: '试卷名称' }, React.createElement(Text, { strong: true }, previewPaper.title)),
+        React.createElement(Descriptions.Item, { label: '学科' }, previewPaper.subject || '-'),
+        React.createElement(Descriptions.Item, { label: '年级' }, previewPaper.grade_level || '-'),
+        React.createElement(Descriptions.Item, { label: '总分' }, previewPaper.total_score + ' 分'),
+        React.createElement(Descriptions.Item, { label: '时长' }, previewPaper.duration_minutes ? previewPaper.duration_minutes + ' 分钟' : '-'),
+        React.createElement(Descriptions.Item, { label: '描述' }, previewPaper.description || '暂无描述')
+      ) : null
     )
   );
 }
