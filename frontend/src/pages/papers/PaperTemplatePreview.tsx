@@ -1,10 +1,8 @@
 import React from 'react';
 import { Tag, Button } from 'antd';
 import { SwapOutlined } from '@ant-design/icons';
+import { useReferenceValues, toLabelMap, toColorMap } from '../../hooks/useReferenceValues';
 
-var TYPE_LABELS = { FILL_BLANK: '填空题', SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', SUBJECTIVE: '解答题' };
-var DIFF_COLORS = { EASY: 'green', MEDIUM: 'orange', HARD: 'red' };
-var DIFF_NAMES = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 
 // Sections define the paper structure order
 var DEFAULT_SECTIONS = [
@@ -22,6 +20,7 @@ export default function PaperTemplatePreview(props) {
   var questions = props.questions || [];
   var onReplace = props.onReplace;
   var readonly = props.readonly !== false;
+  var { 'question-types': qtypes, 'difficulty-levels': diffs } = useReferenceValues();
 
   // Group questions into sections by type
   var sectionQuestions = {};
@@ -96,7 +95,7 @@ export default function PaperTemplatePreview(props) {
             (q.title || '').substring(0, 120)
           ),
           React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 12 } },
-            React.createElement(Tag, { color: DIFF_COLORS[q.difficulty] || 'default', style: { fontSize: 10 } }, DIFF_NAMES[q.difficulty] || q.difficulty),
+            React.createElement(Tag, { color: toColorMap(diffs)[q.difficulty]?.color || 'default', style: { fontSize: 10 } }, toLabelMap(diffs)[q.difficulty] || q.difficulty),
             React.createElement('span', { style: { fontSize: 11, color: '#999' } }, q.score + '分'),
             replaceBtn
           )

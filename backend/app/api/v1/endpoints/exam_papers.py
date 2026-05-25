@@ -63,6 +63,164 @@ async def create_exam_paper(
     return exam_paper
 
 
+@router.get("/my")
+async def get_my_papers(
+    skip: int = 0,
+    limit: int = 100,
+    title: Optional[str] = None,
+    status: Optional[str] = None,
+    grade: Optional[str] = None,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return exam papers that the current student has submitted answers for."""
+    if current_user.user_type != "STUDENT":
+        raise HTTPException(403, detail="仅学生可访问")
+    from app.models.answer_submission import AnswerSubmission
+    from sqlalchemy import distinct
+    subq = select(distinct(AnswerSubmission.exam_paper_id)).where(
+        AnswerSubmission.student_id == uuid.UUID(current_user.id)
+    ).subquery()
+    query = select(ExamPaper).where(ExamPaper.id.in_(subq))
+    if title:
+        query = query.where(ExamPaper.title.ilike(f"%{title}%"))
+    if status:
+        query = query.where(ExamPaper.status == status)
+    if grade:
+        query = query.where(ExamPaper.grade_level['grades'].contains([grade]))
+    query = query.offset(skip).limit(limit).order_by(ExamPaper.created_at.desc())
+    result = await db.execute(query)
+    papers = result.scalars().all()
+
+    # Get the student's latest submission for each paper
+    paper_ids = [p.id for p in papers]
+    sub_status = {}
+    if paper_ids:
+        from sqlalchemy import func as _func
+        sub_result = await db.execute(
+            select(AnswerSubmission).where(
+                AnswerSubmission.student_id == uuid.UUID(current_user.id),
+                AnswerSubmission.exam_paper_id.in_(paper_ids)
+            ).order_by(AnswerSubmission.submitted_at.desc())
+        )
+        for sub in sub_result.scalars().all():
+            pid = str(sub.exam_paper_id)
+            if pid not in sub_status:
+                sub_status[pid] = sub
+
+    return [{
+        "id": str(p.id), "title": p.title, "subtitle": p.subtitle,
+        "subject": p.subject, "grade_level": p.grade_level,
+        "total_score": p.total_score, "duration_minutes": p.duration_minutes,
+        "status": p.status, "instructions": p.instructions, "description": p.description,
+        "created_at": p.created_at, "updated_at": p.updated_at,
+        "submission_status": sub_status[str(p.id)].status if str(p.id) in sub_status else None,
+        "submission_score": float(sub_status[str(p.id)].total_score) if str(p.id) in sub_status and sub_status[str(p.id)].total_score else None,
+        "submission_percentage": float(sub_status[str(p.id)].percentage) if str(p.id) in sub_status and sub_status[str(p.id)].percentage else None,
+        "submission_id": str(sub_status[str(p.id)].id) if str(p.id) in sub_status else None,
+    } for p in papers]
+
+
+@router.get("/{exam_paper_id}/review")
+async def review_exam_paper(
+    exam_paper_id: uuid.UUID,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return full paper review: paper + student's submission + all questions with answers."""
+    if current_user.user_type != "STUDENT":
+        raise HTTPException(status_code=403, detail="仅学生可复盘")
+
+    # Get paper
+    paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    paper = paper_result.scalar_one_or_none()
+    if not paper:
+        raise HTTPException(status_code=404, detail="试卷不存在")
+
+    # Get student's latest submission for this paper
+    from app.models.answer_submission import AnswerSubmission
+    sub_result = await db.execute(
+        select(AnswerSubmission).where(
+            AnswerSubmission.student_id == uuid.UUID(current_user.id),
+            AnswerSubmission.exam_paper_id == exam_paper_id,
+        ).order_by(AnswerSubmission.submitted_at.desc()).limit(1)
+    )
+    submission = sub_result.scalar_one_or_none()
+
+    # Get all answers for this submission
+    from app.models.answer_detail import AnswerDetail
+    answers_map = {}
+    if submission:
+        ad_result = await db.execute(
+            select(AnswerDetail).where(AnswerDetail.answer_submission_id == submission.id)
+        )
+        for ad in ad_result.scalars().all():
+            answers_map[str(ad.question_id)] = ad
+
+    # Get paper questions with position
+    questions_data = []
+    q_result = await db.execute(
+        select(exam_paper_questions.c.question_id, exam_paper_questions.c.position)
+        .where(exam_paper_questions.c.exam_paper_id == exam_paper_id)
+        .order_by(exam_paper_questions.c.position)
+    )
+    q_rows = q_result.all()
+    if q_rows:
+        qids = [row[0] for row in q_rows]
+        pos_map = {str(row[0]): row[1] for row in q_rows}
+        qs_result = await db.execute(select(Question).where(Question.id.in_(qids)))
+        questions_map = {str(q.id): q for q in qs_result.scalars().all()}
+        for qid in qids:
+            q = questions_map.get(str(qid))
+            if not q:
+                continue
+            ad = answers_map.get(str(qid))
+            # Parse correct_answer
+            ca = None
+            try:
+                data = json.loads(q.correct_answer or '{}')
+                if isinstance(data.get('correct_answer'), list):
+                    ca = ', '.join(str(x) for x in data['correct_answer'])
+                elif isinstance(data.get('correct_answer'), str):
+                    ca = data['correct_answer']
+                elif isinstance(data.get('correct_answer'), dict):
+                    ca = ', '.join(data['correct_answer'].get('keywords', []))
+            except Exception:
+                ca = q.correct_answer
+            questions_data.append({
+                "position": pos_map.get(str(qid), 0),
+                "question": {
+                    "id": str(q.id),
+                    "title": q.title,
+                    "question_type": q.question_type,
+                    "score": float(q.score or 0),
+                    "correct_answer": ca,
+                },
+                "student_answer": ad.student_answer if ad else None,
+                "is_correct": ad.is_correct if ad else None,
+                "score_obtained": float(ad.score_obtained) if ad and ad.score_obtained else None,
+                "feedback": ad.feedback if ad else None,
+            })
+
+    return {
+        "paper": {
+            "id": str(paper.id),
+            "title": paper.title,
+            "subject": paper.subject,
+            "total_score": float(paper.total_score or 0),
+            "duration_minutes": paper.duration_minutes,
+        },
+        "submission": {
+            "id": str(submission.id) if submission else None,
+            "status": submission.status if submission else None,
+            "total_score": float(submission.total_score) if submission and submission.total_score else None,
+            "percentage": float(submission.percentage) if submission and submission.percentage else None,
+            "submitted_at": submission.submitted_at.isoformat() if submission and submission.submitted_at else None,
+        } if submission else None,
+        "questions": questions_data,
+    }
+
+
 @router.get("/{exam_paper_id}", response_model=ExamPaperResponse)
 async def get_exam_paper(
     exam_paper_id: uuid.UUID,
@@ -102,7 +260,12 @@ async def update_exam_paper(
         )
 
     # Check if user is the creator or is an admin
-    if exam_paper.created_by != uuid.UUID(current_user.id) and current_user.user_type != "SYS_ADMIN":
+    allowed = (
+        exam_paper.created_by == uuid.UUID(current_user.id)
+        or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
+        or current_user.user_type == "STUDENT"
+    )
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -124,8 +287,7 @@ async def delete_exam_paper(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Only teachers and admins can delete exam papers
-    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN", "STUDENT"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -140,15 +302,59 @@ async def delete_exam_paper(
         )
 
     # Check if user is the creator or is an admin
-    if exam_paper.created_by != uuid.UUID(current_user.id) and current_user.user_type != "SYS_ADMIN":
+    allowed = (
+        exam_paper.created_by == uuid.UUID(current_user.id)
+        or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
+        or current_user.user_type == "STUDENT"
+    )
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
 
+    # Delete child records first (FK constraints are NO ACTION, not CASCADE)
+    from app.models.exam_paper import exam_paper_questions
+    from app.models.answer_submission import AnswerSubmission
+    from app.models.error_notebook import ErrorNotebook
+    from app.models.ocr_upload import OcrUpload
+    from sqlalchemy import delete as sa_delete
+    await db.execute(sa_delete(exam_paper_questions).where(exam_paper_questions.c.exam_paper_id == exam_paper_id))
+    await db.execute(sa_delete(AnswerSubmission).where(AnswerSubmission.exam_paper_id == exam_paper_id))
+    await db.execute(sa_delete(ErrorNotebook).where(ErrorNotebook.exam_paper_id == exam_paper_id))
+    await db.execute(sa_delete(OcrUpload).where(OcrUpload.exam_paper_id == exam_paper_id))
     await db.execute(delete(ExamPaper).where(ExamPaper.id == exam_paper_id))
     await db.commit()
     return None
+
+
+@router.put("/{exam_paper_id}/submission-status")
+async def update_submission_status(
+    exam_paper_id: uuid.UUID,
+    status_in: str = Body(..., embed=True),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change submission status for the current student's latest submission. Only 已生成 → 重新判 is allowed."""
+    if current_user.user_type != "STUDENT":
+        raise HTTPException(status_code=403, detail="仅学生可修改")
+    from app.models.answer_submission import AnswerSubmission
+    sub_result = await db.execute(
+        select(AnswerSubmission).where(
+            AnswerSubmission.student_id == uuid.UUID(current_user.id),
+            AnswerSubmission.exam_paper_id == exam_paper_id,
+        ).order_by(AnswerSubmission.submitted_at.desc()).limit(1)
+    )
+    submission = sub_result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="未找到提交记录")
+    if submission.status != "已生成":
+        raise HTTPException(status_code=400, detail="仅已生成状态可修改为重新判")
+    if status_in != "重新判":
+        raise HTTPException(status_code=400, detail="仅允许修改为重新判")
+    submission.status = "重新判"
+    await db.commit()
+    return {"message": "状态已修改为重新判", "status": "重新判"}
 
 
 @router.get("")
@@ -157,12 +363,32 @@ async def get_exam_papers(
     limit: int = 100,
     title: Optional[str] = None,
     status: Optional[str] = None,
+    scope: Optional[str] = None,
+    grade: Optional[str] = None,
+    grades: Optional[str] = None,
+    keyword: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(ExamPaper)
     if title: query = query.where(ExamPaper.title.ilike(f"%{title}%"))
     if status: query = query.where(ExamPaper.status == status)
+    if scope:
+        query = query.where(ExamPaper.grade_level['scope'].astext == scope)
+    if grades:
+        grade_list = [g.strip() for g in grades.split(",") if g.strip()]
+        if len(grade_list) == 1:
+            query = query.where(ExamPaper.grade_level['grades'].contains([grade_list[0]]))
+        elif len(grade_list) > 1:
+            query = query.where(ExamPaper.grade_level['grades'].op('?|')(grade_list))
+    elif grade:
+        query = query.where(ExamPaper.grade_level['grades'].contains([grade]))
+    if keyword:
+        from sqlalchemy import String, or_
+        query = query.where(or_(
+            ExamPaper.grade_level['chapter'].astext.ilike(f"%{keyword}%"),
+            ExamPaper.grade_level['knowledge_points'].cast(String).ilike(f"%{keyword}%")
+        ))
     query = query.offset(skip).limit(limit).order_by(ExamPaper.created_at.desc())
     result = await db.execute(query)
     papers = result.scalars().all()
@@ -219,7 +445,12 @@ async def add_question_to_exam_paper(
         )
 
     # Check if user is the creator of the exam paper or is an admin
-    if exam_paper.created_by != uuid.UUID(current_user.id) and current_user.user_type != "SYS_ADMIN":
+    allowed = (
+        exam_paper.created_by == uuid.UUID(current_user.id)
+        or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
+        or current_user.user_type == "STUDENT"
+    )
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -269,7 +500,12 @@ async def remove_question_from_exam_paper(
         )
 
     # Check if user is the creator of the exam paper or is an admin
-    if exam_paper.created_by != uuid.UUID(current_user.id) and current_user.user_type != "SYS_ADMIN":
+    allowed = (
+        exam_paper.created_by == uuid.UUID(current_user.id)
+        or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
+        or current_user.user_type == "STUDENT"
+    )
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -306,7 +542,12 @@ async def sort_questions_in_exam_paper(
         )
 
     # Check if user is the creator of the exam paper or is an admin
-    if exam_paper.created_by != uuid.UUID(current_user.id) and current_user.user_type != "SYS_ADMIN":
+    allowed = (
+        exam_paper.created_by == uuid.UUID(current_user.id)
+        or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
+        or current_user.user_type == "STUDENT"
+    )
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",

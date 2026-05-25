@@ -10,6 +10,7 @@ class Subject(Base):
     __tablename__ = "subjects"
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    code = Column(String(30), nullable=True, unique=True)
     name = Column(String(50), nullable=False, unique=True)
     category = Column(String(30), nullable=True)  # 理科/文科/其他
     is_active = Column(Boolean, default=True)

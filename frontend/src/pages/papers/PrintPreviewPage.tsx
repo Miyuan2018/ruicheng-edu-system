@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Spin, Empty, Tag } from 'antd';
 import apiClient from '../../api/client';
+import { useReferenceValues, toLabelMap } from '../../hooks/useReferenceValues';
 
-var TYPE_LABELS = { FILL_BLANK: '填空题', SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', SUBJECTIVE: '解答题' };
-var DIFF_NAMES = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 var TYPE_ORDER = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
 
 export default function PrintPreviewPage() {
+  var refs = useReferenceValues(); var qtypes = refs['question-types']; var diffs = refs['difficulty-levels'];
   var searchParams = new URLSearchParams(window.location.search);
   var paperId = searchParams.get('paperId');
 
@@ -72,7 +72,7 @@ export default function PrintPreviewPage() {
       var sectionScore = qs.reduce(function (s, q) { return s + (q.score || 0); }, 0);
       return React.createElement('div', { key: t, style: { marginBottom: 16 } },
         React.createElement('h3', { style: { borderBottom: '2px solid #333', paddingBottom: 4, fontSize: 15 } },
-          TYPE_LABELS[t] + '（共' + qs.length + '题，' + sectionScore + '分）'
+          toLabelMap(qtypes)[t] + '（共' + qs.length + '题，' + sectionScore + '分）'
         ),
         ...qs.map(function (q) {
           globalIndex++;

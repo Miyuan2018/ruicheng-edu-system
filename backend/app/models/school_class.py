@@ -11,7 +11,7 @@ class SchoolClass(Base):
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    teacher_id = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
+    teacher_id = Column(UUID, ForeignKey("admins.id"), nullable=False, index=True)
     grade_level = Column(String(20), nullable=True)
     subject = Column(String(50), nullable=True)
     start_date = Column(Date, nullable=True)

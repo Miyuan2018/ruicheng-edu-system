@@ -15,7 +15,7 @@ class SelfStudyTask(Base):
     task_type = Column(String(30), nullable=False)
     status = Column(String(20), nullable=False)
     priority = Column(Integer, nullable=False)
-    assigned_to = Column(UUID, ForeignKey("users.id"), nullable=True, index=True)
+    assigned_to = Column(UUID, ForeignKey("students.id"), nullable=True, index=True)
     parameters = Column(JSON, nullable=True)
     result_data = Column(JSON, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)

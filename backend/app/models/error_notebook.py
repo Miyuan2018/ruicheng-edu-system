@@ -2,6 +2,7 @@ import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint
 from sqlalchemy import Uuid as UUID
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.db.base import Base
 
 
@@ -9,7 +10,7 @@ class ErrorNotebook(Base):
     __tablename__ = "error_notebooks"
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    student_id = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
+    student_id = Column(UUID, ForeignKey("students.id"), nullable=False, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     exam_paper_id = Column(UUID, ForeignKey("exam_papers.id"), nullable=True, index=True)
@@ -24,6 +25,9 @@ class ErrorNotebook(Base):
         CheckConstraint("question_count >= 0", name='check_error_notebooks_question_count_non_negative'),
         CheckConstraint("status IN ('DRAFT', 'GENERATED', 'EXPORTED')", name='check_error_notebooks_status'),
     )
+
+    # Relationships
+    questions = relationship("ErrorNotebookQuestion", back_populates="notebook", lazy="selectin")
 
     def __repr__(self):
         return f"<ErrorNotebook(id={self.id}, student_id={self.student_id}, title='{self.title}', status='{self.status}')>"

@@ -1,17 +1,16 @@
 import React from 'react';
 import { Tag, Button } from 'antd';
 import { SwapOutlined } from '@ant-design/icons';
+import { useReferenceValues, toLabelMap, toColorMap } from '../../hooks/useReferenceValues';
 
 var TYPE_ORDER = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
-var TYPE_NAMES = { FILL_BLANK: '填空题', SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', SUBJECTIVE: '解答题' };
-var DIFF_COLORS = { EASY: 'green', MEDIUM: 'orange', HARD: 'red' };
-var DIFF_NAMES = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 
 export default function PaperStructurePreview(props) {
   var questions = props.questions || [];
   var totalScore = props.totalScore || 100;
   var onReplace = props.onReplace;
   var readonly = props.readonly || false;
+  var { 'question-types': qtypes, 'difficulty-levels': diffs } = useReferenceValues();
 
   var groups = {};
   TYPE_ORDER.forEach(function (t) { groups[t] = []; });
@@ -28,7 +27,7 @@ export default function PaperStructurePreview(props) {
     if (qs.length === 0) return;
 
     var typeScore = qs.reduce(function (s, q) { return s + (q.score || 0); }, 0);
-    var headerText = TYPE_NAMES[qtype] + ' (' + qs.length + '道，共' + typeScore + '分)';
+    var headerText = toLabelMap(qtypes)[qtype] + ' (' + qs.length + '道，共' + typeScore + '分)';
 
     var items = qs.map(function (q) {
       globalIndex++;
@@ -51,7 +50,7 @@ export default function PaperStructurePreview(props) {
             (q.title || '').substring(0, 80)
           ),
           React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
-            React.createElement(Tag, { color: DIFF_COLORS[q.difficulty] || 'default', style: { fontSize: 10 } }, DIFF_NAMES[q.difficulty] || q.difficulty),
+            React.createElement(Tag, { color: toColorMap(diffs)[q.difficulty]?.color || 'default', style: { fontSize: 10 } }, toLabelMap(diffs)[q.difficulty] || q.difficulty),
             React.createElement('span', { style: { fontSize: 11, color: '#999' } }, q.score + '分'),
             replaceBtn
           )

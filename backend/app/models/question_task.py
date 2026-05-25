@@ -21,5 +21,5 @@ class QuestionTask(Base):
     model_used = Column(String(100), nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_by = Column(UUID, ForeignKey("users.id"), nullable=False)
+    created_by = Column(UUID, ForeignKey("admins.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

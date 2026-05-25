@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Tag, Typography, Space, Input, Select, message, Popconfirm, Dropdown } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, SearchOutlined, DownloadOutlined, PrinterOutlined, CameraOutlined } from '@ant-design/icons';
+import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, SearchOutlined, DownloadOutlined, PrinterOutlined, CameraOutlined, ReloadOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import PaperEditModal from './PaperEditModal';
 import PaperImportModal from './PaperImportModal';
 import PaperPreviewDrawer from './PaperPreviewDrawer';
+import { useReferenceValues, toLabelMap, toColorMap, toSelectOptions } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 
@@ -20,6 +21,12 @@ export default function PaperListPage() {
   var previewIdState = useState(null); var previewId = previewIdState[0]; var setPreviewId = previewIdState[1];
   var searchTitleState = useState(''); var searchTitle = searchTitleState[0]; var setSearchTitle = searchTitleState[1];
   var searchStatusState = useState(''); var searchStatus = searchStatusState[0]; var setSearchStatus = searchStatusState[1];
+  var searchScopeState = useState(''); var searchScope = searchScopeState[0]; var setSearchScope = searchScopeState[1];
+  var searchGradeState = useState(''); var searchGrade = searchGradeState[0]; var setSearchGrade = searchGradeState[1];
+  var searchKeywordState = useState(''); var searchKeyword = searchKeywordState[0]; var setSearchKeyword = searchKeywordState[1];
+  var { 'paper-statuses': paperStatuses, 'grade-levels': grades } = useReferenceValues();
+  var statusColors = toColorMap(paperStatuses);
+  var statusLabels = toLabelMap(paperStatuses);
 
   var fetchPapers = useCallback(async function () {
     setLoading(true);
@@ -27,6 +34,12 @@ export default function PaperListPage() {
       var params = { limit: 50 };
       if (searchTitle) params.title = searchTitle;
       if (searchStatus) params.status = searchStatus;
+      if (searchScope) params.scope = searchScope;
+      if (searchGrade) {
+        if (Array.isArray(searchGrade)) { params.grades = searchGrade.join(','); }
+        else { params.grade = searchGrade; }
+      }
+      if (searchKeyword) params.keyword = searchKeyword;
       var resp = await apiClient.get('/exam-papers', { params: params });
       var data = resp.data;
       if (Array.isArray(data)) { setPapers(data); }
@@ -35,7 +48,7 @@ export default function PaperListPage() {
       else { setPapers([]); }
     } catch (e) { message.error('加载试卷列表失败'); }
     finally { setLoading(false); }
-  }, [searchTitle, searchStatus]);
+  }, [searchTitle, searchStatus, searchScope, searchGrade, searchKeyword]);
 
   useEffect(function () { fetchPapers(); }, [fetchPapers]);
 
@@ -92,9 +105,7 @@ export default function PaperListPage() {
     { title: '总分', dataIndex: 'total_score', width: 60, align: 'center' },
     { title: '时长(分)', dataIndex: 'duration_minutes', width: 70, align: 'center' },
     { title: '状态', dataIndex: 'status', width: 80, render: function (s) {
-      var color = s === 'PUBLISHED' ? 'green' : s === 'DRAFT' ? 'default' : 'orange';
-      var label = s === 'PUBLISHED' ? '已发布' : s === 'DRAFT' ? '草稿' : s;
-      return React.createElement(Tag, { color: color }, label);
+      return React.createElement(Tag, { color: (statusColors[s] || {}).color || 'default' }, statusLabels[s] || s);
     }},
     { title: '操作', width: 280, render: function (_, record) {
       var exportItems = {
@@ -120,19 +131,34 @@ export default function PaperListPage() {
 
   return React.createElement('div', null,
     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 16 } },
-      React.createElement(Title, { level: 4, style: { margin: 0 } }, isStudent ? '我的试卷' : '试卷管理'),
+      React.createElement(Title, { level: 4, style: { margin: 0 } }, isStudent ? '试卷错题本' : '试卷管理'),
       isStudent ? null : React.createElement(Space, null,
         React.createElement(Button, { icon: React.createElement(CameraOutlined), onClick: function () { setImportOpen(true); } }, '试卷录入'),
         React.createElement(Button, { type: 'primary', icon: React.createElement(PlusOutlined), onClick: handleNew }, '新建试卷')
       )
     ),
-    React.createElement('div', { style: { marginBottom: 16, display: 'flex', gap: 12 } },
+    React.createElement('div', { style: { marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' } },
       React.createElement(Input, { placeholder: '搜索试卷名称', value: searchTitle, onChange: function (e) { setSearchTitle(e.target.value); },
-        style: { width: 200 }, prefix: React.createElement(SearchOutlined), allowClear: true }),
+        style: { width: 180 }, prefix: React.createElement(SearchOutlined), allowClear: true, size: 'small' }),
+      React.createElement(Select, { placeholder: '适用范围', value: searchScope || undefined, onChange: function (v) { setSearchScope(v || ''); setSearchKeyword(''); },
+        style: { width: 120 }, allowClear: true, size: 'small',
+        options: [
+          { value: 'comprehensive', label: '综合' },
+          { value: 'grade_comprehensive', label: '年级综合' },
+          { value: 'chapter', label: '章节' },
+          { value: 'knowledge_point', label: '知识点' },
+        ]}),
+      React.createElement(Select, { placeholder: '年级', value: searchGrade || undefined, onChange: function (v) { setSearchGrade(v || ''); },
+        style: { width: 100 }, allowClear: true, size: 'small',
+        mode: searchScope === 'comprehensive' ? 'multiple' : undefined,
+        options: toSelectOptions(grades) }),
+      (searchScope === 'chapter' || searchScope === 'knowledge_point') ? React.createElement(Input, { placeholder: '模糊查询章节/知识点', value: searchKeyword, onChange: function (e) { setSearchKeyword(e.target.value); },
+        style: { width: 180 }, prefix: React.createElement(SearchOutlined), allowClear: true, size: 'small' }) : null,
       React.createElement(Select, { placeholder: '状态筛选', value: searchStatus || undefined, onChange: function (v) { setSearchStatus(v || ''); },
-        style: { width: 120 }, allowClear: true,
-        options: [{ value: 'DRAFT', label: '草稿' }, { value: 'PUBLISHED', label: '已发布' }, { value: 'ARCHIVED', label: '已归档' }]
-      })
+        style: { width: 110 }, allowClear: true, size: 'small',
+        options: toSelectOptions(paperStatuses)
+      }),
+      React.createElement(Button, { icon: React.createElement(ReloadOutlined), onClick: fetchPapers, size: 'small' }, '刷新')
     ),
     React.createElement(Table, { rowKey: 'id', loading: loading, dataSource: papers, columns: columns, size: 'middle' }),
     React.createElement(PaperEditModal, { open: modalOpen, paper: editPaper, onClose: function () { setModalOpen(false); }, onSuccess: handleSuccess }),

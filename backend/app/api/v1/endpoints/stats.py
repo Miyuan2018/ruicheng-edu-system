@@ -65,7 +65,7 @@ async def paper_question_stats(
     subs_result = await db.execute(
         select(AnswerSubmission).where(
             AnswerSubmission.exam_paper_id == paper_id,
-            AnswerSubmission.status.in_(["GRADED", "RETURNED"]),
+            AnswerSubmission.status.in_(["已判分", "已生成", "重新判"]),
         )
     )
     submissions = subs_result.scalars().all()
@@ -150,7 +150,7 @@ async def question_overall_stats(
 
     # Get all graded submissions
     subs_query = select(AnswerSubmission).where(
-        AnswerSubmission.status.in_(["GRADED", "RETURNED"])
+        AnswerSubmission.status.in_(["已判分", "已生成", "重新判"])
     )
     if current_user.user_type == "TEACHER":
         # Teacher only sees stats for their papers

@@ -1,19 +1,51 @@
 {
-  "llm": {
-    "provider": "ollama",
-    "endpoint": "http://127.0.0.1:11434/v1",
-    "model": "nemotron-3-super:120b",
-    "available_models": [
-      "llama3.3:latest",
-      "gpt-oss:120b",
-      "gemma4:e4b",
-      "nemotron-3-super:120b",
-      "gpt-oss:20b",
-      "qwen3-coder:30b",
-      "qwen3.6:35b",
-      "qwen3.6:27b",
-      "gemma4:31b"
-    ]
+  "secret_key": "change-me-in-production",
+  "database": {
+    "server": "localhost",
+    "port": "5433",
+    "database": "edu_system",
+    "user": "postgres",
+    "password": "change-me"
   },
-  "export_max": 196
+  "llm": {
+    "current": "deepseek",
+    "ollama": {
+      "endpoint": "http://127.0.0.1:11434/v1",
+      "model": "nemotron-3-super:120b",
+      "available_models": [
+        "llama3.3:latest",
+        "gpt-oss:120b",
+        "gemma4:e4b",
+        "nemotron-3-super:120b",
+        "gpt-oss:20b",
+        "qwen3-coder:30b",
+        "qwen3.6:35b",
+        "qwen3.6:27b",
+        "gemma4:31b"
+      ]
+    },
+    "deepseek": {
+      "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
+      "api_key": "change-me",
+      "model": "deepseek-v4-pro[1m]",
+      "available_models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro[1m]", "deepseek-v4-flash"]
+    }
+  },
+  "grading": {
+    "max_concurrent_grading": 3,
+    "grading_model": "hybrid"
+  },
+  "ocr": {
+    "ocr_engine": "tesseract",
+    "max_concurrent_ocr": 7,
+    "ocr_confidence_threshold": 0.7
+  },
+  "mistake_book": {
+    "practice_question_count": 1
+  },
+  "export_max": 203,
+  "system": {
+    "log_level": "DEBUG",
+    "backup_enabled": true
+  }
 }

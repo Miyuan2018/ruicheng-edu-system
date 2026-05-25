@@ -76,7 +76,7 @@ r = c.post("/api/v1/answers", headers={"Authorization": f"Bearer {s_tok}"}, json
     "answers": [{"question_id": q1, "student_answer": "B"}]})
 check("Submit answer", r.status_code == 200)
 d = r.json()
-check("Auto-graded", d.get("status") == "GRADED", f"status={d.get('status')}")
+check("Auto-graded", d.get("status") == "已判分", f"status={d.get('status')}")
 check("Score computed", d.get("total_score") is not None)
 
 # ======= 4. Mistake Book =======

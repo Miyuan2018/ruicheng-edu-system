@@ -8,15 +8,16 @@ import ProfilePage from './pages/auth/ProfilePage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import QuestionListPage from './pages/questions/QuestionListPage';
 import PaperListPage from './pages/papers/PaperListPage';
-import StudentPapersPage from './pages/papers/StudentPapersPage';
+import MyPapersPage from './pages/papers/MyPapersPage';
+import TypicalQuestionsPage from './pages/TypicalQuestionsPage';
 import MistakeBookPage from './pages/mistake-book/MistakeBookPage';
 import TeacherClassesPage from './pages/teacher/TeacherClassesPage';
 import PaperStatsPage from './pages/teacher/PaperStatsPage';
 import QuestionStatsPage from './pages/teacher/QuestionStatsPage';
-import AdminUsersPage from './pages/admin/AdminUsersPage';
+
 import AdminConfigPage from './pages/admin/AdminConfigPage';
+import BasicConfigPage from './pages/admin/BasicConfigPage';
 import QuestionAdminPage from './pages/admin/QuestionAdminPage';
-import KnowledgeTreePage from './pages/admin/KnowledgeTreePage';
 import SyllabusPage from './pages/admin/SyllabusPage';
 import SysAdminPage from './pages/admin/SysAdminPage';
 import PrintPreviewPage from './pages/papers/PrintPreviewPage';
@@ -35,7 +36,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function PapersPage() {
   var userType = localStorage.getItem('user_type') || 'STUDENT';
-  if (userType === 'STUDENT') return <StudentPapersPage />;
+  if (userType === 'STUDENT') return <MyPapersPage />;
   return <PaperListPage />;
 }
 
@@ -52,15 +53,17 @@ export default function AppRouter() {
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="questions" element={<QuestionListPage />} />
               <Route path="papers" element={<PapersPage />} />
+              <Route path="my-papers" element={<MyPapersPage />} />
+              <Route path="typical-questions" element={<TypicalQuestionsPage />} />
               <Route path="mistake-book" element={<MistakeBookPage />} />
               <Route path="teacher/classes" element={<TeacherClassesPage />} />
               <Route path="teacher/stats/paper" element={<PaperStatsPage />} />
               <Route path="teacher/stats/question" element={<QuestionStatsPage />} />
-              <Route path="admin/users" element={<AdminUsersPage />} />
+
+              <Route path="admin/basic-config" element={<BasicConfigPage />} />
               <Route path="admin/config" element={<AdminConfigPage />} />
               <Route path="admin/sys-admin" element={<SysAdminPage />} />
               <Route path="question-admin" element={<QuestionAdminPage />} />
-              <Route path="knowledge-tree" element={<KnowledgeTreePage />} />
               <Route path="syllabus" element={<SyllabusPage />} />
               <Route path="profile" element={<ProfilePage />} />
             </Route>

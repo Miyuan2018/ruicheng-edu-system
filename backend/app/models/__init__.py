@@ -1,4 +1,3 @@
-from .user import User
 from .school_class import SchoolClass
 from .knowledge_point import KnowledgePoint
 from .question import Question
@@ -21,10 +20,15 @@ from .subject import Subject
 from .sys_admin import SysAdmin
 from .admin import Admin
 from .student import Student
+from .reference import QuestionType, DifficultyLevel, GradeLevel, PaperStatus, ErrorType, QuestionSource, Province
+from .role import Role
+from .parent import Parent
 
 __all__ = [
-    "User", "SchoolClass", "KnowledgePoint", "Question",
+    "Role", "Parent",
+    "SchoolClass", "KnowledgePoint", "Question",
     "AnswerSubmission", "AnswerDetail", "OcrUpload", "GradingRecord",
     "ErrorNotebook", "ErrorNotebookQuestion", "SelfStudyTask",
     "KnowledgePointModel", "MlModel", "Notification", "ExamPaper", "LlmConfig", "Syllabus", "QuestionTask", "KnowledgeNode", "Subject", "SysAdmin", "Admin", "Student",
+    "QuestionType", "DifficultyLevel", "GradeLevel", "PaperStatus", "ErrorType", "QuestionSource", "Province",
 ]

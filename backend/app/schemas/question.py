@@ -1,6 +1,6 @@
 import uuid
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 
 
@@ -8,7 +8,7 @@ class QuestionBase(BaseModel):
     title: str = Field(..., max_length=200)
     content: Optional[str] = None
     subject: str = Field(..., max_length=50)
-    grade_level: Optional[str] = Field(None, max_length=20)
+    grade_level: Optional[Any] = None
     question_type: str = Field(..., pattern="^(SINGLE_CHOICE|MULTIPLE_CHOICE|FILL_BLANK|SUBJECTIVE)$")
     difficulty: str = Field(..., pattern="^(EASY|MEDIUM|HARD)$")
     knowledge_points: Optional[List[str]] = None
@@ -26,7 +26,7 @@ class QuestionUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     content: Optional[str] = None
     subject: Optional[str] = Field(None, max_length=50)
-    grade_level: Optional[str] = Field(None, max_length=20)
+    grade_level: Optional[Any] = None
     question_type: Optional[str] = Field(None, pattern="^(SINGLE_CHOICE|MULTIPLE_CHOICE|FILL_BLANK|SUBJECTIVE)$")
     difficulty: Optional[str] = Field(None, pattern="^(EASY|MEDIUM|HARD)$")
     knowledge_points: Optional[List[str]] = None

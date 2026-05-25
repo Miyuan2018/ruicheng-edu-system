@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, message, Tabs, Space, Steps, Select } from 'antd';
 import { UserOutlined, PhoneOutlined, BankOutlined, BookOutlined, SafetyOutlined, MobileOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
 
 const { Title } = Typography;
 
 export default function LoginPage() {
+  const { 'grade-levels': grades } = useReferenceValues();
   const [loading, setLoading] = useState(false);
   const [captchaSvg, setCaptchaSvg] = useState('');
   const [captchaKey, setCaptchaKey] = useState('');
@@ -178,14 +180,7 @@ export default function LoginPage() {
             <Input prefix={<UserOutlined />} placeholder="姓名" size="large" />
           </Form.Item>
           <Form.Item name="grade" rules={[{ required: true, message: '请选择年级' }]}>
-            <Select placeholder="选择年级" size="large" options={[
-              { value: '一年级', label: '一年级' }, { value: '二年级', label: '二年级' },
-              { value: '三年级', label: '三年级' }, { value: '四年级', label: '四年级' },
-              { value: '五年级', label: '五年级' }, { value: '六年级', label: '六年级' },
-              { value: '七年级', label: '七年级' }, { value: '八年级', label: '八年级' },
-              { value: '九年级', label: '九年级' },
-              { value: '高一', label: '高一' }, { value: '高二', label: '高二' }, { value: '高三', label: '高三' },
-            ]} />
+            <Select placeholder="选择年级" size="large" options={toSelectOptions(grades)} />
           </Form.Item>
           <Form.Item name="school" rules={[{ required: true, message: '请输入学校名称' }]}>
             <Input prefix={<BankOutlined />} placeholder="学校名称" size="large" />

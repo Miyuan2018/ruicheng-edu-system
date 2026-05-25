@@ -1,36 +1,83 @@
 import { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, message, Switch, Button, Space, Tag } from 'antd';
+import { Modal, Form, Input, Select, InputNumber, message, Switch, Button, Space, Tag, Row, Col } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
 
 const { TextArea } = Input;
 
 interface QuestionItem {
   id: string; title: string; question_type: string; difficulty: string;
   subject: string; grade_level: string; score: number;
-  correct_answer?: string; explanation?: string; is_active: boolean;
+  correct_answer?: string; explanation?: string; is_active: boolean; is_typical?: boolean;
   source?: string; review_status?: string;
 }
 
 interface Props { open: boolean; question: QuestionItem | null; onClose: () => void; onSuccess: () => void; }
 
 export default function QuestionEditModal({ open, question, onClose, onSuccess }: Props) {
+  const { 'question-types': qtypes, 'difficulty-levels': diffs, 'grade-levels': grades } = useReferenceValues();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [qtype, setQtype] = useState('SINGLE_CHOICE');
+  const [subjects, setSubjects] = useState<{ value: string; label: string }[]>([]);
   const isEdit = !!question;
 
   useEffect(() => {
     if (open) {
       if (question) {
-        form.setFieldsValue({ ...question });
+        // Set qtype FIRST so option fields render before setFieldsValue
         setQtype(question.question_type);
+        const fields: any = { ...question };
+        // Extract grades and knowledge points from JSONB grade_level
+        if (question.grade_level) {
+          const gl = typeof question.grade_level === 'string'
+            ? JSON.parse(question.grade_level)
+            : question.grade_level;
+          fields.grade_level = gl?.grades || [];
+          fields.knowledge_points_display = gl?.knowledge_points?.join(', ') || gl?.chapter || '';
+        }
+        // Parse correct_answer JSON to populate option fields
+        if (question.correct_answer) {
+          try {
+            const ca = JSON.parse(question.correct_answer);
+            if (ca.options) {
+              ca.options.forEach((o: any) => {
+                fields[`opt_${o.label}`] = o.text || '';
+              });
+            }
+            if (ca.correct_answer) {
+              if (Array.isArray(ca.correct_answer)) {
+                fields.correct_multi = ca.correct_answer;
+              } else if (typeof ca.correct_answer === 'string') {
+                fields.correct_letter = ca.correct_answer;
+              }
+            }
+            if (question.question_type === 'FILL_BLANK' && Array.isArray(ca.correct_answer)) {
+              fields.fill_answers = ca.correct_answer.join('|');
+            }
+            if (question.question_type === 'SUBJECTIVE' && ca.correct_answer?.keywords) {
+              fields.keywords = ca.correct_answer.keywords.join(',');
+            }
+          } catch {}
+        }
+        // Use setTimeout to let React render the conditional form items
+        setTimeout(() => form.setFieldsValue(fields), 0);
       } else {
         form.resetFields();
         setQtype('SINGLE_CHOICE');
       }
     }
   }, [open, question, form]);
+
+  useEffect(() => {
+    if (open) {
+      apiClient.get('/subjects/all').then((resp: any) => {
+        const data = resp.data || [];
+        setSubjects(data.map((s: any) => ({ value: s.name || s.code, label: s.name || s.code })));
+      }).catch(() => {});
+    }
+  }, [open]);
 
   const buildAnswerJson = (values: any): string => {
     const type = values.question_type || qtype;
@@ -59,8 +106,17 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
     const values = await form.validateFields();
     setLoading(true);
     try {
+      const gl: any = { scope: 'grade', grades: values.grade_level || [] };
+      if (values.knowledge_points_display) {
+        const kps = values.knowledge_points_display.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (kps.length) {
+          gl.chapter = kps[0];
+          gl.knowledge_points = kps;
+        }
+      }
       const payload = {
         ...values,
+        grade_level: gl,
         correct_answer: buildAnswerJson(values),
         review_status: isEdit ? values.review_status : 'APPROVED',
         source: isEdit ? values.source : 'MANUAL',
@@ -86,55 +142,63 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
     <Modal title={isEdit ? '编辑试题' : '新建试题（入库即发布）'} open={open}
       onCancel={onClose} onOk={handleSubmit} confirmLoading={loading} width={720} destroyOnClose>
       <Form form={form} layout="vertical" initialValues={{
-        question_type: 'SINGLE_CHOICE', difficulty: 'MEDIUM', subject: '数学', score: 5, is_active: true,
+        question_type: 'SINGLE_CHOICE', difficulty: 'MEDIUM', subject: '数学', score: 5, is_active: true, is_typical: false,
       }}>
         <Form.Item name="title" label="题目内容" rules={[{ required: true }]}>
           <TextArea rows={2} placeholder="输入题干" />
         </Form.Item>
-        <Space size="large" wrap>
-          <Form.Item name="question_type" label="题型" rules={[{ required: true }]}>
-            <Select style={{ width: 110 }} onChange={(v) => setQtype(v)} options={[
-              { value: 'SINGLE_CHOICE', label: '单选题' }, { value: 'MULTIPLE_CHOICE', label: '多选题' },
-              { value: 'FILL_BLANK', label: '填空题' }, { value: 'SUBJECTIVE', label: '解答题' },
-            ]} />
-          </Form.Item>
-          <Form.Item name="difficulty" label="难度">
-            <Select style={{ width: 90 }} options={[
-              { value: 'EASY', label: '简单' }, { value: 'MEDIUM', label: '中等' }, { value: 'HARD', label: '困难' },
-            ]} />
-          </Form.Item>
-          <Form.Item name="subject" label="学科">
-            <Select style={{ width: 90 }} options={[
-              { value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' },
-            ]} />
-          </Form.Item>
-          <Form.Item name="grade_level" label="年级">
-            <Select style={{ width: 90 }} options={[
-              { value: '七年级', label: '七年级' }, { value: '八年级', label: '八年级' }, { value: '九年级', label: '九年级' },
-            ]} />
-          </Form.Item>
-          <Form.Item name="score" label="分值">
-            <InputNumber min={1} max={100} style={{ width: 70 }} />
-          </Form.Item>
-        </Space>
+        <Row gutter={12} style={{ marginBottom: 4 }}>
+          <Col span={6}>
+            <Form.Item name="subject" label="学科" style={{ marginBottom: 0 }}>
+              <Select size="small" options={subjects} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={6}>
+            <Form.Item name="grade_level" label="年级" style={{ marginBottom: 0 }}>
+              <Select size="small" mode="multiple" placeholder="可多选" options={toSelectOptions(grades)} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={6}>
+            <Form.Item name="question_type" label="题型" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
+              <Select size="small" onChange={(v) => setQtype(v)} options={toSelectOptions(qtypes)} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={6}>
+            <Form.Item name="difficulty" label="难度" style={{ marginBottom: 0 }}>
+              <Select size="small" options={toSelectOptions(diffs)} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={12} style={{ marginBottom: 4 }}>
+          <Col span={12}>
+            <Form.Item name="knowledge_points_display" label="知识点" style={{ marginBottom: 0 }}>
+              <Input size="small" placeholder="多知识点用逗号分割" />
+            </Form.Item>
+          </Col>
+          <Col span={6}>
+            <Form.Item name="score" label="分值" style={{ marginBottom: 0 }}>
+              <InputNumber size="small" min={1} max={100} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+        </Row>
 
         {/* Options section — varies by question type */}
         {(qtype === 'SINGLE_CHOICE' || qtype === 'MULTIPLE_CHOICE') && (
           <div style={{ marginTop: 12, padding: 12, background: '#fafafa', borderRadius: 6 }}>
             <div style={{ fontWeight: 'bold', marginBottom: 8 }}>选项</div>
             {['A','B','C','D'].map(k => (
-              <Form.Item key={k} name={`opt_${k}`} label={k} style={{ marginBottom: 6 }}>
-                <Input placeholder={`选项${k}的内容`} />
+              <Form.Item key={k} name={`opt_${k}`} label={`${k}、`} style={{ marginBottom: 6 }}>
+                <Input size="small" placeholder={`选项${k}的内容`} />
               </Form.Item>
             ))}
             {qtype === 'SINGLE_CHOICE' && (
               <Form.Item name="correct_letter" label="正确答案" rules={[{ required: true, message: '请选择正确答案' }]}>
-                <Select options={['A','B','C','D'].map(k => ({ value: k, label: k }))} style={{ width: 80 }} />
+                <Select size="small" options={['A','B','C','D'].map(k => ({ value: k, label: k }))} style={{ width: 80 }} />
               </Form.Item>
             )}
             {qtype === 'MULTIPLE_CHOICE' && (
               <Form.Item name="correct_multi" label="正确答案（多选）" rules={[{ required: true }]}>
-                <Select mode="multiple" options={['A','B','C','D'].map(k => ({ value: k, label: k }))} style={{ width: 200 }} />
+                <Select size="small" mode="multiple" options={['A','B','C','D'].map(k => ({ value: k, label: k }))} style={{ width: 200 }} />
               </Form.Item>
             )}
           </div>
@@ -159,18 +223,26 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
         </Form.Item>
 
         {isEdit && (
-          <Space>
-            <Form.Item name="source" label="来源"><Input disabled style={{ width: 120 }} /></Form.Item>
-            <Form.Item name="review_status" label="状态">
-              <Select style={{ width: 100 }} options={[
-                { value: 'APPROVED', label: '已发布' }, { value: 'PENDING', label: '待审核' }, { value: 'REJECTED', label: '已驳回' },
-              ]} />
-            </Form.Item>
-          </Space>
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item name="review_status" label="状态" style={{ marginBottom: 0 }}>
+                <Select size="small" options={[
+                  { value: 'APPROVED', label: '已发布' }, { value: 'PENDING', label: '待审核' }, { value: 'REJECTED', label: '已驳回' }, { value: 'NEEDS_REVIEW', label: '待复审' },
+                ]} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="is_active" label="启用" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="is_typical" label="典型题" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" />
+              </Form.Item>
+            </Col>
+          </Row>
         )}
-        <Form.Item name="is_active" label="启用" valuePropName="checked">
-          <Switch />
-        </Form.Item>
       </Form>
     </Modal>
   );

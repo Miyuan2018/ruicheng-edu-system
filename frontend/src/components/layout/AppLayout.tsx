@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Avatar, Dropdown, theme } from 'antd';
+import { Layout, Menu, Button, Avatar, Dropdown, theme, Tag } from 'antd';
 import {
+  AppstoreOutlined,
   DashboardOutlined,
   QuestionCircleOutlined,
   FileTextOutlined,
@@ -13,6 +14,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BarChartOutlined,
+  BulbOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth';
 
@@ -21,14 +23,14 @@ const { Header, Sider, Content } = Layout;
 const menuItems = {
   STUDENT: [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '学习仪表盘' },
-    { key: '/papers', icon: <FileTextOutlined />, label: '我的试卷' },
-    { key: '/mistake-book', icon: <BookOutlined />, label: '错题本' },
+    { key: '/typical-questions', icon: <BulbOutlined />, label: '试题讲解' },
+    { key: '/my-papers', icon: <FileTextOutlined />, label: '我的试卷' },
+    { key: '/mistake-book', icon: <BookOutlined />, label: '消灭错题' },
   ],
   TEACHER: [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '教学仪表盘' },
     { key: 'question-mgmt', icon: <QuestionCircleOutlined />, label: '试题管理', children: [
-      { key: '/knowledge-tree', label: '知识树' },
-      { key: '/syllabus', label: '考纲管理' },
+      { key: '/syllabus', label: <span>考纲管理 <Tag color="orange" style={{ fontSize: 10, marginLeft: 4, lineHeight: 1 }}>未完成</Tag></span> },
       { key: '/question-admin', label: '智能出题' },
       { key: '/questions', label: '题库浏览' },
     ]},
@@ -42,8 +44,7 @@ const menuItems = {
   QUESTION_ADMIN: [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '题库概览' },
     { key: 'question-mgmt', icon: <QuestionCircleOutlined />, label: '试题管理', children: [
-      { key: '/knowledge-tree', label: '知识树' },
-      { key: '/syllabus', label: '考纲管理' },
+      { key: '/syllabus', label: <span>考纲管理 <Tag color="orange" style={{ fontSize: 10, marginLeft: 4, lineHeight: 1 }}>未完成</Tag></span> },
       { key: '/question-admin', label: '智能出题' },
       { key: '/questions', label: '题库浏览' },
     ]},
@@ -51,13 +52,13 @@ const menuItems = {
   ],
   SYS_ADMIN: [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '系统概览' },
-    { key: '/admin/sys-admin', icon: <UserOutlined />, label: '管理员账号' },
     { key: '/admin/config', icon: <SettingOutlined />, label: '系统配置' },
+    { key: '/admin/basic-config', icon: <AppstoreOutlined />, label: '应用参数' },
+    { key: '/admin/sys-admin', icon: <UserOutlined />, label: '管理账号' },
   ],
   ADMIN: [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '系统概览' },
-    { key: '/admin/users', icon: <TeamOutlined />, label: '用户管理' },
-    { key: '/admin/sys-admin', icon: <UserOutlined />, label: '管理员账号' },
+    { key: '/admin/sys-admin', icon: <UserOutlined />, label: '管理账号' },
     { key: '/admin/config', icon: <SettingOutlined />, label: '系统配置' },
   ],
 };

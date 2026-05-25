@@ -29,7 +29,7 @@ class AnswerDetailResponse(AnswerDetailBase):
 class AnswerSubmissionBase(BaseModel):
     exam_paper_id: uuid.UUID
     submission_type: str = Field(..., pattern="^(ONLINE|OCR)$")
-    status: Optional[str] = Field(None, pattern="^(SUBMITTED|GRADING|GRADED|RETURNED)$")
+    status: Optional[str] = Field(None, pattern="^(已判分|已生成|重新判)$")
 
 
 class AnswerSubmissionCreate(AnswerSubmissionBase):
@@ -41,7 +41,7 @@ class AnswerSubmissionResponse(AnswerSubmissionBase):
     student_id: uuid.UUID
     submitted_at: datetime
     graded_at: Optional[datetime] = None
-    total_score: Optional[int] = None
+    total_score: Optional[float] = None
     percentage: Optional[float] = None
     answers: List[AnswerDetailResponse] = []
 

@@ -9,8 +9,8 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    recipient_id = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
-    sender_id = Column(UUID, ForeignKey("users.id"), nullable=True, index=True)
+    recipient_id = Column(UUID, nullable=False, index=True)
+    sender_id = Column(UUID, nullable=True, index=True)
     notification_type = Column(String(30), nullable=False)
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)

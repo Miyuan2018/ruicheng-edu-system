@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Card, Input, Select, Space, Tag, Typography, Radio, message, Progress, Empty, Row, Col, Tooltip, Modal, Descriptions, Popconfirm } from 'antd';
+import { Table, Button, Card, Input, Select, Space, Tag, Typography, Radio, message, Progress, Empty, Row, Col, Tooltip, Popconfirm } from 'antd';
 import { SearchOutlined, PlayCircleOutlined, EyeOutlined, DeleteOutlined, CheckCircleOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import PaperPreviewDrawer from '../papers/PaperPreviewDrawer';
+import { useReferenceValues, toLabelMap } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 var Text = Typography.Text;
-
-var TYPE_LABELS = { SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题' };
 var SUBJECT_OPTIONS = [
   { value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' },
   { value: '物理', label: '物理' }, { value: '化学', label: '化学' },
@@ -29,8 +29,10 @@ export default function OnlineAnswerTab() {
   var resultState = useState(null); var result = resultState[0]; var setResult = resultState[1];
   var submittingState = useState(false); var submitting = submittingState[0]; var setSubmitting = submittingState[1];
   var previewOpenState = useState(false); var previewOpen = previewOpenState[0]; var setPreviewOpen = previewOpenState[1];
-  var previewPaperState = useState(null); var previewPaper = previewPaperState[0]; var setPreviewPaper = previewPaperState[1];
+  var previewIdState = useState(null); var previewId = previewIdState[0]; var setPreviewId = previewIdState[1];
   var userId = localStorage.getItem('user_id') || '';
+  var userType = localStorage.getItem('user_type') || 'STUDENT';
+  var { 'question-types': qtypes } = useReferenceValues();
 
   useEffect(function () { loadData(); }, []);
 
@@ -94,10 +96,7 @@ export default function OnlineAnswerTab() {
     setPendingPapers(pendingPapers.filter(function (p) { return p.id !== paperId; }));
   }
 
-  function handlePreview(paper) {
-    setPreviewPaper(paper);
-    setPreviewOpen(true);
-  }
+  function handlePreview(paperId) { setPreviewId(paperId); setPreviewOpen(true); }
 
   async function handleDeletePaper(paperId) {
     try {
@@ -143,13 +142,13 @@ export default function OnlineAnswerTab() {
     { title: '状态', dataIndex: 'status', width: 70, render: function () {
       return React.createElement(Tag, { color: 'green' }, '可作答');
     }},
-    { title: '操作', width: 130, render: function (_, r) {
+    { title: '操作', width: userType !== 'STUDENT' ? 130 : 70, render: function (_, r) {
       return React.createElement(Space, { size: 2 },
         React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(EyeOutlined),
-          onClick: function () { handlePreview(r); } }, '预览'),
-        React.createElement(Popconfirm, { title: '确定删除该试卷？', onConfirm: function () { handleDeletePaper(r.id); } },
+          onClick: function () { handlePreview(r.id); } }, '预览'),
+        userType !== 'STUDENT' ? React.createElement(Popconfirm, { title: '确定删除该试卷？', onConfirm: function () { handleDeletePaper(r.id); } },
           React.createElement(Button, { type: 'link', size: 'small', danger: true, icon: React.createElement(DeleteOutlined) }, '删除')
-        )
+        ) : null
       );
     }},
   ]);
@@ -160,8 +159,8 @@ export default function OnlineAnswerTab() {
   // Answering UI
   if (answeringPaper) {
     if (result) {
-      var correctDetails = (result.details || []).filter(function (d) { return d.is_correct; });
-      var wrongDetails = (result.details || []).filter(function (d) { return !d.is_correct; });
+      var correctDetails = (result.answers || []).filter(function (d) { return d.is_correct; });
+      var wrongDetails = (result.answers || []).filter(function (d) { return !d.is_correct; });
       return React.createElement('div', null,
         React.createElement(Button, { onClick: goBack, style: { marginBottom: 12 } }, '← 返回试卷列表'),
         React.createElement(Card, { style: { marginBottom: 16, textAlign: 'center' } },
@@ -212,7 +211,7 @@ export default function OnlineAnswerTab() {
           var qType = q.question_type;
           return React.createElement(Card, { key: q.id, size: 'small', style: { marginBottom: 8 },
             title: React.createElement(Space, null,
-              React.createElement(Tag, null, TYPE_LABELS[qType] || qType),
+              React.createElement(Tag, null, toLabelMap(qtypes)[qType] || qType),
               React.createElement(Text, null, (i+1) + '. ' + (q.title || '').substring(0, 80) + '（' + (q.score || 0) + '分）')
             )
           },
@@ -311,19 +310,6 @@ export default function OnlineAnswerTab() {
         : React.createElement(Empty, { description: '暂无试卷', image: Empty.PRESENTED_IMAGE_SIMPLE, style: { padding: '20px 0' } })
     ),
 
-    // Preview Modal
-    React.createElement(Modal, { title: '试卷预览', open: previewOpen, onCancel: function () { setPreviewOpen(false); },
-      footer: React.createElement(Button, { onClick: function () { setPreviewOpen(false); } }, '关闭'),
-      width: 500
-    },
-      previewPaper ? React.createElement(Descriptions, { column: 1, bordered: true, size: 'small' },
-        React.createElement(Descriptions.Item, { label: '试卷名称' }, React.createElement(Text, { strong: true }, previewPaper.title)),
-        React.createElement(Descriptions.Item, { label: '学科' }, previewPaper.subject || '-'),
-        React.createElement(Descriptions.Item, { label: '年级' }, previewPaper.grade_level || '-'),
-        React.createElement(Descriptions.Item, { label: '总分' }, previewPaper.total_score + ' 分'),
-        React.createElement(Descriptions.Item, { label: '时长' }, previewPaper.duration_minutes ? previewPaper.duration_minutes + ' 分钟' : '-'),
-        React.createElement(Descriptions.Item, { label: '描述' }, previewPaper.description || '暂无描述')
-      ) : null
-    )
+    React.createElement(PaperPreviewDrawer, { open: previewOpen, paperId: previewId, onClose: function () { setPreviewOpen(false); } })
   );
 }

@@ -59,6 +59,10 @@ async def update_subject(subject_id: uuid.UUID, name: str = None, category: str 
     r = await db.execute(select(Subject).where(Subject.id == subject_id))
     s = r.scalar_one_or_none()
     if not s: raise HTTPException(404, detail="学科不存在")
+    if name and name != s.name:
+        dup = await db.execute(select(Subject).where(Subject.name == name))
+        if dup.scalar_one_or_none():
+            raise HTTPException(400, detail=f"学科「{name}」已存在，不能重复添加")
     if name: s.name = name
     if category is not None: s.category = category
     if is_active is not None: s.is_active = is_active

@@ -1,15 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Modal, Button, Steps, Upload, Form, Input, Select, InputNumber, Card, Tag, Space, message, Typography, Row, Col, Spin, Alert } from 'antd';
 import { CameraOutlined, InboxOutlined, EditOutlined, CheckOutlined, RobotOutlined, ScanOutlined, EyeOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toLabelMap, toSelectOptions } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 var Text = Typography.Text;
-var TYPE_LABELS = { SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题' };
-var DIFF_LABELS = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 var Dragger = Upload.Dragger;
 
 export default function PaperImportModal(props) {
+  const { 'question-types': qtypes, 'difficulty-levels': diffs, 'grade-levels': grades } = useReferenceValues();
   var open = props.open;
   var onClose = props.onClose;
   var onSuccess = props.onSuccess;
@@ -22,6 +22,13 @@ export default function PaperImportModal(props) {
   var previewState = useState(''); var preview = previewState[0]; var setPreview = previewState[1];
   var savingState = useState(false); var saving = savingState[0]; var setSaving = savingState[1];
   var resultMsgState = useState(''); var resultMsg = resultMsgState[0]; var setResultMsg = resultMsgState[1];
+  var gradeScopeState = useState('grade_comprehensive'); var gradeScope = gradeScopeState[0]; var setGradeScope = gradeScopeState[1];
+  var subjectOptionsState = useState([]); var subjectOptions = subjectOptionsState[0]; var setSubjectOptions = subjectOptionsState[1];
+  useEffect(function () {
+    apiClient.get('/subjects/all').then(function (res) {
+      setSubjectOptions((res.data || []).filter(function (s) { return s.is_active; }).map(function (s) { return { value: s.name, label: s.name }; }));
+    }).catch(function () {});
+  }, []);
 
   function handleCancel() {
     if (step === 0) { onClose(); return; }
@@ -48,7 +55,7 @@ export default function PaperImportModal(props) {
       formData.append('file', file);
       var vals = form.getFieldsValue();
       formData.append('subject', vals.subject || '数学');
-      formData.append('grade_level', vals.grade_level || '八年级');
+      formData.append('grade_level', JSON.stringify({ scope: vals.grade_scope || 'grade_comprehensive', grades: vals.grade_level || [], chapter: vals.chapter || undefined, knowledge_points: vals.knowledge_points_input ? vals.knowledge_points_input.split(',').map(function(s) { return s.trim(); }) : undefined }));
 
       var resp = await apiClient.post('/question-admin/import-paper', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -125,18 +132,42 @@ export default function PaperImportModal(props) {
   if (step === 0) {
     // Step 0: Upload + basic info
     stepContent = React.createElement('div', null,
-      React.createElement(Row, { gutter: 16, style: { marginBottom: 16 } },
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'subject', label: '学科', initialValue: '数学' },
-            React.createElement(Input, { placeholder: '数学' })
+      React.createElement(Row, { gutter: 12, style: { marginBottom: 16 } },
+        React.createElement(Col, { span: 6 },
+          React.createElement(Form.Item, { name: 'subject', label: '学科', initialValue: '数学', rules: [{ required: true }] },
+            React.createElement(Select, { placeholder: '选择学科', options: subjectOptions })
           )
         ),
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'grade_level', label: '年级', initialValue: '八年级' },
-            React.createElement(Input, { placeholder: '八年级' })
+        React.createElement(Col, { span: 6 },
+          React.createElement(Form.Item, { name: 'grade_scope', label: '适用范围', initialValue: 'grade_comprehensive' },
+            React.createElement(Select, { options: [
+              { value: 'comprehensive', label: '综合 (跨年级)' },
+              { value: 'grade_comprehensive', label: '年级综合' },
+              { value: 'chapter', label: '章节' },
+              { value: 'knowledge_point', label: '知识点' },
+            ], onChange: function(v) { setGradeScope(v); } })
           )
-        )
+        ),
+        React.createElement(Col, { span: 6 },
+          React.createElement(Form.Item, { name: 'grade_level', label: '年级', rules: [{ required: true, message: '请选择年级' }] },
+            React.createElement(Select, { mode: gradeScope === 'comprehensive' ? 'multiple' : undefined,
+              placeholder: '选择年级', options: toSelectOptions(grades) })
+          )
+        ),
+        (gradeScope === 'chapter' || gradeScope === 'knowledge_point') ? React.createElement(Col, { span: 6 },
+          React.createElement(Form.Item, { name: 'chapter', label: '章节名称', rules: [{ required: true }] },
+            React.createElement(Input, { placeholder: '如：二次函数' })
+          )
+        ) : null
       ),
+      gradeScope === 'knowledge_point' ? React.createElement(Row, { gutter: 12, style: { marginBottom: 12 } },
+        React.createElement(Col, { span: 24 },
+          React.createElement(Form.Item, { name: 'knowledge_points_input', label: '知识点', rules: [{ required: true }] },
+            React.createElement(Input, { placeholder: '如：顶点式, 判别式, 图像平移' })
+          ),
+          React.createElement('div', { style: { color: '#888', fontSize: 11, marginTop: -16 } }, '多个知识点用逗号分隔')
+        )
+      ) : null,
       React.createElement(Dragger, {
         accept: 'image/*',
         maxCount: 1,
@@ -187,8 +218,8 @@ export default function PaperImportModal(props) {
         return React.createElement(Card, { key: i, size: 'small', style: { marginBottom: 8 },
           title: React.createElement(Space, null,
             React.createElement(Tag, { color: 'blue' }, i + 1),
-            React.createElement(Tag, { color: 'purple' }, TYPE_LABELS[q.question_type] || q.question_type),
-            React.createElement(Tag, { color: q.difficulty === 'EASY' ? 'green' : q.difficulty === 'MEDIUM' ? 'orange' : 'red' }, DIFF_LABELS[q.difficulty] || q.difficulty),
+            React.createElement(Tag, { color: 'purple' }, toLabelMap(qtypes)[q.question_type] || q.question_type),
+            React.createElement(Tag, { color: q.difficulty === 'EASY' ? 'green' : q.difficulty === 'MEDIUM' ? 'orange' : 'red' }, toLabelMap(diffs)[q.difficulty] || q.difficulty),
             React.createElement(Text, { style: { fontSize: 11 } }, q.score + '分')
           )
         },
@@ -217,11 +248,11 @@ export default function PaperImportModal(props) {
             React.createElement(Tag, { color: 'blue' }, i + 1),
             React.createElement(Select, { value: q.question_type, size: 'small', style: { width: 100 },
               onChange: function (v) { updateQuestion(i, 'question_type', v); },
-              options: Object.keys(TYPE_LABELS).map(function (k) { return { value: k, label: TYPE_LABELS[k] }; })
+              options: toSelectOptions(qtypes)
             }),
             React.createElement(Select, { value: q.difficulty, size: 'small', style: { width: 80 },
               onChange: function (v) { updateQuestion(i, 'difficulty', v); },
-              options: Object.keys(DIFF_LABELS).map(function (k) { return { value: k, label: DIFF_LABELS[k] }; })
+              options: toSelectOptions(diffs)
             }),
             React.createElement(InputNumber, { value: q.score, size: 'small', min: 1, max: 30, style: { width: 60 },
               onChange: function (v) { updateQuestion(i, 'score', v); }

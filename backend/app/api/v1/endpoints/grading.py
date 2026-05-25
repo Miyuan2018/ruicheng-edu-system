@@ -33,7 +33,7 @@ async def start_grading(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
 
     # Mark as grading
-    submission.status = "GRADING"
+    submission.status = "已判分"
     await db.commit()
 
     record = GradingRecord(

@@ -1,5 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Table
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Uuid as UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -27,7 +28,7 @@ class ExamPaper(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     subject = Column(String(50), nullable=True, index=True)
-    grade_level = Column(String(20), nullable=True, index=True)
+    grade_level = Column(JSONB, nullable=True)  # {scope, grades[], chapter?}
     status = Column(String(20), nullable=False, default='DRAFT')  # DRAFT, PUBLISHED, ARCHIVED
     total_score = Column(Integer, nullable=False, default=0)
     duration_minutes = Column(Integer, nullable=True)  # Total exam duration in minutes

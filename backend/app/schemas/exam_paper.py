@@ -10,7 +10,7 @@ class ExamPaperBase(BaseModel):
     description: Optional[str] = None
     status: str = Field(default="DRAFT", pattern="^(DRAFT|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
-    grade_level: Optional[str] = Field(None, max_length=20)
+    grade_level: Optional[dict] = None
     total_score: int = Field(default=0, ge=0)
     duration_minutes: Optional[int] = Field(None, ge=0)
     instructions: Optional[str] = None
@@ -25,7 +25,7 @@ class ExamPaperUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = Field(None, pattern="^(DRAFT|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
-    grade_level: Optional[str] = Field(None, max_length=20)
+    grade_level: Optional[dict] = None
     total_score: Optional[int] = Field(None, ge=0)
     duration_minutes: Optional[int] = Field(None, ge=0)
     instructions: Optional[str] = None

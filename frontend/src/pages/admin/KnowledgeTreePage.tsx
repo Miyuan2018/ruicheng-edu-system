@@ -188,23 +188,23 @@ export default function KnowledgeTreePage() {
         <Row gutter={16} align="middle">
           <Col>
             <Text strong>考纲:</Text>
-            <Select placeholder="选择考纲" style={{ width: 280, marginLeft: 8 }}
+            <Select placeholder="选择考纲" style={{ width: 280, marginLeft: 8 }} size="small"
               value={selectedSyllabus} onChange={handleSyllabusChange}
               options={syllabi.map((s: any) => ({ value: s.id, label: `${s.title} (${s.grade_level || ''} ${s.province || ''})` }))} />
           </Col>
           <Col>
             <Text strong>版本:</Text>
-            <Select style={{ width: 100, marginLeft: 8 }} value={selectedVersion}
+            <Select style={{ width: 100, marginLeft: 8 }} value={selectedVersion} size="small"
               onChange={handleVersionChange}
               options={versions.map((v: any) => ({ value: v.version, label: `v${v.version}${v.is_current ? '●' : ''}` }))} />
           </Col>
           <Col>
-            <Button icon={<PlusOutlined />} onClick={handleNewVersion} disabled={!selectedSyllabus}>新版本</Button>
+            <Button size="small" icon={<PlusOutlined />} onClick={handleNewVersion} disabled={!selectedSyllabus}>新版本</Button>
           </Col>
           <Col flex="auto" style={{ textAlign: 'right' }}>
             <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => loadTree(selectedSyllabus, selectedVersion)}>刷新</Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddNode()}
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => loadTree(selectedSyllabus, selectedVersion)}>刷新</Button>
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => handleAddNode()}
                 disabled={!selectedSyllabus}>添加根节点</Button>
             </Space>
           </Col>
@@ -278,18 +278,18 @@ export default function KnowledgeTreePage() {
 
                 <Divider />
                 <Space>
-                  <Button icon={<EditOutlined />} onClick={() => handleEditNode(selectedNode)}>编辑</Button>
-                  <Button icon={<PlusOutlined />} onClick={() => handleAddNode(selectedNode.key)}>添加子节点</Button>
+                  <Button size="small" icon={<EditOutlined />} onClick={() => handleEditNode(selectedNode)}>编辑</Button>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => handleAddNode(selectedNode.key)}>添加子节点</Button>
                   <Popconfirm title="确定删除此节点及所有子节点?" onConfirm={() => handleDeleteNode(selectedNode.key)}>
-                    <Button danger icon={<DeleteOutlined />}>删除</Button>
+                    <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
                   </Popconfirm>
                 </Space>
                 <Divider />
                 <Space>
-                  <Button icon={<CheckCircleOutlined />} type="primary" ghost
+                  <Button size="small" icon={<CheckCircleOutlined />} type="primary" ghost
                     disabled={selectedNode.is_active}
                     onClick={() => handleSetBranchActive(selectedNode.key, true)}>分支全部有效</Button>
-                  <Button icon={<CloseCircleOutlined />} danger
+                  <Button size="small" icon={<CloseCircleOutlined />} danger
                     disabled={!selectedNode.is_active}
                     onClick={() => handleSetBranchActive(selectedNode.key, false)}>分支全部无效</Button>
                 </Space>
@@ -315,19 +315,19 @@ export default function KnowledgeTreePage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-            <Input placeholder="如: 一元二次方程" />
+            <Input placeholder="如: 一元二次方程" size="small" />
           </Form.Item>
           <Form.Item name="node_type" label="类型" rules={[{ required: true }]}>
-            <Select options={[
+            <Select size="small" options={[
               { value: 'AREA', label: '知识领域（可包含子节点）' },
               { value: 'POINT', label: '知识点（叶子节点）' },
             ]} />
           </Form.Item>
           <Form.Item name="description" label="描述">
-            <Input.TextArea rows={2} />
+            <Input.TextArea rows={2} size="small" />
           </Form.Item>
           <Form.Item name="sort_order" label="排序">
-            <InputNumber min={0} />
+            <InputNumber min={0} size="small" />
           </Form.Item>
         </Form>
         {editingNode && (

@@ -14,6 +14,8 @@ from typing import List, Optional
 from app.core.security import get_current_user
 from app.services.judge_engine import grade_answer
 from app.services.mistake_service import generate_mistake_book
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -58,7 +60,7 @@ async def _grade_submission(submission_id: uuid.UUID, db: AsyncSession):
     )
     submission = sub_result.scalar_one_or_none()
     if submission:
-        submission.status = "GRADED"
+        submission.status = "已判分"
         submission.total_score = total_score
         submission.percentage = (total_score / max_score * 100) if max_score > 0 else 0.0
         submission.graded_at = datetime.now(timezone.utc)
@@ -72,48 +74,65 @@ async def submit_answer(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != "STUDENT":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅学生可提交答案")
+    try:
+        if current_user.role != "STUDENT":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅学生可提交答案")
 
-    result = await db.execute(select(ExamPaper).where(ExamPaper.id == answer_in.exam_paper_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="试卷不存在")
+        result = await db.execute(select(ExamPaper).where(ExamPaper.id == answer_in.exam_paper_id))
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="试卷不存在")
 
-    now = datetime.now(timezone.utc)
-    answer_submission = AnswerSubmission(
-        exam_paper_id=answer_in.exam_paper_id,
-        student_id=uuid.UUID(current_user.id),
-        submission_type=answer_in.submission_type,
-        status="GRADING",
-        submitted_at=now,
-    )
-    db.add(answer_submission)
-    await db.flush()
-
-    for ad_in in answer_in.answers:
-        qr = await db.execute(select(Question).where(Question.id == ad_in.question_id))
-        if not qr.scalar_one_or_none():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"题目不存在: {ad_in.question_id}")
-
-        detail = AnswerDetail(
-            answer_submission_id=answer_submission.id,
-            question_id=ad_in.question_id,
-            student_answer=ad_in.student_answer,
+        now = datetime.now(timezone.utc)
+        answer_submission = AnswerSubmission(
+            exam_paper_id=answer_in.exam_paper_id,
+            student_id=uuid.UUID(current_user.id),
+            submission_type=answer_in.submission_type,
+            status="已判分",
+            submitted_at=now,
         )
-        db.add(detail)
+        db.add(answer_submission)
+        await db.flush()
 
-    await db.commit()
+        for ad_in in answer_in.answers:
+            qr = await db.execute(select(Question).where(Question.id == ad_in.question_id))
+            if not qr.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"题目不存在: {ad_in.question_id}")
 
-    # Auto-grade immediately
-    await _grade_submission(answer_submission.id, db)
-    await db.refresh(answer_submission)
+            detail = AnswerDetail(
+                answer_submission_id=answer_submission.id,
+                question_id=ad_in.question_id,
+                student_answer=ad_in.student_answer,
+            )
+            db.add(detail)
 
-    # Auto-generate mistake book if there are wrong answers
-    pct = answer_submission.percentage
-    if pct is not None and float(pct) < 100:
-        await generate_mistake_book(current_user.id, db, exam_paper_id=answer_in.exam_paper_id)
+        await db.commit()
 
-    return answer_submission
+        # Auto-grade immediately
+        try:
+            await _grade_submission(answer_submission.id, db)
+            await db.refresh(answer_submission)
+        except Exception as e:
+            logger.exception("Grading failed")
+            answer_submission.status = "已判分"
+            await db.commit()
+
+        # Auto-generate mistake book if there are wrong answers
+        try:
+            pct = answer_submission.percentage
+            if pct is not None and float(pct) < 100:
+                await generate_mistake_book(current_user.id, db, exam_paper_id=answer_in.exam_paper_id)
+        except Exception as e:
+            logger.exception("Mistake book generation failed")
+            await db.rollback()
+            # Re-refresh submission after rollback restores clean session state
+            await db.refresh(answer_submission)
+
+        return answer_submission
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Submit answer failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.get("/{answer_id}", response_model=AnswerSubmissionResponse)
@@ -169,11 +188,11 @@ async def update_answer(
             detail="Not enough permissions",
         )
 
-    # Only allow updates if status is still SUBMITTED (not yet graded)
-    if answer_submission.status != "SUBMITTED":
+    # Only allow updates if not yet locked (已生成 or 重新判)
+    if answer_submission.status == "已生成":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot update answer that has already been graded",
+            detail="错题本已生成，无法修改答案",
         )
 
     # Update answer submission
@@ -319,11 +338,11 @@ async def delete_answer(
             detail="Not enough permissions",
         )
 
-    # Only allow deletion if status is still SUBMITTED (not yet graded)
-    if answer_submission.status != "SUBMITTED":
+    # Only allow deletion if not yet locked
+    if answer_submission.status == "已生成":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete answer that has already been graded",
+            detail="错题本已生成，无法删除答案",
         )
 
     # Delete answer details first

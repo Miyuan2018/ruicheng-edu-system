@@ -2,11 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Form, Input, Select, InputNumber, message, Steps, Button, Space, Row, Col, Card, Table, Tag } from 'antd';
 import apiClient from '../../api/client';
 import PaperTemplatePreview from './PaperTemplatePreview';
-
-var TYPE_LABELS = { SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题' };
-var DIFF_NAMES = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
+import { useReferenceValues, toLabelMap, toSelectOptions } from '../../hooks/useReferenceValues';
 
 export default function PaperEditModal(props) {
+  const { 'question-types': qtypes, 'difficulty-levels': difficultyLevels, 'paper-statuses': paperStatuses, 'grade-levels': grades } = useReferenceValues();
   var open = props.open;
   var paper = props.paper;
   var onClose = props.onClose;
@@ -14,7 +13,18 @@ export default function PaperEditModal(props) {
   var form = Form.useForm()[0];
   var loadingState = useState(false);
   var loading = loadingState[0];
+  var gradeScopeState = useState('grade_comprehensive');
+  var gradeScope = gradeScopeState[0];
+  var setGradeScope = gradeScopeState[1];
   var setLoading = loadingState[1];
+  var subjectOptionsState = useState([]);
+  var subjectOptions = subjectOptionsState[0];
+  var setSubjectOptions = subjectOptionsState[1];
+  useEffect(function () {
+    apiClient.get('/subjects/all').then(function (res) {
+      setSubjectOptions((res.data || []).filter(function (s) { return s.is_active; }).map(function (s) { return { value: s.name, label: s.name }; }));
+    }).catch(function () {});
+  }, []);
   var stepState = useState(0);
   var step = stepState[0];
   var setStep = stepState[1];
@@ -71,7 +81,7 @@ export default function PaperEditModal(props) {
         title: values.title,
         subtitle: values.subtitle || '',
         subject: values.subject,
-        grade_level: values.grade_level,
+        grade_level: { scope: values.grade_scope || 'grade_comprehensive', grades: values.grade_level || [], chapter: values.chapter || undefined, knowledge_points: values.knowledge_points_input ? values.knowledge_points_input.split(',').map(function(s) { return s.trim(); }) : undefined },
         total_score: values.total_score,
         duration_minutes: values.duration_minutes,
         status: values.status,
@@ -101,7 +111,7 @@ export default function PaperEditModal(props) {
             var mediumCount = Math.round(count * diffRatio.MEDIUM / 100);
             var hardCount = count - easyCount - mediumCount;
             var typePool = pool.filter(function (q) { return q.question_type === qtype; });
-            if (typePool.length < count) { message.warning(TYPE_LABELS[qtype] + '题库中仅有' + typePool.length + '道，需要' + count + '道，请调整分布'); }
+            if (typePool.length < count) { message.warning(toLabelMap(qtypes)[qtype] + '题库中仅有' + typePool.length + '道，需要' + count + '道，请调整分布'); }
             var diffs = [{ diff: 'EASY', cnt: easyCount }, { diff: 'MEDIUM', cnt: mediumCount }, { diff: 'HARD', cnt: hardCount }];
             var typePicked = 0;
             for (var di = 0; di < diffs.length; di++) {
@@ -113,7 +123,7 @@ export default function PaperEditModal(props) {
                 typePicked++;
               }
               if (matched.length < d.cnt) {
-                message.warning(TYPE_LABELS[qtype] + DIFF_NAMES[d.diff] + '题库不足：需要' + d.cnt + '道，仅有' + matched.length + '道');
+                message.warning(toLabelMap(qtypes)[qtype] + toLabelMap(difficultyLevels)[d.diff] + '题库不足：需要' + d.cnt + '道，仅有' + matched.length + '道');
               }
             }
           }
@@ -153,7 +163,7 @@ export default function PaperEditModal(props) {
     var values = savedFormValues;
     setLoading(true);
     try {
-      var payload = { title: values.title, subject: values.subject, grade_level: values.grade_level,
+      var payload = { title: values.title, subject: values.subject, grade_level: { scope: values.grade_scope || 'grade_comprehensive', grades: values.grade_level || [], chapter: values.chapter || undefined, knowledge_points: values.knowledge_points_input ? values.knowledge_points_input.split(',').map(function(s) { return s.trim(); }) : undefined },
         total_score: values.total_score, duration_minutes: values.duration_minutes,
         status: values.status, subtitle: values.subtitle || "", description: values.description, instructions: values.notes || "" };
       var resp = await apiClient.post('/exam-papers', payload);
@@ -183,10 +193,10 @@ export default function PaperEditModal(props) {
     React.createElement(Col, { span: 6 }, React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('b', null, '时长'), React.createElement('div', { style: { fontSize: 24 } }, (savedFormValues.duration_minutes || 60) + '分钟')))
   );
 
-  var typeCards = Object.keys(TYPE_LABELS).map(function (key) {
+  var typeCards = Object.keys(toLabelMap(qtypes)).map(function (key) {
     return React.createElement(Col, { span: 6, key: key },
       React.createElement(Card, { style: { textAlign: 'center' } },
-        React.createElement('div', { style: { fontWeight: 'bold', marginBottom: 8 } }, TYPE_LABELS[key]),
+        React.createElement('div', { style: { fontWeight: 'bold', marginBottom: 8 } }, toLabelMap(qtypes)[key]),
         React.createElement(InputNumber, { min: 0, max: 50, value: dist[key], onChange: function (v) { var nd = {}; Object.keys(dist).forEach(function (k) { nd[k] = k === key ? (v || 0) : dist[k]; }); setDist(nd); }, style: { width: 80 } }),
         React.createElement('div', { style: { color: '#999', fontSize: 12, marginTop: 4 } }, '道')
       )
@@ -229,36 +239,26 @@ export default function PaperEditModal(props) {
       React.createElement(Button, { type: 'primary', onClick: function () { handleSubmit(); } }, '下一步：选题方式')
     );
     stepContent = React.createElement(Form, { form: form, layout: 'vertical' },
+      // ── 基本信息 ──
+      React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 } }, '基本信息'),
       React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 12 },
+        React.createElement(Col, { span: 16 },
           React.createElement(Form.Item, { name: 'title', label: '试卷名称', rules: [{ required: true, message: '请输入试卷名称' }] },
             React.createElement(Input, { placeholder: '如：八年级数学期中测试' })
           )
         ),
-        React.createElement(Col, { span: 12 },
-          React.createElement(Form.Item, { name: 'subtitle', label: '副标题' },
-            React.createElement(Input, { placeholder: '如：满分100分，考试时间60分钟' })
-          )
-        )
-      ),
-      React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'subject', label: '学科', rules: [{ required: true, message: '请输入学科' }] },
-            React.createElement(Input, { placeholder: '如：数学' })
-          )
-        ),
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'grade_level', label: '年级', rules: [{ required: true, message: '请输入年级' }] },
-            React.createElement(Input, { placeholder: '如：八年级' })
-          )
-        ),
         React.createElement(Col, { span: 8 },
           React.createElement(Form.Item, { name: 'status', label: '状态', initialValue: 'DRAFT' },
-            React.createElement(Select, { options: [{ value: 'DRAFT', label: '草稿' }, { value: 'PUBLISHED', label: '已发布' }] })
+            React.createElement(Select, { options: toSelectOptions(paperStatuses) })
           )
         )
       ),
       React.createElement(Row, { gutter: 16 },
+        React.createElement(Col, { span: 8 },
+          React.createElement(Form.Item, { name: 'subject', label: '学科', rules: [{ required: true, message: '请选择学科' }] },
+            React.createElement(Select, { placeholder: '选择学科', options: subjectOptions })
+          )
+        ),
         React.createElement(Col, { span: 8 },
           React.createElement(Form.Item, { name: 'total_score', label: '总分', initialValue: 100 },
             React.createElement(InputNumber, { min: 1, max: 300, style: { width: '100%' } })
@@ -270,11 +270,64 @@ export default function PaperEditModal(props) {
           )
         )
       ),
-      React.createElement(Form.Item, { name: 'description', label: '试卷描述' },
-        React.createElement(Input.TextArea, { rows: 2, placeholder: '试卷的简要描述' })
+
+      // ── 年级范围 ──
+      React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#888', marginTop: 8, marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 } }, '年级范围'),
+      React.createElement(Row, { gutter: 16 },
+        React.createElement(Col, { span: 8 },
+          React.createElement(Form.Item, { name: 'grade_scope', label: '适用范围', initialValue: 'grade' },
+            React.createElement(Select, { options: [
+              { value: 'comprehensive', label: '综合 (跨年级)' },
+              { value: 'grade_comprehensive', label: '年级综合' },
+              { value: 'chapter', label: '章节' },
+              { value: 'knowledge_point', label: '知识点' },
+            ], onChange: function(v) { setGradeScope(v); } })
+          )
+        ),
+        React.createElement(Col, { span: 8 },
+          React.createElement(Form.Item, { name: 'grade_level', label: '年级',
+            rules: [{ required: true, message: '请选择年级' }] },
+            React.createElement(Select, {
+              mode: gradeScope === 'comprehensive' ? 'multiple' : undefined,
+              placeholder: '选择年级',
+              options: toSelectOptions(grades) })
+          )
+        ),
+        (gradeScope === 'chapter' || gradeScope === 'knowledge_point') ? React.createElement(Col, { span: 8 },
+          React.createElement(Form.Item, { name: 'chapter', label: '章节名称',
+            rules: [{ required: true, message: '请输入章节名称' }] },
+            React.createElement(Input, { placeholder: '如：二次函数' })
+          )
+        ) : null
+      ),
+      gradeScope === 'knowledge_point' ? React.createElement(Row, { gutter: 16 },
+        React.createElement(Col, { span: 16 },
+          React.createElement(Form.Item, { name: 'knowledge_points_input', label: '知识点',
+            rules: [{ required: true, message: '请输入知识点' }] },
+            React.createElement(Input, { placeholder: '如：顶点式, 判别式, 图像平移' })
+          ),
+          React.createElement('div', { style: { color: '#888', fontSize: 11, marginTop: -16 } },
+            '多个知识点用逗号分隔'
+          )
+        )
+      ) : null,
+
+      // ── 描述 ──
+      React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#888', marginTop: 8, marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 } }, '描述信息'),
+      React.createElement(Row, { gutter: 16 },
+        React.createElement(Col, { span: 12 },
+          React.createElement(Form.Item, { name: 'subtitle', label: '副标题' },
+            React.createElement(Input, { placeholder: '如：满分100分，考试时间60分钟' })
+          )
+        ),
+        React.createElement(Col, { span: 12 },
+          React.createElement(Form.Item, { name: 'description', label: '试卷描述' },
+            React.createElement(Input, { placeholder: '简要描述试卷内容和范围' })
+          )
+        )
       ),
       React.createElement(Form.Item, { name: 'notes', label: '注意事项' },
-        React.createElement(Input.TextArea, { rows: 2, placeholder: '考生注意事项' })
+        React.createElement(Input.TextArea, { rows: 2, placeholder: '考生注意事项，如：请使用2B铅笔填涂答题卡' })
       )
     );
   } else if (step === 1) {
@@ -301,19 +354,18 @@ export default function PaperEditModal(props) {
       } }, '预览确认')
     );
     var typeOrder = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
-    var typeNames = { FILL_BLANK: '填空题', SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', SUBJECTIVE: '解答题' };
     var selectedQs = availQuestions.filter(function (q) { return selectedIds.indexOf(q.id) >= 0; });
     var totalScore = savedFormValues.total_score || 100;
     var totalRequired = 0;
     Object.keys(dist).forEach(function (k) { totalRequired += dist[k] || 0; });
 
     // LEFT: status panel
-    var leftCards = Object.keys(typeNames).map(function (t) {
+    var leftCards = typeOrder.map(function (t) {
       var req = dist[t] || 0;
       if (req <= 0) return null;
       var sel = selectedQs.filter(function (q) { return q.question_type === t; }).length;
       return React.createElement('div', { key: t, style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 } },
-        React.createElement('span', null, typeNames[t]),
+        React.createElement('span', null, toLabelMap(qtypes)[t]),
         React.createElement('span', { style: { color: sel >= req ? '#52c41a' : '#ff4d4f', fontWeight: 'bold' } }, sel + '/' + req)
       );
     }).filter(Boolean);
@@ -355,7 +407,7 @@ export default function PaperEditModal(props) {
               return fq && fq.question_type === qtype;
             }).length;
             if (typeSel >= required) {
-              message.warning(typeNames[qtype] + '已达到' + required + '道上限');
+              message.warning(toLabelMap(qtypes)[qtype] + '已达到' + required + '道上限');
               return;
             }
             setSelectedIds(selectedIds.concat([q.id]));
@@ -389,7 +441,7 @@ export default function PaperEditModal(props) {
           React.createElement(Select, { placeholder: '难度筛选', allowClear: true, value: (diffFilterMap[qtype] || '') || undefined,
             onChange: function (v) { var nd = {}; Object.keys(diffFilterMap).forEach(function (k) { nd[k] = diffFilterMap[k]; }); nd[qtype] = v || ''; setDiffFilterMap(nd); },
             size: 'small', style: { width: 100 },
-            options: [{ value: 'EASY', label: '简单' }, { value: 'MEDIUM', label: '中等' }, { value: 'HARD', label: '困难' }] })
+            options: toSelectOptions(difficultyLevels) })
         ),
         filteredUnselected.length > 0
           ? React.createElement('div', { style: { maxHeight: 140, overflow: 'auto' } },
@@ -399,7 +451,7 @@ export default function PaperEditModal(props) {
       );
 
       return React.createElement(Card, { key: qtype, size: 'small', style: { marginBottom: 8 },
-        title: React.createElement('span', { style: { fontSize: 13 } }, typeNames[qtype])
+        title: React.createElement('span', { style: { fontSize: 13 } }, toLabelMap(qtypes)[qtype])
       },
         topSection,
         React.createElement('hr', { style: { margin: '8px 0' } }),

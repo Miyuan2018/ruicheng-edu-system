@@ -139,8 +139,9 @@ async def list_llm_configs(db: AsyncSession = Depends(get_db)):
 async def generate_questions(
     knowledge_point: str, difficulty: str = "MEDIUM",
     question_type: str = "SINGLE_CHOICE", count: int = 5,
-    subject: str = "数学", grade_level: str = "八年级",
+    subject: str = "数学", grade_level: str = "G8",
     model: str = None,
+    provider: str = "ollama",
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -157,6 +158,7 @@ async def generate_questions(
             knowledge_point=knowledge_point, difficulty=difficulty,
             question_type=question_type, count=count,
             subject=subject, grade_level=grade_level, model=model,
+            provider=provider,
         )
     except Exception as e:
         return {"ok": False, "error": "LLM调用异常: " + str(e)}
@@ -178,6 +180,14 @@ async def generate_questions(
     db.add(task)
     await db.flush()
 
+    # Convert grade_level to JSONB format (split knowledge_point by comma into chapter + knowledge_points)
+    grade_json = {"scope": "grade", "grades": [grade_level] if grade_level else []}
+    if knowledge_point:
+        kps = [kp.strip() for kp in knowledge_point.split(",") if kp.strip()]
+        if kps:
+            grade_json["chapter"] = kps[0]  # First as chapter title
+            grade_json["knowledge_points"] = kps  # All as knowledge_points array
+
     generated = []
     for item in result["questions"]:
         correct_answer = item.get("correct_answer")
@@ -187,7 +197,7 @@ async def generate_questions(
         q = Question(
             title=item.get("title", ""),
             question_type=question_type, difficulty=difficulty,
-            subject=subject, grade_level=grade_level,
+            subject=subject, grade_level=grade_json,
             score=item.get("score", 5),
             correct_answer=correct_answer or "",
             explanation=item.get("explanation", ""),
@@ -211,7 +221,12 @@ async def generate_questions(
 
 @router.get("/pending")
 async def list_pending_questions(
-    source: str = None, skip: int = 0, limit: int = 50,
+    skip: int = 0, limit: int = 10,
+    source: Optional[str] = None,
+    question_type: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    grade: Optional[str] = None,
+    keyword: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -220,13 +235,33 @@ async def list_pending_questions(
     query = select(Question).where(Question.review_status.in_(("PENDING", "NEEDS_REVIEW")))
     if source:
         query = query.where(Question.source == source)
+    if question_type:
+        query = query.where(Question.question_type == question_type)
+    if difficulty:
+        query = query.where(Question.difficulty == difficulty)
+    if grade:
+        query = query.where(Question.grade_level['grades'].contains([grade]))
+    if keyword:
+        from sqlalchemy import or_, String
+        query = query.where(or_(
+            Question.title.ilike(f"%{keyword}%"),
+            Question.grade_level['chapter'].astext.ilike(f"%{keyword}%"),
+            Question.grade_level['knowledge_points'].cast(String).ilike(f"%{keyword}%")
+        ))
+
+    from sqlalchemy import func as _func
+    count_query = select(_func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
     query = query.offset(skip).limit(limit).order_by(Question.created_at.desc())
     result = await db.execute(query)
     questions = result.scalars().all()
-    return [{"id": str(q.id), "title": q.title, "question_type": q.question_type,
+    return {"items": [{"id": str(q.id), "title": q.title, "question_type": q.question_type,
              "difficulty": q.difficulty, "subject": q.subject, "source": q.source,
-             "review_status": q.review_status, "created_at": q.created_at.isoformat()}
-            for q in questions]
+             "review_status": q.review_status, "correct_answer": q.correct_answer,
+             "explanation": q.explanation, "created_at": q.created_at.isoformat()}
+            for q in questions], "total": total}
 
 
 @router.post("/{question_id}/approve")
@@ -269,7 +304,7 @@ async def reject_question(
 
 @router.post("/batch-approve")
 async def batch_approve(
-    question_ids: List[str],
+    question_ids: List[str] = Body(...),
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -287,45 +322,154 @@ async def batch_approve(
     return {"message": f"已批量审核通过 {len(question_ids)} 道试题"}
 
 
+@router.post("/batch-reject")
+async def batch_reject(
+    question_ids: List[str] = Body(...),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN", "TEACHER"):
+        raise HTTPException(403, detail="权限不足")
+    now = datetime.now(timezone.utc)
+    for qid in question_ids:
+        result = await db.execute(select(Question).where(Question.id == uuid.UUID(qid)))
+        q = result.scalar_one_or_none()
+        if q:
+            q.review_status = "REJECTED"
+            q.reviewed_by = current_user.id
+            q.reviewed_at = now
+    await db.commit()
+    return {"message": f"已批量驳回 {len(question_ids)} 道试题"}
+
+
+@router.get("/stats")
+async def get_question_stats(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN", "TEACHER"):
+        raise HTTPException(403, detail="权限不足")
+
+    from sqlalchemy import func as _func, case
+
+    # Total count
+    total_result = await db.execute(select(_func.count()).select_from(Question))
+    total = total_result.scalar() or 0
+
+    # By review_status
+    status_result = await db.execute(
+        select(Question.review_status, _func.count()).group_by(Question.review_status)
+    )
+    by_status = {row[0]: row[1] for row in status_result.fetchall()}
+
+    # By question_type
+    type_result = await db.execute(
+        select(Question.question_type, _func.count()).group_by(Question.question_type)
+    )
+    by_type = {row[0]: row[1] for row in type_result.fetchall()}
+
+    # By difficulty
+    diff_result = await db.execute(
+        select(Question.difficulty, _func.count()).group_by(Question.difficulty)
+    )
+    by_difficulty = {row[0]: row[1] for row in diff_result.fetchall()}
+
+    # By source
+    source_result = await db.execute(
+        select(Question.source, _func.count()).group_by(Question.source)
+    )
+    by_source = {row[0]: row[1] for row in source_result.fetchall()}
+
+    # Pending + NEEDS_REVIEW count
+    pending_result = await db.execute(
+        select(_func.count()).where(Question.review_status.in_(("PENDING", "NEEDS_REVIEW")))
+    )
+    pending_total = pending_result.scalar() or 0
+
+    # Top 5 pending for review
+    pending_query = (
+        select(Question)
+        .where(Question.review_status.in_(("PENDING", "NEEDS_REVIEW")))
+        .order_by(Question.created_at.desc())
+        .limit(5)
+    )
+    pending_items_result = await db.execute(pending_query)
+    pending_items = pending_items_result.scalars().all()
+
+    return {
+        "total": total,
+        "by_status": by_status,
+        "by_type": by_type,
+        "by_difficulty": by_difficulty,
+        "by_source": by_source,
+        "pending_total": pending_total,
+        "pending_items": [
+            {"id": str(q.id), "title": q.title, "question_type": q.question_type,
+             "difficulty": q.difficulty, "source": q.source, "review_status": q.review_status}
+            for q in pending_items
+        ],
+    }
+
+
 # ─── Web Scraping ───────────────────────────────────────────
 
 @router.post("/scrape")
 async def start_scrape(
-    knowledge_point: str, source_urls: List[str] = None, count: int = 10,
+    knowledge_point: str, count: int = 10,
+    subject: str = "数学", grade_level: str = "G8",
+    difficulty: str = "MEDIUM", question_type: str = "SINGLE_CHOICE",
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
-    uid = uuid.UUID(current_user.id)
-    task = QuestionTask(
-        task_type="WEB_SCRAPE", status="RUNNING", total_items=count,
-        parameters={"knowledge_point": knowledge_point, "urls": source_urls or []},
-        created_by=uid, started_at=datetime.now(timezone.utc),
-    )
-    db.add(task)
-    await db.flush()
+    # Real web scraping
+    from app.services.scraper import search_questions as do_scrape
 
-    cnt = min(count, 5)
-    for i in range(cnt):
-        q = Question(
-            title="[抓取-" + knowledge_point + "] 网络试题 #" + str(i+1),
-            question_type="SINGLE_CHOICE", difficulty="MEDIUM",
-            subject="数学", score=5,
-            correct_answer='{"options":[{"label":"A","text":"选项A"},{"label":"B","text":"选项B"},{"label":"C","text":"选项C"},{"label":"D","text":"选项D"}],"correct_answer":"A"}',
-            source="SCRAPED", review_status="PENDING",
-            source_task_id=task.id,
-            created_by=uid,
+    try:
+        raw_results = await do_scrape(
+            knowledge_point=knowledge_point,
+            subject=subject,
+            grade_level=grade_level,
+            difficulty=difficulty,
+            question_type=question_type,
+            count=count,
         )
-        db.add(q)
+    except Exception as e:
+        return {"ok": False, "error": f"抓取异常: {str(e)}"}
 
-    task.status = "COMPLETED"
-    task.completed_items = cnt
-    task.completed_at = datetime.now(timezone.utc)
+    # Auto-save to DB
+    uid = uuid.UUID(current_user.id)
+    kps = [kp.strip() for kp in knowledge_point.split(",") if kp.strip()]
+    grade_json = {"scope": "grade", "grades": [grade_level]}
+    if kps:
+        grade_json["chapter"] = kps[0]
+        grade_json["knowledge_points"] = kps
+
+    saved = 0
+    for q in raw_results:
+        ca = q.get("correct_answer", "")
+        db.add(Question(
+            title=q.get("title", ""),
+            question_type=q.get("question_type", question_type),
+            difficulty=q.get("difficulty", difficulty),
+            subject=q.get("subject", subject),
+            grade_level=grade_json,
+            score=q.get("score", 5),
+            correct_answer=ca,
+            explanation=q.get("explanation", ""),
+            source="SCRAPED", review_status="PENDING",
+            created_by=uid, meta_data={"knowledge_points": kps},
+        ))
+        saved += 1
+
     await db.commit()
-
-    return {"ok": True, "task_id": str(task.id), "scraped_count": cnt}
+    return {"ok": True, "count": saved,
+            "search_params": {"知识点": knowledge_point, "学科": subject,
+                               "年级": grade_level, "难度": difficulty,
+                               "题型": question_type, "数量": count},
+            "error": None if saved > 0 else "未找到试题"}
 
 
 @router.get("/tasks/{task_id}")

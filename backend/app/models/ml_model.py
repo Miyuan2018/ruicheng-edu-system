@@ -20,7 +20,7 @@ class MlModel(Base):
     is_active = Column(Boolean, nullable=False, default=False)
     is_deprecated = Column(Boolean, nullable=False, default=False)
     performance_metrics = Column(JSON, nullable=True)
-    created_by = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
+    created_by = Column(UUID, ForeignKey("admins.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     deployed_at = Column(DateTime(timezone=True), nullable=True)

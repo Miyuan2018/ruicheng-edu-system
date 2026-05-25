@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Table, Button, Space, Tag, Input, Select, Modal, message,
-  Typography, Card, Row, Col, Tooltip, Popconfirm,
+  Typography, Popconfirm,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
@@ -10,6 +10,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
+import { useReferenceValues, toLabelMap, toSelectOptions } from '../../hooks/useReferenceValues';
 import QuestionEditModal from './QuestionEditModal';
 import BatchImportModal from './BatchImportModal';
 
@@ -26,21 +27,6 @@ interface QuestionItem {
   created_at: string;
   is_active: boolean;
 }
-
-const typeMap: Record<string, string> = {
-  SINGLE_CHOICE: '单选题',
-  MULTIPLE_CHOICE: '多选题',
-  FILL_BLANK: '填空题',
-  SUBJECTIVE: '解答题',
-};
-const typeColors: Record<string, string> = {
-  SINGLE_CHOICE: 'blue',
-  MULTIPLE_CHOICE: 'purple',
-  FILL_BLANK: 'green',
-  SUBJECTIVE: 'orange',
-};
-const diffMap: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
-const diffColors: Record<string, string> = { EASY: 'success', MEDIUM: 'warning', HARD: 'error' };
 
 export default function QuestionListPage() {
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
@@ -60,6 +46,11 @@ export default function QuestionListPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [subjectOptions, setSubjectOptions] = useState<{value:string,label:string}[]>([]);
   const [exportMax, setExportMax] = useState(200);
+  const { 'question-types': qtypes, 'difficulty-levels': diffs, 'grade-levels': grades } = useReferenceValues();
+  const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
+  const typeColors = useMemo(() => { const m: Record<string,string> = {}; qtypes.forEach(qt => { if(qt.color) m[qt.code] = qt.color; }); return m; }, [qtypes]);
+  const diffMap = useMemo(() => toLabelMap(diffs), [diffs]);
+  const diffColors = useMemo(() => { const m: Record<string,string> = {}; diffs.forEach(d => { if(d.color) m[d.code] = d.color; }); return m; }, [diffs]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,7 +61,7 @@ export default function QuestionListPage() {
   const fetchQuestions = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = { limit: pageSize, offset: (page - 1) * pageSize };
+      const params: Record<string, string | number> = { limit: pageSize, skip: (page - 1) * pageSize, review_status: 'APPROVED' };
       if (search) params.keyword = search;
       if (typeFilter) params.question_type = typeFilter;
       if (diffFilter) params.difficulty = diffFilter;
@@ -147,7 +138,11 @@ export default function QuestionListPage() {
       render: (t: string) => <Tag color={diffColors[t]}>{diffMap[t] || t}</Tag>,
     },
     { title: '学科', dataIndex: 'subject', width: 80 },
-    { title: '年级', dataIndex: 'grade_level', width: 80 },
+    { title: '年级', dataIndex: 'grade_level', width: 100,
+      render: (v: any) => {
+        var grades = v?.grades || [];
+        return grades.length ? grades.map((g: string) => <Tag key={g} style={{marginBottom:2}}>{g}</Tag>) : '-';
+      }},
     { title: '分值', dataIndex: 'score', width: 60 },
     { title: '来源', dataIndex: 'source', width: 80,
       render: (s: string) => {
@@ -178,9 +173,9 @@ export default function QuestionListPage() {
       title: '操作', key: 'actions', width: 120, fixed: 'right',
       render: (_: unknown, record: QuestionItem) => (
         <Space>
-          <Tooltip title="编辑"><Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
@@ -189,70 +184,56 @@ export default function QuestionListPage() {
 
   return (
     <div>
-      <Title level={4}>试题管理</Title>
-      <Card style={{ marginBottom: 16 }}>
-        <Row gutter={[12, 12]} align="middle">
-          <Col xs={24} sm={8} md={6}>
-            <Input
-              placeholder="搜索题目内容"
-              prefix={<SearchOutlined />}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onPressEnter={() => fetchQuestions()}
-              allowClear
-            />
-          </Col>
-          <Col xs={12} sm={6} md={3}>
-            <Select
-              placeholder="题型" allowClear style={{ width: '100%' }}
-              value={typeFilter} onChange={setTypeFilter}
-              options={Object.entries(typeMap).map(([k, v]) => ({ value: k, label: v }))}
-            />
-          </Col>
-          <Col xs={12} sm={6} md={3}>
-            <Select
-              placeholder="难度" allowClear style={{ width: '100%' }}
-              value={diffFilter} onChange={setDiffFilter}
-              options={Object.entries(diffMap).map(([k, v]) => ({ value: k, label: v }))}
-            />
-          </Col>
-          <Col xs={12} sm={6} md={2}>
-            <Select placeholder="学科" allowClear style={{ width: '100%' }}
-              value={subjectFilter || undefined} onChange={(v) => setSubjectFilter(v || '')}
-              options={subjectOptions} />
-          </Col>
-          <Col xs={12} sm={6} md={2}>
-            <Select placeholder="年级" allowClear style={{ width: '100%' }}
-              value={gradeFilter} onChange={setGradeFilter}
-              options={['七年级','八年级','九年级'].map(v=>({value:v,label:v}))} />
-          </Col>
-          <Col xs={12} sm={6} md={2}>
-            <Input placeholder="知识点" allowClear
-              value={kpFilter} onChange={(e) => setKpFilter(e.target.value)} />
-          </Col>
-          <Col xs={24} sm={6} md={2} style={{ textAlign: 'right' }}>
-            <Space>
-              <Button icon={<ImportOutlined />} onClick={() => setImportModalOpen(true)}>导入</Button>
-              {selectedRowKeys.length > 0 && (
-                <Button icon={<ExportOutlined />} onClick={() => handleExport(selectedRowKeys)}
-                  disabled={exportMax === 0}>
-                  导出选中({selectedRowKeys.length})
-                </Button>
-              )}
-              <Button icon={<ExportOutlined />} onClick={() => handleExport()}
-                disabled={exportMax === 0}>
-                导出全部{exportMax === 0 ? '(已禁用)' : ''}
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建</Button>
-            </Space>
-          </Col>
-        </Row>
-      </Card>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>试题管理</Title>
+        <Space>
+          <Button icon={<ImportOutlined />} onClick={() => setImportModalOpen(true)}>导入</Button>
+          {selectedRowKeys.length > 0 && (
+            <Button icon={<ExportOutlined />} onClick={() => handleExport(selectedRowKeys)}
+              disabled={exportMax === 0}>
+              导出选中({selectedRowKeys.length})
+            </Button>
+          )}
+          <Button icon={<ExportOutlined />} onClick={() => handleExport()}
+            disabled={exportMax === 0}>
+            导出全部{exportMax === 0 ? '(已禁用)' : ''}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建</Button>
+        </Space>
+      </div>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Input
+          placeholder="搜索题目内容" prefix={<SearchOutlined />}
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          onPressEnter={() => fetchQuestions()} allowClear
+          style={{ width: 180 }} size="small"
+        />
+        <Select
+          placeholder="题型" allowClear style={{ width: 100 }} size="small"
+          value={typeFilter} onChange={setTypeFilter}
+          options={Object.entries(typeMap).map(([k, v]) => ({ value: k, label: v }))}
+        />
+        <Select
+          placeholder="难度" allowClear style={{ width: 90 }} size="small"
+          value={diffFilter} onChange={setDiffFilter}
+          options={Object.entries(diffMap).map(([k, v]) => ({ value: k, label: v }))}
+        />
+        <Select placeholder="学科" allowClear style={{ width: 90 }} size="small"
+          value={subjectFilter || undefined} onChange={(v) => setSubjectFilter(v || '')}
+          options={subjectOptions} />
+        <Select placeholder="年级" allowClear style={{ width: 90 }} size="small"
+          value={gradeFilter} onChange={setGradeFilter}
+          options={toSelectOptions(grades)} />
+        <Input placeholder="知识点" allowClear size="small"
+          style={{ width: 120 }}
+          value={kpFilter} onChange={(e) => setKpFilter(e.target.value)} />
+      </div>
       <Table
         rowKey="id"
         columns={columns}
         dataSource={questions}
         loading={loading}
+        size="middle"
         rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as string[]) }}
         pagination={{
           current: page, pageSize, total,

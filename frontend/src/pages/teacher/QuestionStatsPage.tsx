@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Typography, Select, Tag, Progress, Row, Col, Space } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Table, Card, Typography, Select, Tag, Progress, Space, Button } from 'antd';
+import { QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toLabelMap, toColorMap, toSelectOptions } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 
-var TYPE_LABELS = { SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题' };
-var DIFF_COLORS = { EASY: 'green', MEDIUM: 'orange', HARD: 'red' };
-var DIFF_NAMES = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 
 function ChoiceDistribution(props) {
   var dist = props.distribution;
@@ -32,6 +30,10 @@ export default function QuestionStatsPage() {
   var statsState = useState([]); var stats = statsState[0]; var setStats = statsState[1];
   var filterSubjectState = useState(''); var filterSubject = filterSubjectState[0]; var setFilterSubject = filterSubjectState[1];
   var filterTypeState = useState(''); var filterType = filterTypeState[0]; var setFilterType = filterTypeState[1];
+  var refs = useReferenceValues();
+  var qtypes = refs['question-types'];
+  var diffs = refs['difficulty-levels'];
+  var subjects = refs['subjects'];
 
   function loadStats() {
     setLoading(true);
@@ -49,8 +51,8 @@ export default function QuestionStatsPage() {
   var columns = [
     { title: '题目', dataIndex: 'title', ellipsis: true, width: 300, render: function (t, r) {
       return React.createElement(Space, null,
-        React.createElement(Tag, { color: DIFF_COLORS[r.difficulty] }, DIFF_NAMES[r.difficulty] || r.difficulty),
-        React.createElement(Tag, null, TYPE_LABELS[r.question_type] || r.question_type),
+        React.createElement(Tag, { color: toColorMap(diffs)[r.difficulty]?.color }, toLabelMap(diffs)[r.difficulty] || r.difficulty),
+        React.createElement(Tag, null, toLabelMap(qtypes)[r.question_type] || r.question_type),
         React.createElement(Typography.Text, null, (t || '').substring(0, 50))
       );
     }},
@@ -69,22 +71,19 @@ export default function QuestionStatsPage() {
   ];
 
   return React.createElement('div', null,
-    React.createElement(Title, { level: 4 }, React.createElement(QuestionCircleOutlined, { style: { marginRight: 8 } }), '试题答题统计'),
+    React.createElement(Title, { level: 4, style: { marginBottom: 16 } }, React.createElement(QuestionCircleOutlined, { style: { marginRight: 8 } }), '试题答题统计'),
     React.createElement(Card, { size: 'small', style: { marginBottom: 16 } },
-      React.createElement(Row, { gutter: 16, align: 'middle' },
-        React.createElement(Col, null, React.createElement(Typography.Text, { strong: true }, '筛选: ')),
-        React.createElement(Col, null,
-          React.createElement(Select, { placeholder: '学科', value: filterSubject || undefined, onChange: setFilterSubject,
-            allowClear: true, style: { width: 100 },
-            options: [{ value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' }]
-          })
-        ),
-        React.createElement(Col, null,
-          React.createElement(Select, { placeholder: '题型', value: filterType || undefined, onChange: setFilterType,
-            allowClear: true, style: { width: 110 },
-            options: Object.keys(TYPE_LABELS).map(function (k) { return { value: k, label: TYPE_LABELS[k] }; })
-          })
-        )
+      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+        React.createElement(Typography.Text, { strong: true }, '筛选: '),
+        React.createElement(Select, { placeholder: '学科', value: filterSubject || undefined, onChange: setFilterSubject,
+          allowClear: true, style: { width: 100 }, size: 'small',
+          options: toSelectOptions(subjects)
+        }),
+        React.createElement(Select, { placeholder: '题型', value: filterType || undefined, onChange: setFilterType,
+          allowClear: true, style: { width: 110 }, size: 'small',
+          options: toSelectOptions(qtypes)
+        }),
+        React.createElement(Button, { size: 'small', icon: React.createElement(ReloadOutlined), onClick: loadStats }, '刷新')
       )
     ),
     React.createElement(Table, { rowKey: 'question_id', dataSource: stats, columns: columns,

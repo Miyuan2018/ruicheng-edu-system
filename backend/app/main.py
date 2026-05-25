@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -20,6 +24,18 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        from app.db.session import AsyncSessionLocal
+        from app.seed_reference import seed_reference_data
+        async with AsyncSessionLocal() as db:
+            await seed_reference_data(db)
+        logger.info("Reference data seeded successfully")
+    except Exception as e:
+        logger.warning(f"Seed reference data skipped: {e}")
 
 
 @app.get("/")

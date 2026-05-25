@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Tag, Typography, Space, message, Card, Statistic, Row, Col, Empty, DatePicker, Select, Input, Modal, Form, Popconfirm, Descriptions, Divider, Upload } from 'antd';
+import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
+import { Table, Button, Tag, Typography, Space, message, Card, Statistic, Row, Col, Empty, DatePicker, Select, Input, Modal, Form, Popconfirm, Descriptions, Divider, Upload, Progress, Spin } from 'antd';
 import { SearchOutlined, ReloadOutlined, DeleteOutlined, CameraOutlined, EyeOutlined, PrinterOutlined, ThunderboltOutlined, ScanOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import PhotoScanTab from '../exam-mistakes/PhotoScanTab';
 
 var Title = Typography.Title;
 var Text = Typography.Text;
@@ -18,14 +20,28 @@ export default function MistakeBookPage() {
   var previewOpenState = useState(false); var previewOpen = previewOpenState[0]; var setPreviewOpen = previewOpenState[1];
   var previewBookState = useState(null); var previewBook = previewBookState[0]; var setPreviewBook = previewBookState[1];
   var practiceLoadingState = useState({}); var practiceLoading = practiceLoadingState[0]; var setPracticeLoading = practiceLoadingState[1];
+  var selectedRowKeysState = useState([]); var selectedRowKeys = selectedRowKeysState[0]; var setSelectedRowKeys = selectedRowKeysState[1];
+  var reviewOpenState = useState(false); var reviewOpen = reviewOpenState[0]; var setReviewOpen = reviewOpenState[1];
+  var reviewDataState = useState(null); var reviewData = reviewDataState[0]; var setReviewData = reviewDataState[1];
+  var reviewLoadingState = useState(false); var reviewLoading = reviewLoadingState[0]; var setReviewLoading = reviewLoadingState[1];
+  var scanOpenState = useState(false); var scanOpen = scanOpenState[0]; var setScanOpen = scanOpenState[1];
 
   // Filters
   var dateRangeState = useState(null); var dateRange = dateRangeState[0]; var setDateRange = dateRangeState[1];
   var filterSubjectState = useState(''); var filterSubject = filterSubjectState[0]; var setFilterSubject = filterSubjectState[1];
   var filterKeywordState = useState(''); var filterKeyword = filterKeywordState[0]; var setFilterKeyword = filterKeywordState[1];
   var quickEntryForm = Form.useForm()[0];
+  var refValues = useReferenceValues();
+  var qtypes = refValues['question-types'];
+  var errorTypes = refValues['error-types'];
+  var subjectOptionsState = useState([]); var subjectOptions = subjectOptionsState[0]; var setSubjectOptions = subjectOptionsState[1];
 
   useEffect(function () { loadBooks(); }, []);
+  useEffect(function () {
+    apiClient.get('/subjects/all').then(function (res) {
+      setSubjectOptions((res.data || []).filter(function (s) { return s.is_active; }).map(function (s) { return { value: s.name, label: s.name }; }));
+    }).catch(function () {});
+  }, []);
 
   function loadBooks() {
     setLoading(true);
@@ -68,18 +84,54 @@ export default function MistakeBookPage() {
     catch (e) { message.error('删除失败'); }
   }
 
-  function handleExport(id, format) {
-    var url = '/api/v1/error-notebooks/' + id + '/export/' + format;
-    var token = localStorage.getItem('access_token');
-    fetch(url, { headers: { Authorization: 'Bearer ' + token } }).then(function (r) {
-      if (!r.ok) { message.error('导出失败'); return; }
-      return r.blob();
-    }).then(function (blob) {
-      if (!blob) return;
-      var u = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = u; a.download = 'mistake_book.' + (format === 'word' ? 'docx' : 'pdf'); a.click();
-    }).catch(function () { message.error('导出失败'); });
+  function handlePrintSingle(book) {
+    // Fetch full notebook with questions for printing
+    apiClient.get('/error-notebooks/' + book.id).then(function (resp) {
+      var data = resp.data || resp;
+      var w = window.open('', '_blank', 'width=900,height=700');
+      if (!w) { message.info('请允许弹出窗口'); return; }
+      var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + (data.title || '错题本') + '</title>';
+      html += '<style>body{font-family:"Microsoft YaHei",SimSun,serif;font-size:14px;padding:20px;color:#333;line-height:1.8;}';
+      html += 'h1{text-align:center;font-size:20px;margin-bottom:4px;}';
+      html += '.meta{text-align:center;color:#999;font-size:12px;margin-bottom:16px;}';
+      html += '.mistake{border:1px solid #e8e8e8;border-radius:6px;padding:12px;margin-bottom:12px;page-break-inside:avoid;}';
+      html += '.mistake .q-title{font-weight:bold;margin-bottom:6px;font-size:15px;}';
+      html += '.mistake .wrong{color:#d4380d;margin:4px 0;}';
+      html += '.mistake .right{color:#389e0d;margin:4px 0;}';
+      html += '.mistake .practice{border-top:1px dashed #d9d9d9;margin-top:10px;padding-top:10px;color:#1677ff;}';
+      html += '.mistake .field{margin-bottom:6px;}';
+      html += '.print-btn{position:fixed;top:15px;right:15px;padding:8px 16px;background:#1677ff;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px;}';
+      html += '@media print{.print-btn{display:none;}body{padding:10px;}}</style></head><body>';
+      html += '<button class="print-btn" onclick="window.print()">打印</button>';
+      html += '<h1>' + (data.title || '错题本') + '</h1>';
+      html += '<p class="meta">错题数: ' + (data.question_count || 0) + ' | 生成时间: ' + (data.generated_at || '').substring(0, 16) + '</p>';
+
+      var questions = data.questions || [];
+      questions.forEach(function (q, i) {
+        html += '<div class="mistake">';
+        html += '<div class="q-title">' + (i+1) + '. ' + (q.question_title || '题目') + '</div>';
+        html += '<div class="wrong"> 错误答案: ' + (q.student_answer || '未作答') + '</div>';
+        html += '<div class="right"> 正确答案: ' + (q.correct_answer || '-') + '</div>';
+        html += '<div class="practice">';
+        html += '<div class="field"><strong>原题信息:</strong></div>';
+        html += '<div>' + (q.question_title || '题目') + '</div>';
+        if (q.practice_question) {
+          html += '<div class="field" style="margin-top:8px;"><strong>加强训练题:</strong></div>';
+          html += '<div>' + q.practice_question + '</div>';
+        } else {
+          html += '<div class="field" style="margin-top:8px;"><strong>加强训练题:</strong></div>';
+          html += '<div style="color:#999;">（请先点击"加强练习"按钮生成）</div>';
+        }
+        html += '<div style="margin-top:8px;border-bottom:1px dotted #ccc;padding-bottom:4px;">作答区: ________________________</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+
+      html += '</body></html>';
+      w.document.write(html);
+      w.document.close();
+      setTimeout(function () { w.print(); }, 600);
+    }).catch(function () { message.error('加载错题本失败'); });
   }
 
   function handlePreview(book) {
@@ -90,6 +142,16 @@ export default function MistakeBookPage() {
       setPreviewBook(Object.assign({}, book, { questions: [] }));
     });
     setPreviewOpen(true);
+  }
+
+  function handleReview(record) {
+    setReviewOpen(true);
+    setReviewLoading(true);
+    setReviewData(null);
+    apiClient.get('/exam-papers/' + record.exam_paper_id + '/review').then(function (resp) {
+      setReviewData(resp.data || resp);
+    }).catch(function () { message.error('加载复盘数据失败'); })
+    .finally(function () { setReviewLoading(false); });
   }
 
   function handlePrintPractice() {
@@ -173,6 +235,34 @@ export default function MistakeBookPage() {
     setEntrySaving(false);
   }
 
+  function handleBatchDelete() {
+    if (!selectedRowKeys || selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: '批量删除错题本',
+      content: '确定删除已选的 ' + selectedRowKeys.length + ' 个错题本？',
+      okText: '确认删除', okButtonProps: { danger: true },
+      onOk: function () {
+        return Promise.all(selectedRowKeys.map(function (id) { return apiClient.delete('/error-notebooks/' + id); }))
+          .then(function () { message.success('已删除 ' + selectedRowKeys.length + ' 个'); setSelectedRowKeys([]); loadBooks(); })
+          .catch(function () { message.error('删除失败'); });
+      }
+    });
+  }
+
+  function handleBatchPractice() {
+    if (!selectedRowKeys || selectedRowKeys.length === 0) return;
+    var total = selectedRowKeys.length, done = 0, failed = 0;
+    var hide = message.loading('正在生成加强练习... (0/' + total + ')', 0);
+    Promise.all(selectedRowKeys.map(function (id) {
+      return apiClient.post('/error-notebooks/' + id + '/practice').then(function () { done++; }).catch(function () { failed++; });
+    })).finally(function () {
+      hide();
+      if (failed > 0) message.warning('完成 ' + done + '/' + total + '，失败 ' + failed);
+      else message.success('已为 ' + done + ' 个错题本生成加强练习');
+      setSelectedRowKeys([]); loadBooks();
+    });
+  }
+
   function handleScanEntry() {
     setQuickEntryOpen(false);
     message.info('请使用 Tab 页中的「拍照扫描」功能录入错题');
@@ -192,7 +282,7 @@ export default function MistakeBookPage() {
   return React.createElement('div', null,
     // Header
     React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 } },
-      React.createElement(Title, { level: 4, style: { margin: 0 } }, '错题本'),
+      React.createElement(Title, { level: 4, style: { margin: 0 } }, '消灭错题'),
       React.createElement(Space, null,
         React.createElement(Button, { icon: React.createElement(CameraOutlined), type: 'default', onClick: function () { setQuickEntryOpen(true); quickEntryForm.resetFields(); } }, '快速录入'),
         React.createElement(Button, { type: 'primary', icon: React.createElement(PrinterOutlined), loading: generating, onClick: generateMistakeBook }, '生成纸质错题练习本')
@@ -207,44 +297,44 @@ export default function MistakeBookPage() {
       React.createElement(Col, { span: 6 }, React.createElement(Card, { size: 'small' }, React.createElement(Statistic, { title: '待完成', value: books.filter(function (b) { return b.status !== 'EXPORTED'; }).length, valueStyle: { fontSize: 24, color: '#faad14' } })))
     ),
 
-    // 纸质错题练习本
-    React.createElement(Card, { title: React.createElement(Space, null, React.createElement(PrinterOutlined, null), '纸质错题练习本'), size: 'small', style: { marginBottom: 16 },
-      extra: React.createElement(Button, { icon: React.createElement(PrinterOutlined), onClick: handlePrintPractice, loading: printLoading, type: 'primary', ghost: true }, '筛选并打印')
-    },
-      React.createElement(Row, { justify: 'space-between', align: 'middle' },
-        React.createElement(Col, null,
-          React.createElement(Text, { type: 'secondary' }, '自动筛选未完成的错题，打印「原错题信息 + 错题加强训练题」。打印前请先为各错题本生成加强练习题。')
+    // 纸质错题练习本 + 筛选 + 表格 (merged)
+    React.createElement(Card, { size: 'small', style: { marginBottom: 16 },
+      title: React.createElement(Space, null, React.createElement(PrinterOutlined, null), '纸质错题练习本'),
+      extra: React.createElement(Space, null,
+        React.createElement(Text, { type: 'secondary', style: { fontSize: 12 } },
+          '未完成: ' + books.filter(function (b) { return b.status !== 'EXPORTED'; }).length + ' 本 | ' +
+          '总错题: ' + books.filter(function (b) { return b.status !== 'EXPORTED'; }).reduce(function (s, b) { return s + (b.question_count || 0); }, 0) + ' 题'
         ),
-        React.createElement(Col, null,
-          React.createElement(Text, { type: 'secondary', style: { fontSize: 12 } },
-            '未完成: ' + books.filter(function (b) { return b.status !== 'EXPORTED'; }).length + ' 本 | ' +
-            '总错题: ' + books.filter(function (b) { return b.status !== 'EXPORTED'; }).reduce(function (s, b) { return s + (b.question_count || 0); }, 0) + ' 题'
-          )
-        )
+        React.createElement(Button, { icon: React.createElement(PrinterOutlined), onClick: handlePrintPractice, loading: printLoading, type: 'primary', ghost: true, size: 'small' }, '筛选并打印'),
+        React.createElement(Button, { size: 'small', icon: React.createElement(ThunderboltOutlined), onClick: handleBatchPractice }, '批量生成加强练习'),
+        React.createElement(Button, { size: 'small', danger: true, icon: React.createElement(DeleteOutlined), onClick: handleBatchDelete }, '批量删除')
       )
-    ),
+    },
+      React.createElement(Text, { type: 'secondary', style: { display: 'block', marginBottom: 12 } }, '自动筛选未完成的错题，打印「原错题信息 + 错题加强训练题」。打印前请先为各错题本生成加强练习题。'),
 
-    // Filter bar
-    React.createElement(Card, { size: 'small', style: { marginBottom: 16 } },
-      React.createElement(Row, { gutter: 12, align: 'middle' },
+      // Filter bar
+      React.createElement(Row, { gutter: 12, align: 'middle', style: { marginBottom: 12 } },
         React.createElement(Col, null, React.createElement(Text, { strong: true }, '筛选:')),
         React.createElement(Col, null, React.createElement(RangePicker, { value: dateRange, onChange: setDateRange, size: 'small', placeholder: ['开始日期', '结束日期'], style: { width: 220 } })),
         React.createElement(Col, null, React.createElement(Select, { placeholder: '学科', value: filterSubject || undefined, onChange: function (v) { setFilterSubject(v || ''); },
           allowClear: true, style: { width: 90 }, size: 'small',
-          options: [{ value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' }, { value: '物理', label: '物理' }, { value: '化学', label: '化学' }]
+          options: subjectOptions
         })),
         React.createElement(Col, { flex: 1 },
           React.createElement(Input, { placeholder: '搜索错题本名称或试卷名', value: filterKeyword, onChange: function (e) { setFilterKeyword(e.target.value); },
             allowClear: true, size: 'small', prefix: React.createElement(SearchOutlined)
           })
+        ),
+        React.createElement(Col, null,
+          React.createElement(Button, { icon: React.createElement(ReloadOutlined), size: 'small', onClick: loadBooks }, '刷新')
         )
-      )
-    ),
+      ),
 
-    // Table
-    filteredBooks.length === 0 && !loading
-      ? React.createElement(Empty, { description: '暂无错题本，提交试卷作答或使用"快速录入"添加错题', image: Empty.PRESENTED_IMAGE_SIMPLE, style: { padding: 40 } })
+      // Table
+      filteredBooks.length === 0 && !loading
+        ? React.createElement(Empty, { description: '暂无错题本，提交试卷作答或使用"快速录入"添加错题', image: Empty.PRESENTED_IMAGE_SIMPLE, style: { padding: 40 } })
       : React.createElement(Table, { rowKey: 'id', loading: loading, dataSource: filteredBooks, size: 'middle',
+          rowSelection: { selectedRowKeys: selectedRowKeys, onChange: function (keys) { setSelectedRowKeys(keys); } },
           pagination: { pageSize: 15, showSizeChanger: false, showTotal: function (t) { return '共 ' + t + ' 个错题本'; } },
           columns: [
             { title: '错题出处', dataIndex: 'title', ellipsis: true, width: 220,
@@ -272,8 +362,11 @@ export default function MistakeBookPage() {
               render: function (_, r) {
                 return React.createElement(Space, { size: 2 },
                   React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(EyeOutlined), onClick: function () { handlePreview(r); } }, '预览'),
+                  r.exam_paper_id ? React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(SearchOutlined), style: { color: '#722ed1' }, onClick: function () { handleReview(r); } }, '试卷复盘') : null,
                   React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(ThunderboltOutlined), loading: practiceLoading[r.id],
                     onClick: function () { generatePractice(r.id); } }, '加强练习'),
+                  React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(PrinterOutlined), onClick: function () { handlePrintSingle(r); } }, '打印'),
+                  React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(CameraOutlined), onClick: function () { setScanOpen(true); } }, '拍照扫描'),
                   React.createElement(Popconfirm, { title: '确定删除此错题本？', description: '删除后不可恢复', onConfirm: function () { handleDelete(r.id); },
                     okButtonProps: { danger: true } },
                     React.createElement(Button, { type: 'link', size: 'small', danger: true, icon: React.createElement(DeleteOutlined) }, '删除')
@@ -282,7 +375,8 @@ export default function MistakeBookPage() {
               }
             },
           ]
-        }),
+        })
+    ),
 
     // Preview Modal
     React.createElement(Modal, { title: React.createElement(Space, null, React.createElement(EyeOutlined, null), '错题预览 — ' + (previewBook ? (previewBook.title || '').substring(0, 30) : '')), open: previewOpen,
@@ -321,6 +415,61 @@ export default function MistakeBookPage() {
       ) : null
     ),
 
+    // Paper Review Modal
+    React.createElement(Modal, { title: reviewData ? '试卷复盘 — ' + (reviewData.paper.title || '').substring(0, 30) : '试卷复盘', open: reviewOpen,
+      onCancel: function () { setReviewOpen(false); setReviewData(null); }, width: 900,
+      footer: React.createElement(Button, { onClick: function () { setReviewOpen(false); } }, '关闭')
+    },
+      reviewLoading ? React.createElement('div', { style: { textAlign: 'center', padding: 40 } }, React.createElement(Spin, { size: 'large' })) :
+      reviewData ? React.createElement('div', null,
+        // Score summary
+        React.createElement(Row, { gutter: 16, style: { marginBottom: 20 }, align: 'middle' },
+          React.createElement(Col, null,
+            React.createElement(Progress, { type: 'circle', size: 80, percent: reviewData.submission ? (reviewData.submission.percentage || 0) : 0,
+              format: function () { return (reviewData.submission ? reviewData.submission.total_score || 0 : 0) + '分'; } })
+          ),
+          React.createElement(Col, { flex: 1 },
+            React.createElement(Descriptions, { column: 2, size: 'small' },
+              React.createElement(Descriptions.Item, { label: '试卷' }, reviewData.paper.title),
+              React.createElement(Descriptions.Item, { label: '学科' }, reviewData.paper.subject),
+              React.createElement(Descriptions.Item, { label: '满分' }, reviewData.paper.total_score),
+              React.createElement(Descriptions.Item, { label: '得分' }, reviewData.submission ? reviewData.submission.total_score : '-'),
+              React.createElement(Descriptions.Item, { label: '状态' }, reviewData.submission ? reviewData.submission.status : '未提交')
+            )
+          )
+        ),
+
+        // Questions review
+        React.createElement(Text, { strong: true, style: { marginBottom: 8, display: 'block' } }, '试题回顾（共' + reviewData.questions.length + '题）'),
+        ...reviewData.questions.map(function (q, i) {
+          var isCorrect = q.is_correct;
+          var bgColor = isCorrect === true ? '#f6ffed' : isCorrect === false ? '#fff2f0' : '#fafafa';
+          var borderColor = isCorrect === true ? '#b7eb8f' : isCorrect === false ? '#ffccc7' : '#d9d9d9';
+          return React.createElement(Card, { key: i, size: 'small', style: { marginBottom: 8, background: bgColor, borderColor: borderColor },
+            title: React.createElement(Space, null,
+              React.createElement(Tag, { color: 'default' }, q.question.question_type),
+              React.createElement(Text, null, (i+1) + '. ' + (q.question.title || '').substring(0, 80) + '（' + q.question.score + '分）')
+            )
+          },
+            React.createElement(Descriptions, { column: 2, size: 'small' },
+              React.createElement(Descriptions.Item, { label: '正确答案' },
+                React.createElement(Text, { type: 'success' }, q.question.correct_answer || '-')
+              ),
+              React.createElement(Descriptions.Item, { label: '你的答案' },
+                React.createElement(Text, { type: isCorrect ? 'success' : 'danger' }, q.student_answer || '未作答')
+              ),
+              q.feedback ? React.createElement(Descriptions.Item, { label: '评语', span: 2 }, q.feedback) : null
+            )
+          );
+        })
+      ) : null
+    ),
+
+    // Photo scan modal
+    React.createElement(Modal, { title: '拍照/扫描录入答案', open: scanOpen, width: 750, footer: null, onCancel: function () { setScanOpen(false); } },
+      React.createElement(PhotoScanTab)
+    ),
+
     // Quick entry modal
     React.createElement(Modal, { title: React.createElement(Space, null, React.createElement(ScanOutlined, null), '快速录入错题'), open: quickEntryOpen,
       onCancel: function () { setQuickEntryOpen(false); },
@@ -342,17 +491,17 @@ export default function MistakeBookPage() {
         React.createElement(Row, { gutter: 16 },
           React.createElement(Col, { span: 8 },
             React.createElement(Form.Item, { name: 'subject', label: '学科', initialValue: '数学' },
-              React.createElement(Select, { options: [{ value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' }, { value: '物理', label: '物理' }, { value: '化学', label: '化学' }] })
+              React.createElement(Select, { options: subjectOptions })
             )
           ),
           React.createElement(Col, { span: 8 },
             React.createElement(Form.Item, { name: 'question_type', label: '题型', initialValue: 'FILL_BLANK' },
-              React.createElement(Select, { options: [{ value: 'SINGLE_CHOICE', label: '单选题' }, { value: 'MULTIPLE_CHOICE', label: '多选题' }, { value: 'FILL_BLANK', label: '填空题' }, { value: 'SUBJECTIVE', label: '解答题' }] })
+              React.createElement(Select, { options: toSelectOptions(qtypes) })
             )
           ),
           React.createElement(Col, { span: 8 },
-            React.createElement(Form.Item, { name: 'error_type', label: '错误类型', initialValue: '概念错误' },
-              React.createElement(Select, { options: [{ value: '概念错误', label: '概念错误' }, { value: '记忆错误', label: '记忆错误' }, { value: '理解偏差', label: '理解偏差' }, { value: '计算错误', label: '计算错误' }, { value: '未作答', label: '未作答' }] })
+            React.createElement(Form.Item, { name: 'error_type', label: '错误类型', initialValue: 'CONCEPT' },
+              React.createElement(Select, { options: toSelectOptions(errorTypes) })
             )
           )
         ),

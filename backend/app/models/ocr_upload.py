@@ -10,7 +10,7 @@ class OcrUpload(Base):
     __tablename__ = "ocr_uploads"
 
     id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    student_id = Column(UUID, ForeignKey("users.id"), nullable=False, index=True)
+    student_id = Column(UUID, ForeignKey("students.id"), nullable=False, index=True)
     exam_paper_id = Column(UUID, ForeignKey("exam_papers.id"), nullable=False, index=True)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)

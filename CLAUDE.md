@@ -34,14 +34,14 @@ Transform tasks into verifiable goals. For multi-step tasks, state a brief plan 
 
 睿承教育平台 — a B/S platform implementing the "测验 → 整理错题 → 订正 → 加深训练" closed loop. Supports students, teachers, question-admins, and sys-admins with online question authoring, answer submission (online or photo upload), auto-grading, mistake notebook generation, and LLM-powered question generation via Ollama.
 
-Current version: **V2.2** (~110 API endpoints, 22 DB tables, 68 Python files, 37 TSX/TS files).
+Current version: **V2.4** (16 API endpoint modules, 25 models, ~8,300 lines Python, ~7,800 lines TSX/TS).
 
 ## Tech stack (actual)
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.12, FastAPI 0.104.1, SQLAlchemy 2.0 (async), Alembic |
-| Database | SQLite (dev) / PostgreSQL (prod), via `DATABASE_TYPE` env |
+| Database | PostgreSQL 16 |
 | Frontend | React 19.2, Vite 8, Ant Design 6.4, TypeScript 6.0, Zustand 5, React Router 7 |
 | Auth | JWT (access 60min + refresh 30day), bcrypt, three user tables |
 | LLM | Ollama API (`/api/generate`), configurable model endpoint |
@@ -59,7 +59,7 @@ Note: Redis, Celery, PaddleOCR, vLLM, MinIO, Kubernetes, Airflow, and MLflow exi
 ### Backend (manual)
 ```bash
 cd backend
-conda activate /home/zhanglijun/conda_workspace   # or use: conda run -p /home/zhanglijun/conda_workspace
+conda activate ~/conda_workspace   # or use: conda run -p ~/conda_workspace
 pip install -r requirements.txt
 alembic upgrade head                              # migrate DB
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -70,7 +70,7 @@ pytest                                            # run tests
 ```bash
 cd frontend
 npm install
-npm run dev          # Vite dev server on :3000, proxies /api → localhost:8001
+npm run dev          # Vite dev server on :3000, proxies /api → localhost:8000
 npm run build        # tsc -b && vite build
 npm run lint         # ESLint
 ```
@@ -92,6 +92,7 @@ alembic revision --autogenerate -m "description"  # create new migration
 ```
 Browser (React + Ant Design, :3000)
   │  Vite proxy /api → localhost:8000
+  │  Health: GET /health → {"status":"healthy"}
   ▼
 FastAPI app (app/main.py)
   ├─ CORS middleware (allow all origins in dev)
@@ -99,20 +100,22 @@ FastAPI app (app/main.py)
        ├─ /auth          — login, register, captcha, SMS
        ├─ /subjects      — subject CRUD
        ├─ /questions     — question CRUD with JSON adaptive answer format
-       ├─ /question-admin — LLM question generation, syllabus, review pipeline
+       ├─ /question-admin — LLM question generation, syllabus, review pipeline, stats, batch-approve/reject
        ├─ /knowledge-tree — versioned knowledge node tree
-       ├─ /exam-papers   — 4-step paper creation wizard
-       ├─ /answers       — answer submission → auto-grading
+       ├─ /exam-papers   — paper CRUD, /my (student's papers), export (Word/PDF), preview
+       ├─ /answers       — answer submission → auto-grading → mistake book generation
        ├─ /grading       — grading results & review
        ├─ /ocr           — OCR upload (placeholder, PaddleOCR not integrated)
        ├─ /error-notebooks — mistake notebook generation
        ├─ /self-study    — self-study tasks (placeholder)
        ├─ /classes       — class management
        ├─ /teacher/stats — teacher statistics (paper & question)
+       ├─ /reference     — reference data CRUD (question-types, difficulties, grade-levels, provinces, subjects, etc.)
+       ├─ /database      — database table introspection & management (sys-admin only)
        └─ /admin/llm     — Ollama endpoint configuration
             │
             ▼
-          AsyncSession → SQLite (edu_system.db) or PostgreSQL
+          AsyncSession → PostgreSQL
 ```
 
 Note: `app/core/response.py` defines `ApiResponseMiddleware` (wraps `/api/*` in `{code, message, data}`) but it is **not wired** in `main.py` — endpoints return raw responses.
@@ -121,7 +124,7 @@ Note: `app/core/response.py` defines `ApiResponseMiddleware` (wraps `/api/*` in 
 ```
 core/ (config, security, response middleware helpers)
   └── db/ (base, session — async engine + session factory)
-        └── models/ (22 SQLAlchemy models)
+        └── models/ (25 SQLAlchemy models)
               └── schemas/ (Pydantic request/response models)
                     └── services/ (judge_engine, llm_service, captcha, storage, config_service, mistake_service)
                           └── api/v1/endpoints/ (14 endpoint modules)
@@ -136,6 +139,8 @@ core/ (config, security, response middleware helpers)
 
 Auth flow: `app/core/security.py` — `get_current_user` dependency checks JWT `type` claim, queries the corresponding table, returns `CurrentUser(id, user_type)`. RBAC via `require_role(*roles)` dependency.
 
+Login flow (auth_v2.py): 2-step process — (1) verify username/password + captcha, get `captcha_token` → (2) verify SMS code (dev: `111111`), receive JWT `access_token` + `refresh_token`. Student registration follows same SMS verification pattern.
+
 ### Grading engine (app/services/judge_engine.py)
 Rule-based, no LLM dependency. Question types: `SINGLE_CHOICE`, `MULTIPLE_CHOICE`, `FILL_BLANK`, `SUBJECTIVE` (keyword matching). Answers stored as JSON in the `correct_answer` column — format varies by type:
 - Single choice: `{"options": [...], "correct_answer": "A"}`
@@ -147,27 +152,27 @@ Rule-based, no LLM dependency. Question types: `SINGLE_CHOICE`, `MULTIPLE_CHOICE
 ```
 /login              — student login (public)
 /admin/login        — admin/teacher login (public)
-/dashboard          — student/teacher dashboard
-/questions          — question list
-/papers             — role-based: student → StudentPapersPage (3 tabs), teacher/admin → PaperListPage
-/mistake-book       — mistake notebook with preview, practice generation, print
+/dashboard          — role-based dashboard
+/questions          — question list (teacher/admin)
+/papers             — role-based: student → MyPapersPage, teacher/admin → PaperListPage
+/my-papers          — student's own papers with answer/scan/mistake actions
+/typical-questions  — typical question explanations (student)
+/mistake-book       — mistake notebook (消灭错题)
 /teacher/classes    — class management
 /teacher/stats/paper    — paper statistics
 /teacher/stats/question — question statistics
-/admin/users        — user management
-/admin/config       — system config (LLM, subjects, export limits)
+/admin/config       — system config (LLM, OCR, DB)
+/admin/basic-config — reference data config (subjects, grades, app params)
 /admin/sys-admin    — sys-admin management
-/question-admin     — question admin center (LLM generation, review)
-/knowledge-tree     — knowledge tree management
-/syllabus           — syllabus management
+/question-admin     — question admin center (LLM generation, review, scrape)
+/syllabus           — syllabus + knowledge tree (tabs)
 /profile            — user profile
 /print-preview      — print preview (no auth required)
 ```
 
-StudentPapersPage tabs:
-- 在线作答 (OnlineAnswerTab) — top: pending papers + start answering, bottom: all papers with rowSelection → add to pending
-- 拍照扫描 (PhotoScanTab) — upload/scan paper, AI recognition, view results with scores & mistakes
-- 生成纸质错题练习本 (GenerateMistakeBookTab) — select paper → generate mistake practice book
+Student sidebar menu: 学习仪表盘 → 试题讲解 → 我的试卷 → 消灭错题
+
+MyPapersPage actions per paper: 预览, 编辑, 打印, 在线答题, 拍照/扫描录入, 生成错题, 删除 (icon-only with Tooltip)
 
 ### API response format
 `app/core/response.py` provides helpers for standardized responses, but they are NOT enforced automatically:
@@ -178,13 +183,30 @@ Error: `{"code": 4xx/5xx, "message": "...", "detail": "...", "data": null}`
 
 ### Configuration
 - `backend/.env` — environment variables (DATABASE_TYPE, SECRET_KEY, etc.)
-- `backend/sysconfig.json` — runtime config (LLM endpoint, subjects, export limits), managed via `app/services/config_service.py`
+- `backend/sysconfig.json` — runtime config (LLM endpoint, subjects, export limits, reference data), read/written by `app/services/config_service.py`
 - `app/core/config.py` — Pydantic Settings, reads env + .env file
 
 ## Key conventions
-- All SQLAlchemy models use UUID primary keys (stored as String(36))
+- All SQLAlchemy models use UUID primary keys (stored as String(36) or native UUID)
 - Timestamps use `DateTime(timezone=True)` with `server_default=func.now()`
 - Async database sessions throughout — use `AsyncSession` from `get_db` dependency
-- Frontend API client (src/api/client.ts) — axios with automatic JWT refresh on 401
+- Frontend API client (src/api/client.ts) — axios with automatic JWT refresh on 401, auto-unwraps `{code, data}` envelope
 - Frontend state — Zustand store (src/store/auth.ts) for auth, local state for pages
-- Backend conda environment path: `/home/zhanglijun/conda_workspace` (Python 3.12)
+- Backend conda environment path: `~/conda_workspace` (Python 3.12)
+- Alembic uses PostgreSQL from `sysconfig.json` (env.py overrides alembic.ini SQLite default)
+- `start.sh` runs `alembic upgrade head` before table creation, and `main.py` seeds reference data on startup
+- Frontend pages use either JSX or `React.createElement` style — match the existing file's style
+- All filter/search controls use `size="small"`, tables use `size="middle"`, action buttons use `type="link" size="small"`
+
+## Recent schema additions (V2.4)
+- `provinces` — reference table (黑龙江, 吉林, 辽宁, 上海, 江苏, 浙江)
+- `subjects.code` — added code column (math, chinese, english, physics)
+- `questions.is_typical` — boolean flag for marking typical questions (teachers use QuestionEditModal switch)
+- Migrations: `002_add_provinces`, `003_add_is_typical`
+
+## Known gotchas
+- `AnswerSubmissionResponse.total_score` must be `Optional[float]` not `int` — grading engine returns floats
+- `ExamPaperBase.grade_level` must be `Optional[dict]` not `str` — stored as JSONB
+- Route order matters: `/exam-papers/my` must be defined before `/{exam_paper_id}` in FastAPI
+- `DELETE /exam-papers/{id}` must delete child records first (FK constraints are NO ACTION)
+- Question `correct_answer` JSON has two storage formats: wrapped `{"options":..., "correct_answer":...}` (LLM) and raw value (import)

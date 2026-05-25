@@ -35,7 +35,15 @@ async def generate_mistake_book(
     if not wrong_details:
         return None
 
-    question_ids = [d.question_id for d in wrong_details]
+    # Deduplicate by question_id
+    seen_qids = set()
+    unique_details = []
+    for d in wrong_details:
+        if d.question_id not in seen_qids:
+            seen_qids.add(d.question_id)
+            unique_details.append(d)
+
+    question_ids = [d.question_id for d in unique_details]
     q_result = await db.execute(select(Question).where(Question.id.in_(question_ids)))
     questions = {q.id: q for q in q_result.scalars().all()}
 
@@ -45,25 +53,22 @@ async def generate_mistake_book(
         title=title or f"错题本 - {now.strftime('%Y年%m月%d日')}",
         exam_paper_id=_uuid.UUID(str(exam_paper_id)) if exam_paper_id else None,
         generated_at=now,
-        question_count=len(wrong_details),
+        question_count=len(unique_details),
         status="GENERATED",
     )
     db.add(book)
     await db.flush()
 
-    for detail in wrong_details:
+    for detail in unique_details:
         question = questions.get(detail.question_id)
         entry = ErrorNotebookQuestion(
             error_notebook_id=book.id,
             original_question_id=detail.question_id,
             error_type=_classify_error(detail, question),
-            explanation=detail.feedback or "请参考标准答案",
+            explanation=("学生答案: " + (detail.student_answer or "未作答") + "\n正确答案: " + (detail.feedback or "请参考标准答案")),
             created_at=now,
         )
         db.add(entry)
-        practice = await _find_practice_question(question, db)
-        if practice:
-            entry.practice_question_id = practice.id
 
     await db.commit()
     await db.refresh(book)

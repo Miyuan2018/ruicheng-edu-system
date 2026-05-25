@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, or_
 from app.db.session import get_db
@@ -36,10 +36,13 @@ async def create_question(
     return question
 
 
-@router.get("/search", response_model=List[QuestionResponse])
+@router.get("/search")
 async def search_questions(
     subject: Optional[str] = None,
     grade_level: Optional[str] = None,
+    grade: Optional[str] = None,
+    scope: Optional[str] = None,
+    source: Optional[str] = None,
     question_type: Optional[str] = None,
     difficulty: Optional[str] = None,
     keyword: Optional[str] = None,
@@ -64,29 +67,40 @@ async def search_questions(
     # Apply filters
     if subject:
         query = query.where(Question.subject == subject)
+    if grade:
+        query = query.where(Question.grade_level['grades'].contains([grade]))
     if grade_level:
-        query = query.where(Question.grade_level == grade_level)
+        query = query.where(Question.grade_level['grades'].contains([grade_level]))
+    if scope:
+        query = query.where(Question.grade_level['scope'].astext == scope)
+    if source:
+        query = query.where(Question.source == source)
     if question_type:
         query = query.where(Question.question_type == question_type)
     if difficulty:
         query = query.where(Question.difficulty == difficulty)
+    if review_status:
+        query = query.where(Question.review_status == review_status)
     if keyword:
-        query = query.where(
-            or_(
-                Question.title.ilike(f"%{keyword}%"),
-                Question.title.ilike(f"%{keyword}%"),
-            )
-        )
-    if knowledge_point:
-        # Assuming knowledge_points is a JSON field containing an array of knowledge points
-        query = query.where(Question.knowledge_points.contains([knowledge_point]))
+        from sqlalchemy import or_, String
+        query = query.where(or_(
+            Question.title.ilike(f"%{keyword}%"),
+            Question.grade_level['chapter'].astext.ilike(f"%{keyword}%"),
+            Question.grade_level['knowledge_points'].cast(String).ilike(f"%{keyword}%")
+        ))
+
+    # Get total count
+    from sqlalchemy import func as _func
+    count_query = select(_func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
 
     # Apply pagination
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
     questions = result.scalars().all()
-    return questions
+    return {"items": questions, "total": total}
 
 
 @router.get("/tags", response_model=List[str])
@@ -208,6 +222,54 @@ async def deduplicate_questions(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Deduplication functionality not yet implemented",
     )
+@router.get("/typical")
+async def get_typical_questions(
+    skip: int = 0,
+    limit: int = 50,
+    subject: Optional[str] = None,
+    grade: Optional[str] = None,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List typical questions (marked by teachers) — accessible by all authenticated users."""
+    query = select(Question).where(
+        Question.is_typical == True,
+        Question.is_active == True,
+        Question.review_status == "APPROVED",
+    )
+    if subject:
+        query = query.where(Question.subject == subject)
+    if grade:
+        query = query.where(Question.grade_level['grades'].contains([grade]))
+    query = query.offset(skip).limit(limit).order_by(Question.updated_at.desc())
+    result = await db.execute(query)
+    questions = result.scalars().all()
+    return [{"id": str(q.id), "title": q.title, "question_type": q.question_type,
+             "difficulty": q.difficulty, "subject": q.subject, "grade_level": q.grade_level,
+             "correct_answer": q.correct_answer, "explanation": q.explanation,
+             "source": q.source, "created_at": q.created_at.isoformat()}
+            for q in questions]
+
+
+@router.put("/{question_id}/typical")
+async def toggle_typical(
+    question_id: uuid.UUID,
+    is_typical: bool = Body(..., embed=True),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle the is_typical flag — TEACHER / QUESTION_ADMIN / SYS_ADMIN only."""
+    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(403, detail="权限不足")
+    result = await db.execute(select(Question).where(Question.id == question_id))
+    q = result.scalar_one_or_none()
+    if not q:
+        raise HTTPException(404, detail="试题不存在")
+    q.is_typical = is_typical
+    await db.commit()
+    return {"id": str(q.id), "is_typical": q.is_typical, "message": "已标记为典型题" if is_typical else "已取消典型题标记"}
+
+
 @router.get("/{question_id}", response_model=QuestionResponse)
 async def get_question(
     question_id: uuid.UUID,
@@ -298,14 +360,18 @@ async def batch_delete_questions(
     return {"deleted": len(ids), "message": f"已删除 {len(ids)} 道试题"}
 
 
-@router.get("", response_model=List[QuestionResponse])
+@router.get("")
 async def get_questions(
     skip: int = 0,
     limit: int = 100,
     subject: Optional[str] = None,
     grade_level: Optional[str] = None,
+    grade: Optional[str] = None,
+    scope: Optional[str] = None,
+    source: Optional[str] = None,
     question_type: Optional[str] = None,
     difficulty: Optional[str] = None,
+    review_status: Optional[str] = None,
     keyword: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -325,18 +391,37 @@ async def get_questions(
     # Apply filters
     if subject:
         query = query.where(Question.subject == subject)
+    if grade:
+        query = query.where(Question.grade_level['grades'].contains([grade]))
     if grade_level:
-        query = query.where(Question.grade_level == grade_level)
+        query = query.where(Question.grade_level['grades'].contains([grade_level]))
+    if scope:
+        query = query.where(Question.grade_level['scope'].astext == scope)
+    if source:
+        query = query.where(Question.source == source)
     if question_type:
         query = query.where(Question.question_type == question_type)
     if difficulty:
         query = query.where(Question.difficulty == difficulty)
+    if review_status:
+        query = query.where(Question.review_status == review_status)
     if keyword:
-        query = query.where(Question.title.ilike(f"%{keyword}%"))
+        from sqlalchemy import or_, String
+        query = query.where(or_(
+            Question.title.ilike(f"%{keyword}%"),
+            Question.grade_level['chapter'].astext.ilike(f"%{keyword}%"),
+            Question.grade_level['knowledge_points'].cast(String).ilike(f"%{keyword}%")
+        ))
+
+    # Get total count
+    from sqlalchemy import func as _func
+    count_query = select(_func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
 
     # Apply pagination
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
     questions = result.scalars().all()
-    return questions
+    return {"items": questions, "total": total}

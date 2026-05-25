@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Typography, Select, Tag, Statistic, Row, Col, Spin, Empty, Progress, Space } from 'antd';
-import { FileTextOutlined, QuestionCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { Table, Card, Typography, Select, Tag, Statistic, Row, Col, Spin, Empty, Progress, Space, Button } from 'antd';
+import { FileTextOutlined, QuestionCircleOutlined, UserOutlined, ReloadOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toLabelMap, toColorMap } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 var Text = Typography.Text;
 
-var TYPE_LABELS = { SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题' };
-var DIFF_COLORS = { EASY: 'green', MEDIUM: 'orange', HARD: 'red' };
-var DIFF_NAMES = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 
 function ChoiceDistribution(props) {
   var dist = props.distribution;
@@ -33,6 +31,9 @@ export default function PaperStatsPage() {
   var selectedPaperState = useState(null); var selectedPaper = selectedPaperState[0]; var setSelectedPaper = selectedPaperState[1];
   var loadingState = useState(false); var loading = loadingState[0]; var setLoading = loadingState[1];
   var statsState = useState(null); var stats = statsState[0]; var setStats = statsState[1];
+  var refs = useReferenceValues();
+  var qtypes = refs['question-types'];
+  var diffs = refs['difficulty-levels'];
 
   useEffect(function () {
     apiClient.get('/teacher/stats/papers').then(function (r) { setPapers(r.data || []); }).catch(function () {});
@@ -55,8 +56,8 @@ export default function PaperStatsPage() {
     { title: '#', dataIndex: 'position', width: 40 },
     { title: '题目', dataIndex: 'title', ellipsis: true, render: function (t, r) {
       return React.createElement(Space, null,
-        React.createElement(Tag, { color: DIFF_COLORS[r.difficulty] }, DIFF_NAMES[r.difficulty] || r.difficulty),
-        React.createElement(Tag, null, TYPE_LABELS[r.question_type] || r.question_type),
+        React.createElement(Tag, { color: toColorMap(diffs)[r.difficulty]?.color }, toLabelMap(diffs)[r.difficulty] || r.difficulty),
+        React.createElement(Tag, null, toLabelMap(qtypes)[r.question_type] || r.question_type),
         React.createElement(Text, null, (t || '').substring(0, 50))
       );
     }},
@@ -78,17 +79,16 @@ export default function PaperStatsPage() {
   ];
 
   return React.createElement('div', null,
-    React.createElement(Title, { level: 4 }, React.createElement(FileTextOutlined, { style: { marginRight: 8 } }), '试卷答题统计'),
+    React.createElement(Title, { level: 4, style: { marginBottom: 16 } }, React.createElement(FileTextOutlined, { style: { marginRight: 8 } }), '试卷答题统计'),
     React.createElement(Card, { size: 'small', style: { marginBottom: 16 } },
-      React.createElement(Row, { gutter: 16, align: 'middle' },
-        React.createElement(Col, null, React.createElement(Text, { strong: true }, '选择试卷: ')),
-        React.createElement(Col, { flex: 1 },
-          React.createElement(Select, { placeholder: '请选择一份试卷查看每题统计', value: selectedPaper, onChange: handleSelect,
-            style: { width: 400 }, showSearch: true, allowClear: true,
-            filterOption: function (input, option) { return (option.label || '').indexOf(input) >= 0; },
-            options: papers.map(function (p) { return { value: p.id, label: p.title + ' (' + (p.subject || '') + ' ' + (p.grade_level || '') + ')' }; }),
-          })
-        )
+      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+        React.createElement(Text, { strong: true }, '选择试卷: '),
+        React.createElement(Select, { placeholder: '请选择一份试卷查看每题统计', value: selectedPaper, onChange: handleSelect,
+          style: { width: 400 }, showSearch: true, allowClear: true, size: 'small',
+          filterOption: function (input, option) { return (option.label || '').indexOf(input) >= 0; },
+          options: papers.map(function (p) { return { value: p.id, label: p.title + ' (' + (p.subject || '') + ' ' + (p.grade_level || '') + ')' }; }),
+        }),
+        React.createElement(Button, { size: 'small', icon: React.createElement(ReloadOutlined), onClick: function () { if (selectedPaper) loadStats(selectedPaper); } }, '刷新')
       )
     ),
     loading ? React.createElement(Spin, { style: { display: 'block', textAlign: 'center', padding: 40 } })

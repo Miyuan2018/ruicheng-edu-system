@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Space, Tag, message, Popconfirm, Typography, Card, Row, Col, Tabs, Empty } from 'antd';
 import { PlusOutlined, DeleteOutlined, UserAddOutlined, EditOutlined, SearchOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 
@@ -9,6 +10,8 @@ export default function TeacherClassesPage() {
   var classesState = useState([]); var classes = classesState[0]; var setClasses = classesState[1];
   var loadingState = useState(false); var loading = loadingState[0]; var setLoading = loadingState[1];
   var searchState = useState(''); var search = searchState[0]; var setSearch = searchState[1];
+  var refs = useReferenceValues();
+  var grades = refs['grade-levels'];
 
   // Class modal
   var classModalState = useState(false); var classModalOpen = classModalState[0]; var setClassModalOpen = classModalState[1];
@@ -162,10 +165,10 @@ export default function TeacherClassesPage() {
       React.createElement(Title, { level: 4, style: { margin: 0 } }, React.createElement(TeamOutlined, { style: { marginRight: 8 } }), '班级管理'),
       React.createElement(Space, null,
         React.createElement(Input, { placeholder: '搜索班级名称', value: search, onChange: function (e) { setSearch(e.target.value); },
-          style: { width: 200 }, prefix: React.createElement(SearchOutlined), allowClear: true,
+          style: { width: 200 }, prefix: React.createElement(SearchOutlined), allowClear: true, size: 'small',
           onPressEnter: loadClasses
         }),
-        React.createElement(Button, { type: 'primary', icon: React.createElement(PlusOutlined), onClick: openCreateClass }, '新建班级')
+        React.createElement(Button, { type: 'primary', size: 'small', icon: React.createElement(PlusOutlined), onClick: openCreateClass }, '新建班级')
       )
     ),
 
@@ -200,25 +203,25 @@ export default function TeacherClassesPage() {
     },
       React.createElement(Form, { form: classForm, layout: 'vertical' },
         React.createElement(Form.Item, { name: 'name', label: '班级名称', rules: [{ required: true, message: '请输入班级名称' }] },
-          React.createElement(Input, { placeholder: '如: 八年级数学提高班' })
+          React.createElement(Input, { placeholder: '如: 八年级数学提高班', size: 'small' })
         ),
         React.createElement(Row, { gutter: 16 },
           React.createElement(Col, { span: 12 },
             React.createElement(Form.Item, { name: 'subject', label: '学科', rules: [{ required: true }] },
-              React.createElement(Select, { options: [{ value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' }, { value: '物理', label: '物理' }, { value: '化学', label: '化学' }] })
+              React.createElement(Select, { size: 'small', options: [{ value: '数学', label: '数学' }, { value: '语文', label: '语文' }, { value: '英语', label: '英语' }, { value: '物理', label: '物理' }, { value: '化学', label: '化学' }] })
             )
           ),
           React.createElement(Col, { span: 12 },
             React.createElement(Form.Item, { name: 'grade_level', label: '年级' },
-              React.createElement(Select, { options: [{ value: '六年级', label: '六年级' }, { value: '七年级', label: '七年级' }, { value: '八年级', label: '八年级' }, { value: '九年级', label: '九年级' }] })
+              React.createElement(Select, { size: 'small', options: toSelectOptions(grades) })
             )
           )
         ),
         React.createElement(Form.Item, { name: 'description', label: '描述' },
-          React.createElement(Input.TextArea, { rows: 2, placeholder: '班级描述（选填）' })
+          React.createElement(Input.TextArea, { rows: 2, placeholder: '班级描述（选填）', size: 'small' })
         ),
         React.createElement(Form.Item, { name: 'is_active', label: '状态', initialValue: true, valuePropName: 'checked' },
-          React.createElement(Select, { options: [{ value: true, label: '启用' }, { value: false, label: '停用' }] })
+          React.createElement(Select, { size: 'small', options: [{ value: true, label: '启用' }, { value: false, label: '停用' }] })
         )
       )
     ),
@@ -259,7 +262,7 @@ export default function TeacherClassesPage() {
             React.createElement(Input, { placeholder: '搜索学生姓名', value: availSearch,
               onChange: function (e) { setAvailSearch(e.target.value); },
               onPressEnter: loadStudents, style: { marginBottom: 12, width: 250 },
-              prefix: React.createElement(SearchOutlined), allowClear: true
+              prefix: React.createElement(SearchOutlined), allowClear: true, size: 'small'
             }),
             React.createElement(Table, { rowKey: 'id', size: 'small', dataSource: availStudents,
               pagination: { pageSize: 5 },
@@ -275,19 +278,19 @@ export default function TeacherClassesPage() {
           )},
           { key: 'manual', label: '直接录入', children: React.createElement(Form, { form: manualForm, layout: 'inline', onFinish: addManualStudent },
             React.createElement(Form.Item, { name: 'full_name', label: '姓名', rules: [{ required: true }] },
-              React.createElement(Input, { placeholder: '学生姓名', style: { width: 100 } })
+              React.createElement(Input, { placeholder: '学生姓名', style: { width: 100 }, size: 'small' })
             ),
             React.createElement(Form.Item, { name: 'phone', label: '手机号' },
-              React.createElement(Input, { placeholder: '手机号', style: { width: 120 } })
+              React.createElement(Input, { placeholder: '手机号', style: { width: 120 }, size: 'small' })
             ),
             React.createElement(Form.Item, { name: 'grade', label: '年级' },
-              React.createElement(Input, { placeholder: '年级', style: { width: 80 } })
+              React.createElement(Input, { placeholder: '年级', style: { width: 80 }, size: 'small' })
             ),
             React.createElement(Form.Item, { name: 'school', label: '学校' },
-              React.createElement(Input, { placeholder: '学校', style: { width: 120 } })
+              React.createElement(Input, { placeholder: '学校', style: { width: 120 }, size: 'small' })
             ),
             React.createElement(Form.Item, null,
-              React.createElement(Button, { type: 'primary', htmlType: 'submit' }, '添加')
+              React.createElement(Button, { type: 'primary', htmlType: 'submit', size: 'small' }, '添加')
             )
           )},
         ]})
@@ -304,25 +307,25 @@ export default function TeacherClassesPage() {
     },
       React.createElement(Form, { form: studentForm, layout: 'vertical' },
         React.createElement(Form.Item, { name: 'full_name', label: '姓名', rules: [{ required: true }] },
-          React.createElement(Input)
+          React.createElement(Input, { size: 'small' })
         ),
         React.createElement(Form.Item, { name: 'email', label: '邮箱' },
-          React.createElement(Input)
+          React.createElement(Input, { size: 'small' })
         ),
         React.createElement(Row, { gutter: 16 },
           React.createElement(Col, { span: 12 },
             React.createElement(Form.Item, { name: 'grade', label: '年级' },
-              React.createElement(Input)
+              React.createElement(Input, { size: 'small' })
             )
           ),
           React.createElement(Col, { span: 12 },
             React.createElement(Form.Item, { name: 'school', label: '学校' },
-              React.createElement(Input)
+              React.createElement(Input, { size: 'small' })
             )
           )
         ),
         React.createElement(Form.Item, { label: '手机号' },
-          React.createElement(Input, { value: editingStudent ? editingStudent.phone || '' : '', disabled: true, addonAfter: React.createElement(Tag, { color: 'orange', style: { margin: 0 } }, '不可修改') })
+          React.createElement(Input, { value: editingStudent ? editingStudent.phone || '' : '', disabled: true, size: 'small', addonAfter: React.createElement(Tag, { color: 'orange', style: { margin: 0 } }, '不可修改') })
         )
       )
     )

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Card, Button, Steps, Upload, message, Typography, Progress, Tag, Spin, Space, Descriptions } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Card, Button, Steps, Upload, message, Typography, Progress, Tag, Spin, Space, Descriptions, Select, Form, Row, Col, Input } from 'antd';
 import { CameraOutlined, CheckCircleOutlined, CloseCircleOutlined, InboxOutlined, ScanOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
 
 var Title = Typography.Title;
 var Text = Typography.Text;
@@ -13,6 +14,17 @@ export default function PhotoScanTab() {
   var resultState = useState(null); var result = resultState[0]; var setResult = resultState[1];
   var fileState = useState(null); var file = fileState[0]; var setFile = fileState[1];
   var previewState = useState(''); var preview = previewState[0]; var setPreview = previewState[1];
+  var subjectState = useState('数学'); var subject = subjectState[0]; var setSubject = subjectState[1];
+  var gradeScopeState = useState('grade_comprehensive'); var gradeScope = gradeScopeState[0]; var setGradeScope = gradeScopeState[1];
+  var gradeLevelState = useState([]); var gradeLevel = gradeLevelState[0]; var setGradeLevel = gradeLevelState[1];
+  var { 'grade-levels': grades } = useReferenceValues();
+  var [subjectOptions, setSubjectOptions] = useState([]);
+
+  useEffect(function () {
+    apiClient.get('/subjects/all').then(function (res) {
+      setSubjectOptions((res.data || []).filter(function (s) { return s.is_active; }).map(function (s) { return { value: s.name, label: s.name }; }));
+    }).catch(function () {});
+  }, []);
 
   function handleFileChange(info) {
     var f = info.file;
@@ -29,7 +41,8 @@ export default function PhotoScanTab() {
     try {
       var formData = new FormData();
       formData.append('file', file);
-      formData.append('subject', '数学');
+      formData.append('subject', subject);
+      formData.append('grade_level', JSON.stringify({ scope: gradeScope, grades: gradeLevel }));
       var resp = await apiClient.post('/ocr/upload/file', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -116,6 +129,44 @@ export default function PhotoScanTab() {
       React.createElement(Steps, { current: step, size: 'small', style: { marginBottom: 16 },
         items: [{ title: '上传图片' }, { title: 'AI识别' }, { title: '查看结果' }]
       }),
+
+      // Subject + Grade selection
+      React.createElement(Row, { gutter: 12, style: { marginBottom: 12 } },
+        React.createElement(Col, { span: 6 },
+          React.createElement('div', { style: { marginBottom: 4, fontSize: 12, color: '#888' } }, '学科'),
+          React.createElement(Select, { value: subject, onChange: setSubject, style: { width: '100%' },
+            placeholder: '选择学科', options: subjectOptions })
+        ),
+        React.createElement(Col, { span: 6 },
+          React.createElement('div', { style: { marginBottom: 4, fontSize: 12, color: '#888' } }, '适用范围'),
+          React.createElement(Select, { value: gradeScope, onChange: setGradeScope, style: { width: '100%' },
+            options: [
+              { value: 'comprehensive', label: '综合 (跨年级)' },
+              { value: 'grade_comprehensive', label: '年级综合' },
+              { value: 'chapter', label: '章节' },
+              { value: 'knowledge_point', label: '知识点' },
+            ]})
+        ),
+        React.createElement(Col, { span: 6 },
+          React.createElement('div', { style: { marginBottom: 4, fontSize: 12, color: '#888' } }, '年级'),
+          React.createElement(Select, { value: gradeLevel, onChange: setGradeLevel,
+            mode: gradeScope === 'comprehensive' ? 'multiple' : undefined,
+            style: { width: '100%' }, placeholder: '选择年级',
+            options: toSelectOptions(grades) })
+        ),
+        (gradeScope === 'chapter' || gradeScope === 'knowledge_point') ? React.createElement(Col, { span: 6 },
+          React.createElement('div', { style: { marginBottom: 4, fontSize: 12, color: '#888' } }, '章节名称'),
+          React.createElement(Input, { placeholder: '如：二次函数' })
+        ) : null
+      ),
+      gradeScope === 'knowledge_point' ? React.createElement(Row, { gutter: 12, style: { marginBottom: 12 } },
+        React.createElement(Col, { span: 24 },
+          React.createElement('div', { style: { marginBottom: 4, fontSize: 12, color: '#888' } }, '知识点'),
+          React.createElement(Input, { placeholder: '如：顶点式, 判别式, 图像平移' }),
+          React.createElement('div', { style: { color: '#888', fontSize: 11, marginTop: 4 } }, '多个知识点用逗号分隔')
+        )
+      ) : null,
+
       React.createElement(Dragger, { accept: 'image/*', maxCount: 1, beforeUpload: function () { return false; },
         onChange: handleFileChange, fileList: file ? [file] : [],
       },

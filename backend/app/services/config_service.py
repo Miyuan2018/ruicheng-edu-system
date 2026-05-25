@@ -4,16 +4,71 @@ import os
 import httpx
 from typing import Optional
 
+
+def _get_deepseek_default_api_key() -> str:
+    """Try to read DeepSeek API key from Claude settings files."""
+    try:
+        for settings_path in [
+            os.path.expanduser("~/.claude/settings.local.json"),
+            ".claude/settings.local.json",
+        ]:
+            if os.path.exists(settings_path):
+                with open(settings_path) as f:
+                    cfg = json.load(f)
+                token = cfg.get("env", {}).get("ANTHROPIC_AUTH_TOKEN", "")
+                base = cfg.get("env", {}).get("ANTHROPIC_BASE_URL", "")
+                if token and "deepseek" in base:
+                    return token
+    except Exception:
+        pass
+    return ""
+
+
+def _get_deepseek_default_model() -> str:
+    """Default DeepSeek model for native API."""
+    return "deepseek-chat"
+
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "sysconfig.json")
 
 DEFAULT_CONFIG = {
-    "export_max": 200,
+    "database": {
+        "server": "localhost",
+        "port": "5432",
+        "database": "edu_system",
+        "user": "postgres",
+        "password": "postgres",
+    },
     "llm": {
-        "provider": "ollama",
-        "endpoint": "http://127.0.0.1:11434/v1",
-        "model": "",
-        "available_models": [],
-    }
+        "current": "ollama",
+        "ollama": {
+            "endpoint": "http://127.0.0.1:11434/v1",
+            "model": "",
+            "available_models": [],
+        },
+        "deepseek": {
+            "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
+            "api_key": _get_deepseek_default_api_key(),
+            "model": _get_deepseek_default_model(),
+            "available_models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro[1m]", "deepseek-v4-flash"],
+        },
+    },
+    "grading": {
+        "max_concurrent_grading": 1,
+        "grading_model": "rule",
+    },
+    "ocr": {
+        "ocr_engine": "paddleocr",
+        "max_concurrent_ocr": 5,
+        "ocr_confidence_threshold": 0.8,
+    },
+    "mistake_book": {
+        "practice_question_count": 5,
+    },
+    "export_max": 200,
+    "system": {
+        "log_level": "INFO",
+        "backup_enabled": False,
+    },
 }
 
 

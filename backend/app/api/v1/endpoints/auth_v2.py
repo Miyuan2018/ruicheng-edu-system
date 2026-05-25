@@ -244,6 +244,8 @@ async def create_admin(
     username: str, password: str, full_name: str,
     admin_type: int = 0,
     email: str = None, phone: str = None, qualification: str = None,
+    subjects: str = None,
+    grade_level: str = None,
     current_user = Depends(require_role("SYS_ADMIN")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -253,13 +255,26 @@ async def create_admin(
     if result.scalar_one_or_none():
         raise HTTPException(400, detail="用户名已存在")
 
+    import json
+    parsed_subjects = None
+    if subjects:
+        try: parsed_subjects = json.loads(subjects) if isinstance(subjects, str) else subjects
+        except: pass
+    parsed_grades = None
+    if grade_level:
+        try: parsed_grades = json.loads(grade_level) if isinstance(grade_level, str) else grade_level
+        except: pass
+
     admin = Admin(
         username=username,
         password_hash=get_password_hash(password),
         full_name=full_name,
         email=email,
         phone=phone,
+        qualification=qualification,
         admin_type=admin_type,
+        subjects=parsed_subjects,
+        grade_level=parsed_grades,
         created_by=uuid.UUID(current_user.id),
     )
     db.add(admin)
@@ -270,15 +285,32 @@ async def create_admin(
 
 @router.get("/admin/list")
 async def list_admins(
+    name: str = None, admin_type: str = None, is_active: str = None,
+    subject: str = None, grade: str = None,
     current_user = Depends(require_role("SYS_ADMIN")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Admin).order_by(Admin.created_at.desc()))
+    query = select(Admin)
+    if name:
+        query = query.where(
+            (Admin.username.ilike(f"%{name}%")) | (Admin.full_name.ilike(f"%{name}%"))
+        )
+    if admin_type is not None:
+        query = query.where(Admin.admin_type == int(admin_type))
+    if is_active is not None:
+        query = query.where(Admin.is_active == (is_active.lower() == "true"))
+    if subject:
+        query = query.where(Admin.subjects.contains([subject]))
+    if grade:
+        query = query.where(Admin.grade_level.contains([grade]))
+    query = query.order_by(Admin.created_at.desc())
+    result = await db.execute(query)
     admins = result.scalars().all()
     return [{"id": str(a.id), "username": a.username, "full_name": a.full_name,
-             "admin_type": a.admin_type, "role_name": {0:"教师",1:"题库管理员"}.get(a.admin_type,"未知"),
+             "admin_type": a.admin_type, "role_name": {0:"教师",1:"题库管理员",2:"校长",3:"教务主任",4:"学管",5:"班主任"}.get(a.admin_type,"未知"),
              "is_active": a.is_active,
              "qualification": a.qualification,
+             "subjects": a.subjects, "grade_level": a.grade_level,
              "email": a.email, "phone": a.phone} for a in admins]
 
 
@@ -297,11 +329,41 @@ async def delete_admin(
     return {"message": "已删除"}
 
 
+@router.put("/admin/{admin_id}")
+async def update_admin(
+    admin_id: uuid.UUID,
+    full_name: str = None, email: str = None, phone: str = None,
+    qualification: str = None, admin_type: int = None,
+    subjects: str = None, grade_level: str = None,
+    is_active: bool = None, password: str = None,
+    current_user=Depends(require_role("SYS_ADMIN")),
+    db: AsyncSession = Depends(get_db),
+):
+    r = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = r.scalar_one_or_none()
+    if not admin: raise HTTPException(404, detail="管理员不存在")
+
+    if full_name is not None: admin.full_name = full_name
+    if email is not None: admin.email = email
+    if phone is not None: admin.phone = phone
+    if qualification is not None: admin.qualification = qualification
+    if admin_type is not None: admin.admin_type = admin_type
+    if is_active is not None: admin.is_active = is_active
+    if password: admin.password_hash = get_password_hash(password)
+    if subjects is not None:
+        import json as _j
+        admin.subjects = _j.loads(subjects) if isinstance(subjects, str) else subjects
+    if grade_level is not None:
+        import json as _j
+        admin.grade_level = _j.loads(grade_level) if isinstance(grade_level, str) else grade_level
+    await db.commit()
+    return {"message": "已更新"}
+
+
 @router.put("/admin/{admin_id}/subjects")
 async def update_admin_subjects(admin_id: uuid.UUID, subjects: str = "[]", current_user=Depends(require_role("SYS_ADMIN")), db: AsyncSession = Depends(get_db)):
     """Update admin's subject assignments. subjects is JSON array string."""
     import json as _j
-    from app.models.admin import Admin
     r = await db.execute(select(Admin).where(Admin.id == admin_id))
     admin = r.scalar_one_or_none()
     if not admin: raise HTTPException(404, detail="管理员不存在")
