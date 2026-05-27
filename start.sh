@@ -79,8 +79,22 @@ PIP="$CONDA_ENV/bin/pip"
 
 # ---- 1. 检查/创建 Conda 环境 ----
 info "检查 Python 环境..."
+NEED_CREATE=0
 if [ ! -d "$CONDA_ENV" ] || [ ! -f "$PYTHON" ]; then
     warn "Conda 环境 '$CONDA_ENV' 未找到，正在创建..."
+    NEED_CREATE=1
+else
+    # 检查 Python 版本是否为 3.12.x
+    PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+    if [ "$PY_VER" != "3.12" ]; then
+        warn "当前 Python 版本为 $PY_VER，需要 3.12，正在重建环境..."
+        conda env remove -p "$CONDA_ENV" -y 2>/dev/null || rm -rf "$CONDA_ENV"
+        NEED_CREATE=1
+    else
+        log "Python 版本符合要求: $PY_VER"
+    fi
+fi
+if [ "$NEED_CREATE" = "1" ]; then
     conda create -p "$CONDA_ENV" python=3.12 -y
     PYTHON="$CONDA_ENV/bin/python"
     PIP="$CONDA_ENV/bin/pip"
