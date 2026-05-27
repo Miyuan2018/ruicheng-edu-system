@@ -3,6 +3,12 @@ set -e
 
 # ============================================================
 #  睿承教育平台 — 一键启动脚本
+#
+#  用法：
+#    ./start.sh          普通启动（复用已有环境和数据库）
+#    ./start.sh -c       重建 conda 环境后启动
+#    ./start.sh -d       重建数据库（drop→建表→导入演示数据）后启动
+#    ./start.sh -c -d    同时重建环境和数据库
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,15 +29,23 @@ err()  { echo -e "${RED}[✗]${NC} $1"; }
 info() { echo -e "${BLUE}[i]${NC} $1"; }
 die()  { err "$1"; exit 1; }
 
+# ---- 解析参数 ----
+OPT_CONDA=0
+OPT_DB=0
+while getopts "cd" opt; do
+    case $opt in
+        c) OPT_CONDA=1 ;;
+        d) OPT_DB=1 ;;
+        *) echo "用法: $0 [-c] [-d]"; exit 1 ;;
+    esac
+done
+
 # ---- 从 sysconfig.json 读取数据库配置 ----
 read_db_config() {
     local cfg="$BACKEND_DIR/sysconfig.json"
-    if [ ! -f "$cfg" ]; then
-        return 1
-    fi
-    # 用 Python 解析 JSON，避免依赖 jq
+    [ -f "$cfg" ] || return 1
     "$CONDA_ENV/bin/python" -c "
-import json, sys
+import json
 with open('$cfg') as f:
     cfg = json.load(f)
 db = cfg.get('database', {})
@@ -57,6 +71,8 @@ trap cleanup SIGINT SIGTERM
 echo ""
 echo -e "${BLUE}============================================${NC}"
 echo -e "${BLUE}   睿承教育平台 — 一键启动${NC}"
+[ "$OPT_CONDA" = "1" ] && echo -e "${YELLOW}   模式: 重建 conda 环境${NC}"
+[ "$OPT_DB"    = "1" ] && echo -e "${YELLOW}   模式: 重建数据库${NC}"
 echo -e "${BLUE}============================================${NC}"
 echo ""
 
@@ -65,26 +81,30 @@ info "初始化 Python 环境..."
 CONDA_BASE="${CONDA_PREFIX:-$HOME/miniconda3}"
 if [ ! -d "$CONDA_BASE" ]; then
     for loc in "$HOME/miniconda3" "$HOME/anaconda3" "/opt/conda"; do
-        if [ -d "$loc" ]; then CONDA_BASE="$loc"; break; fi
+        [ -d "$loc" ] && { CONDA_BASE="$loc"; break; }
     done
 fi
-if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
-    source "$CONDA_BASE/etc/profile.d/conda.sh"
-fi
+[ -f "$CONDA_BASE/etc/profile.d/conda.sh" ] && source "$CONDA_BASE/etc/profile.d/conda.sh"
 export PATH="$CONDA_BASE/bin:$PATH"
 
-# 优先用直接路径，避免 conda run 的开销
 PYTHON="$CONDA_ENV/bin/python"
 PIP="$CONDA_ENV/bin/pip"
 
 # ---- 1. 检查/创建 Conda 环境 ----
 info "检查 Python 环境..."
 NEED_CREATE=0
-if [ ! -d "$CONDA_ENV" ] || [ ! -f "$PYTHON" ]; then
-    warn "Conda 环境 '$CONDA_ENV' 未找到，正在创建..."
+
+if [ "$OPT_CONDA" = "1" ]; then
+    # -c 参数：强制重建
+    warn "强制重建 conda 环境..."
+    conda env remove -p "$CONDA_ENV" -y 2>/dev/null || rm -rf "$CONDA_ENV"
+    NEED_CREATE=1
+elif [ ! -d "$CONDA_ENV" ] || [ ! -f "$PYTHON" ]; then
+    # 环境不存在：创建
+    warn "Conda 环境未找到，正在创建..."
     NEED_CREATE=1
 else
-    # 检查 Python 版本是否为 3.12.x
+    # 环境存在：检查版本
     PY_VER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
     if [ "$PY_VER" != "3.12" ]; then
         warn "当前 Python 版本为 $PY_VER，需要 3.12，正在重建环境..."
@@ -94,6 +114,7 @@ else
         log "Python 版本符合要求: $PY_VER"
     fi
 fi
+
 if [ "$NEED_CREATE" = "1" ]; then
     conda create -p "$CONDA_ENV" python=3.12 -y
     PYTHON="$CONDA_ENV/bin/python"
@@ -166,8 +187,6 @@ DB_USER=$(echo "$DB_CONFIG" | sed -n '4p')
 DB_PASS=$(echo "$DB_CONFIG" | sed -n '5p')
 
 info "数据库配置: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-
-# 定义 PGPASSWORD 供后续 psql 使用
 export PGPASSWORD="$DB_PASS"
 
 # ---- 4. 清理残留端口 ----
@@ -186,13 +205,10 @@ log "端口检查完成"
 info "检查后端依赖..."
 MISSING=""
 for pkg in fastapi uvicorn sqlalchemy alembic pydantic asyncpg; do
-    if ! $PIP show "$pkg" &>/dev/null; then
-        MISSING=1
-        break
-    fi
+    $PIP show "$pkg" &>/dev/null || { MISSING=1; break; }
 done
-if [ -n "$MISSING" ]; then
-    warn "缺少依赖，正在安装..."
+if [ -n "$MISSING" ] || [ "$NEED_CREATE" = "1" ]; then
+    warn "安装后端依赖..."
     $PIP install -r "$BACKEND_DIR/requirements.txt" -q
     $PIP install asyncpg email-validator "bcrypt==3.2.2" -q
     log "后端依赖安装完成"
@@ -206,12 +222,26 @@ if ! psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -c "SELECT 1" &>/dev/null; t
     err "或检查 sysconfig.json 中 database 配置是否正确"
     exit 1
 fi
-psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -c "CREATE DATABASE $DB_NAME" 2>/dev/null || true
 log "PostgreSQL 连接正常"
 
-# ---- 7. 全量建表 ----
-info "初始化数据库表结构..."
+# ---- 7. 数据库初始化 ----
 cd "$BACKEND_DIR"
+
+if [ "$OPT_DB" = "1" ]; then
+    # -d 参数：删库重建
+    warn "重建数据库 $DB_NAME ..."
+    psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" \
+        -c "DROP DATABASE IF EXISTS $DB_NAME" 2>/dev/null || true
+    psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" \
+        -c "CREATE DATABASE $DB_NAME" || die "创建数据库失败"
+    log "数据库已重建"
+else
+    # 普通启动：确保数据库存在
+    psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" \
+        -c "CREATE DATABASE $DB_NAME" 2>/dev/null || true
+fi
+
+info "初始化数据库表结构..."
 $PYTHON -c "
 from app.db.base import Base
 from app.db.session import engine
@@ -220,15 +250,34 @@ import asyncio
 async def init():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    print('done')
 asyncio.run(init())
 " || die "数据库建表失败，请检查 PostgreSQL 连接配置"
 log "数据库表结构已就绪"
 
-# ---- 8. 导入 V3.5 演示数据 ----
-info "导入 V3.5 演示数据..."
-cd "$BACKEND_DIR"
-$PYTHON demo_data.py || warn "演示数据导入失败，可跳过手动执行: cd backend && python demo_data.py"
+# ---- 8. 演示数据 ----
+if [ "$OPT_DB" = "1" ]; then
+    # -d 参数：强制重新导入
+    info "导入 V3.5 演示数据..."
+    $PYTHON demo_data.py || warn "演示数据导入失败，可手动执行: cd backend && python demo_data.py"
+else
+    # 普通启动：仅首次（表为空）时导入
+    HAS_DATA=$($PYTHON -c "
+import asyncio
+from sqlalchemy import text
+from app.db.session import AsyncSessionLocal
+async def check():
+    async with AsyncSessionLocal() as db:
+        r = await db.execute(text('SELECT COUNT(*) FROM students'))
+        print(r.scalar())
+asyncio.run(check())
+" 2>/dev/null || echo "0")
+    if [ "${HAS_DATA:-0}" = "0" ]; then
+        info "数据库为空，导入 V3.5 演示数据..."
+        $PYTHON demo_data.py || warn "演示数据导入失败，可手动执行: cd backend && python demo_data.py"
+    else
+        log "数据库已有数据（students: $HAS_DATA），跳过演示数据导入"
+    fi
+fi
 
 # ---- 9. 检查前端依赖 ----
 info "检查前端依赖..."
@@ -247,16 +296,12 @@ BACKEND_PID=$!
 sleep 2
 
 if ! kill -0 $BACKEND_PID 2>/dev/null; then
-    err "后端启动失败"
-    err "请检查上方错误日志"
-    exit 1
+    die "后端启动失败，请检查上方错误日志"
 fi
 
 info "等待后端就绪..."
 for i in $(seq 1 20); do
-    if curl -s http://localhost:8000/health >/dev/null 2>&1; then
-        break
-    fi
+    curl -s http://localhost:8000/health >/dev/null 2>&1 && break
     sleep 1
 done
 
@@ -264,7 +309,6 @@ if curl -s http://localhost:8000/health >/dev/null 2>&1; then
     log "后端服务已启动 → http://localhost:8000"
 else
     err "后端服务启动超时 (20s)"
-    err "请检查 http://localhost:8000/docs 是否可访问"
     kill $BACKEND_PID 2>/dev/null || true
     exit 1
 fi
@@ -282,13 +326,9 @@ if ! kill -0 $FRONTEND_PID 2>/dev/null; then
     exit 1
 fi
 
-# 前端需要编译，给更多时间
 FRONTEND_READY=false
 for i in $(seq 1 15); do
-    if curl -s http://localhost:3000 >/dev/null 2>&1; then
-        FRONTEND_READY=true
-        break
-    fi
+    curl -s http://localhost:3000 >/dev/null 2>&1 && { FRONTEND_READY=true; break; }
     sleep 2
 done
 
@@ -306,16 +346,13 @@ echo -e "${GREEN}============================================${NC}"
 echo ""
 echo -e "  数据库:    ${BLUE}PostgreSQL (${DB_HOST}:${DB_PORT}/${DB_NAME})${NC}"
 echo ""
-echo -e "  ${BLUE}【学生端】${NC}"
-echo -e "    地址:     ${BLUE}http://localhost:3000/login${NC}"
+echo -e "  ${BLUE}【学生端】${NC}    http://localhost:3000/login"
 echo -e "    登录:     手机号/用户名 → 图形验证码 → 短信(111111)"
 echo ""
-echo -e "  ${BLUE}【管理端】${NC}"
-echo -e "    地址:     ${BLUE}http://localhost:3000/admin/login${NC}"
+echo -e "  ${BLUE}【管理端】${NC}    http://localhost:3000/admin/login"
 echo -e "    登录:     用户名+密码 → 图形验证码 → 短信(111111)"
 echo ""
-echo -e "  ${YELLOW}【系统管理员】${NC}"
-echo -e "    SYSAdmin / SYSPass"
+echo -e "  ${YELLOW}【系统管理员】${NC} SYSAdmin / SYSPass"
 echo ""
 echo -e "  API 文档:  ${BLUE}http://localhost:8000/docs${NC}"
 echo ""
