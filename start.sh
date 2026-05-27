@@ -180,7 +180,7 @@ done
 if [ -n "$MISSING" ]; then
     warn "缺少依赖，正在安装..."
     $PIP install -r "$BACKEND_DIR/requirements.txt" -q
-    $PIP install asyncpg email-validator "bcrypt<5" -q
+    $PIP install asyncpg email-validator "bcrypt==3.2.2" -q
     log "后端依赖安装完成"
 fi
 
