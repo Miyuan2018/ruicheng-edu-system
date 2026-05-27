@@ -115,8 +115,8 @@ Q_IDS = {f"q{i}": _uuid() for i in range(1, 51)}   # 动态生成 50 道题 ID
 def _q(idx, title, qtype, difficulty, subject, grade_scope, grades,
         correct_answer, explanation, score=5, is_typical=False, source="MANUAL",
         created_by=TEACHER_MATH_ID):
-    # grade_level 列实际是 varchar(20)，存第一个年级代码
-    grade_level = grades[0] if grades else None
+    # grade_level 列是 JSONB，传原生 dict
+    grade_level = json.dumps({"scope": grade_scope, "grades": grades}) if grades else None
     return {
         "id": Q_IDS[f"q{idx}"],
         "title": title,
@@ -241,30 +241,30 @@ async def run():
         print("\n[3/9] 导入用户...")
 
         # 教师 & 题目管理员（admins 表）
-        # 注：数据库中 admin_type 为 varchar，无 qualification/subjects/grade_level 列
+        # admin_type: 0=教师, 1=题库管理员（Integer 类型，与模型一致）
         admins = [
             {
                 "id": TEACHER_MATH_ID, "username": "t_math", "password_hash": _hash("Demo1234"),
                 "full_name": "王数学", "email": "wang@ruicheng.edu", "phone": "13800001001",
-                "admin_type": "TEACHER",
+                "admin_type": 0,
                 "created_by": actual_sys_admin_id, "is_active": True, "created_at": _dt(60), "updated_at": _dt(60),
             },
             {
                 "id": TEACHER_CHINESE_ID, "username": "t_chinese", "password_hash": _hash("Demo1234"),
                 "full_name": "李语文", "email": "li@ruicheng.edu", "phone": "13800001002",
-                "admin_type": "TEACHER",
+                "admin_type": 0,
                 "created_by": actual_sys_admin_id, "is_active": True, "created_at": _dt(60), "updated_at": _dt(60),
             },
             {
                 "id": TEACHER_ENG_ID, "username": "t_english", "password_hash": _hash("Demo1234"),
                 "full_name": "张英语", "email": "zhang@ruicheng.edu", "phone": "13800001003",
-                "admin_type": "TEACHER",
+                "admin_type": 0,
                 "created_by": actual_sys_admin_id, "is_active": True, "created_at": _dt(60), "updated_at": _dt(60),
             },
             {
                 "id": QADMIN_ID, "username": "tk_zhao", "password_hash": _hash("Demo1234"),
                 "full_name": "赵题库", "email": "zhao@ruicheng.edu", "phone": "13800001010",
-                "admin_type": "QUESTION_ADMIN",
+                "admin_type": 1,
                 "created_by": actual_sys_admin_id, "is_active": True, "created_at": _dt(60), "updated_at": _dt(60),
             },
         ]
@@ -780,7 +780,7 @@ async def run():
                 "id": PAPER_MATH_MID_ID,
                 "title": "八年级数学上册期中测试",
                 "description": "涵盖实数、代数式、方程三章，共100分",
-                "subject": "数学", "grade_level": "G8",
+                "subject": "数学", "grade_level": json.dumps({"scope": "grade", "grades": ["G8"]}),
                 "status": "PUBLISHED", "total_score": 100, "duration_minutes": 120,
                 "instructions": "请将答案写在答题纸上，计算题须写出解题步骤，否则不得分。",
                 "created_by": TEACHER_MATH_ID, "created_at": _dt(20), "updated_at": _dt(20),
@@ -789,7 +789,7 @@ async def run():
                 "id": PAPER_MATH_UNIT_ID,
                 "title": "八年级数学第一章单元测试（实数）",
                 "description": "实数概念与运算，满分50分",
-                "subject": "数学", "grade_level": "G8",
+                "subject": "数学", "grade_level": json.dumps({"scope": "grade", "grades": ["G8"]}),
                 "status": "PUBLISHED", "total_score": 50, "duration_minutes": 60,
                 "instructions": "全部题目均需作答，填空题只写答案。",
                 "created_by": TEACHER_MATH_ID, "created_at": _dt(35), "updated_at": _dt(35),
@@ -798,7 +798,7 @@ async def run():
                 "id": PAPER_CHN_MID_ID,
                 "title": "七年级语文上册期中检测",
                 "description": "现代文阅读+古诗词+写作，共100分",
-                "subject": "语文", "grade_level": "G7",
+                "subject": "语文", "grade_level": json.dumps({"scope": "grade", "grades": ["G7"]}),
                 "status": "PUBLISHED", "total_score": 100, "duration_minutes": 120,
                 "instructions": "作文字迹工整，卷面整洁酌情加分。",
                 "created_by": TEACHER_CHINESE_ID, "created_at": _dt(18), "updated_at": _dt(18),
@@ -807,7 +807,7 @@ async def run():
                 "id": PAPER_ENG_FINAL_ID,
                 "title": "九年级英语中考模拟卷",
                 "description": "单选+填空+阅读+写作，满分120分",
-                "subject": "英语", "grade_level": "G9",
+                "subject": "英语", "grade_level": json.dumps({"scope": "grade", "grades": ["G9"]}),
                 "status": "PUBLISHED", "total_score": 120, "duration_minutes": 120,
                 "instructions": "认真审题，书写规范。",
                 "created_by": TEACHER_ENG_ID, "created_at": _dt(14), "updated_at": _dt(14),
