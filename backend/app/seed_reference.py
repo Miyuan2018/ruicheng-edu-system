@@ -65,7 +65,7 @@ async def seed_reference_data(db: AsyncSession):
         if existing.scalar_one_or_none():
             continue
         for row in rows:
-            obj = model_cls(id=uuid.uuid4(), **row)
+            obj = model_cls(id=str(uuid.uuid4()), **row)
             db.add(obj)
             await db.flush()
         await db.commit()
