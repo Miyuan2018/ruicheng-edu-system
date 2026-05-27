@@ -2,7 +2,7 @@
   "database": {
     "server": "localhost",
     "port": "5432",
-    "database": "edu_system_bak",
+    "database": "edu_system",
     "user": "postgres"
   },
   "llm": {

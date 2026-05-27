@@ -51,7 +51,7 @@ with open('$cfg') as f:
 db = cfg.get('database', {})
 print(db.get('server','localhost'))
 print(db.get('port','5432'))
-print(db.get('database','edu_system_bak'))
+print(db.get('database','edu_system'))
 print(db.get('user','postgres'))
 print(db.get('password','postgres'))
 " 2>/dev/null
@@ -132,7 +132,7 @@ if [ ! -f "$BACKEND_DIR/sysconfig.json" ]; then
   "database": {
     "server": "localhost",
     "port": "5432",
-    "database": "edu_system_bak",
+    "database": "edu_system",
     "user": "postgres",
     "password": "postgres"
   },
@@ -176,7 +176,7 @@ DB_CONFIG=$(read_db_config) || {
     warn "无法解析 sysconfig.json，使用默认值"
     DB_CONFIG="localhost
 5432
-edu_system_bak
+edu_system
 postgres
 postgres"
 }
