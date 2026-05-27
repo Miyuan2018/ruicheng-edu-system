@@ -43,7 +43,12 @@ apiClient.interceptors.response.use(
         } catch {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
+          // 根据当前路径决定跳转到哪个登录页
+          const isAdmin = window.location.pathname.startsWith('/admin') ||
+            window.location.pathname.startsWith('/dashboard') ||
+            window.location.pathname.startsWith('/question-admin') ||
+            window.location.pathname.startsWith('/teacher');
+          window.location.href = isAdmin ? '/admin/login' : '/login';
         }
       }
     }

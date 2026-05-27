@@ -7,6 +7,19 @@ import { useAuthStore } from '../../store/auth';
 
 const { Title, Text } = Typography;
 
+const getErrMsg = (err: any, fallback: string): string => {
+  const data = err?.response?.data;
+  // FastAPI HTTPException 返回 { detail: "..." }
+  if (typeof data?.detail === 'string') return data.detail;
+  // 普通字符串
+  if (typeof data?.message === 'string') return data.message;
+  // 网络断开
+  if (err?.code === 'ERR_NETWORK' || err?.message === 'Network Error') return '网络连接失败，请检查后端服务是否已启动';
+  // 超时
+  if (err?.code === 'ECONNABORTED') return '请求超时，请稍后重试';
+  return fallback;
+};
+
 const ROLE_MAP: Record<string, string> = {
   TEACHER: '教师', QUESTION_ADMIN: '题库管理员', SYS_ADMIN: '系统管理员',
 };
@@ -46,7 +59,7 @@ export default function AdminLoginPage() {
       setStep(1);
       message.success(data.message || '验证通过');
     } catch (err: any) {
-      message.error(err?.response?.data?.detail || '验证失败');
+      message.error(getErrMsg(err, '身份验证失败，请检查用户名、密码和验证码'));
       refreshCaptcha();
       form.setFieldValue('captcha_code', '');
     } finally { setLoading(false); }
@@ -79,7 +92,7 @@ export default function AdminLoginPage() {
       };
       navigate(routes[data.user_type] || '/dashboard');
     } catch (err: any) {
-      message.error(err?.response?.data?.detail || '登录失败');
+      message.error(getErrMsg(err, '登录失败，请重试'));
     } finally { setLoading(false); }
   };
 
