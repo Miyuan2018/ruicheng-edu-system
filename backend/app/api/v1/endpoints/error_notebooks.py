@@ -29,8 +29,8 @@ async def generate_error_notebook(
     from app.models.answer_submission import AnswerSubmission
     sub_result = await db.execute(
         select(AnswerSubmission).where(
-            AnswerSubmission.student_id == uuid.UUID(current_user.id),
-            AnswerSubmission.exam_paper_id == uuid.UUID(exam_paper_id) if exam_paper_id else None,
+            AnswerSubmission.student_id == current_user.id,
+            AnswerSubmission.exam_paper_id == exam_paper_id if exam_paper_id else None,
         ).order_by(AnswerSubmission.submitted_at.desc()).limit(1)
     )
     submission = sub_result.scalar_one_or_none()
@@ -171,7 +171,7 @@ async def get_student_error_notebooks(
     if date_to:
         query = query.where(ErrorNotebook.generated_at <= date_to + " 23:59:59")
     if paper_id:
-        query = query.where(ErrorNotebook.exam_paper_id == uuid.UUID(paper_id))
+        query = query.where(ErrorNotebook.exam_paper_id == paper_id)
     query = query.order_by(ErrorNotebook.generated_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
@@ -408,7 +408,7 @@ async def manual_entry_mistake(
         difficulty="MEDIUM", subject=subject or "未分类",
         score=5, correct_answer=correct_answer or "",
         explanation="", source="MANUAL", review_status="APPROVED",
-        created_by=uuid.UUID(current_user.id),
+        created_by=current_user.id,
     )
     db.add(q)
     await db.flush()
@@ -417,7 +417,7 @@ async def manual_entry_mistake(
     from datetime import datetime
     now = datetime.now()
     notebook = ErrorNotebook(
-        student_id=uuid.UUID(current_user.id),
+        student_id=current_user.id,
         title=f"手动录入 - {now.strftime('%Y年%m月%d日 %H:%M')}",
         question_count=1, status="GENERATED",
     )

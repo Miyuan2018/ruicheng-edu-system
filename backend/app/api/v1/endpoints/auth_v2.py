@@ -171,10 +171,10 @@ async def admin_login(req: AdminLoginRequest, db: AsyncSession = Depends(get_db)
 
     # Update last_login
     if utype == "SYS_ADMIN":
-        r = await db.execute(select(SysAdmin).where(SysAdmin.id == uuid.UUID(user_id)))
+        r = await db.execute(select(SysAdmin).where(SysAdmin.id == user_id))
         user = r.scalar_one_or_none()
     else:
-        r = await db.execute(select(Admin).where(Admin.id == uuid.UUID(user_id)))
+        r = await db.execute(select(Admin).where(Admin.id == user_id))
         user = r.scalar_one_or_none()
 
     if user:
@@ -276,7 +276,7 @@ async def create_admin(
         admin_type=admin_type,
         subjects=parsed_subjects,
         grade_level=parsed_grades,
-        created_by=uuid.UUID(current_user.id),
+        created_by=current_user.id,
     )
     db.add(admin)
     await db.commit()
@@ -378,7 +378,7 @@ async def update_admin_subjects(admin_id: uuid.UUID, subjects: str = "[]", curre
 @router.get("/profile")
 async def get_profile(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Get current user's profile info from appropriate table."""
-    uid = uuid.UUID(current_user.id)
+    uid = current_user.id
     utype = current_user.user_type
 
     if utype == "SYS_ADMIN":
@@ -432,7 +432,7 @@ async def get_profile(current_user=Depends(get_current_user), db: AsyncSession =
 @router.put("/profile")
 async def update_profile(req: dict = Body(...), current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Update profile fields (full_name, email, grade, school). Phone excluded."""
-    uid = uuid.UUID(current_user.id)
+    uid = current_user.id
     utype = current_user.user_type
 
     if utype == "SYS_ADMIN":
@@ -471,7 +471,7 @@ async def update_phone(req: PhoneUpdateRequest, current_user=Depends(get_current
     if req.sms_code.strip() != "111111":
         raise HTTPException(400, detail="短信验证码错误，请重新输入")
 
-    uid = uuid.UUID(current_user.id)
+    uid = current_user.id
     utype = current_user.user_type
 
     if utype == "SYS_ADMIN":

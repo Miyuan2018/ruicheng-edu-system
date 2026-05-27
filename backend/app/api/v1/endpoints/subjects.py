@@ -44,7 +44,7 @@ async def get_my_subjects(current_user=Depends(get_current_user), db: AsyncSessi
         return [s.name for s in result.scalars().all()]
     if current_user.user_type == "TEACHER":
         from app.models.admin import Admin
-        r = await db.execute(select(Admin).where(Admin.id == uuid.UUID(current_user.id)))
+        r = await db.execute(select(Admin).where(Admin.id == current_user.id))
         admin = r.scalar_one_or_none()
         if admin and admin.subjects:
             subjs = admin.subjects if isinstance(admin.subjects, list) else json.loads(admin.subjects) if isinstance(admin.subjects, str) else []

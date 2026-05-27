@@ -129,7 +129,7 @@ async def submit_answer(
         now = datetime.now(timezone.utc)
         answer_submission = AnswerSubmission(
             exam_paper_id=answer_in.exam_paper_id,
-            student_id=uuid.UUID(current_user.id),
+            student_id=current_user.id,
             submission_type=answer_in.submission_type,
             status="GRADED",
             submitted_at=now,

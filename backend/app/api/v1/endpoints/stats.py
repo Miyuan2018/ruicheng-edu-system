@@ -25,7 +25,7 @@ async def list_papers_for_stats(
 
     query = select(ExamPaper)
     if current_user.user_type == "TEACHER":
-        query = query.where(ExamPaper.created_by == uuid.UUID(current_user.id))
+        query = query.where(ExamPaper.created_by == current_user.id)
     query = query.order_by(ExamPaper.created_at.desc()).limit(50)
     result = await db.execute(query)
     papers = result.scalars().all()
@@ -155,7 +155,7 @@ async def question_overall_stats(
     if current_user.user_type == "TEACHER":
         # Teacher only sees stats for their papers
         teacher_papers = await db.execute(
-            select(ExamPaper.id).where(ExamPaper.created_by == uuid.UUID(current_user.id))
+            select(ExamPaper.id).where(ExamPaper.created_by == current_user.id)
         )
         paper_ids = [r[0] for r in teacher_papers.fetchall()]
         if paper_ids:
@@ -219,7 +219,7 @@ async def question_overall_stats(
             det_result = await db.execute(
                 select(AnswerDetail.student_answer, func.count(AnswerDetail.id))
                 .where(
-                    AnswerDetail.question_id == uuid.UUID(qid),
+                    AnswerDetail.question_id == qid,
                     AnswerDetail.answer_submission_id.in_(sub_ids),
                 )
                 .group_by(AnswerDetail.student_answer)

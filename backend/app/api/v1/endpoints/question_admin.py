@@ -32,7 +32,7 @@ async def create_syllabus(
     s = Syllabus(
         title=title, grade_level=grade_level, province=province,
         subject=subject, content=content or {},
-        created_by=uuid.UUID(current_user.id),
+        created_by=current_user.id,
     )
     db.add(s)
     await db.commit()
@@ -167,7 +167,7 @@ async def generate_questions(
                          "question_type": question_type, "count": count,
                          "subject": subject, "grade_level": grade_level},
             model_used=model or "default",
-            created_by=uuid.UUID(current_user.id),
+            created_by=current_user.id,
         )
         db.add(task)
         await db.commit()
@@ -206,7 +206,7 @@ async def generate_questions(
         parameters={"knowledge_point": knowledge_point, "difficulty": difficulty,
                      "question_type": question_type, "count": count},
         model_used=model or "default",
-        created_by=uuid.UUID(current_user.id),
+        created_by=current_user.id,
         started_at=datetime.now(timezone.utc),
         completed_at=datetime.now(timezone.utc),
         completed_items=count,
@@ -238,7 +238,7 @@ async def generate_questions(
             meta_data={"knowledge_points": [knowledge_point]},
             source="LLM_GENERATED", review_status="PENDING",
             source_task_id=task.id,
-            created_by=uuid.UUID(current_user.id),
+            created_by=current_user.id,
         )
         db.add(q)
         await db.flush()
@@ -347,7 +347,7 @@ async def batch_approve(
         raise HTTPException(403, detail="权限不足")
     now = datetime.now(timezone.utc)
     for qid in question_ids:
-        result = await db.execute(select(Question).where(Question.id == uuid.UUID(qid)))
+        result = await db.execute(select(Question).where(Question.id == qid))
         q = result.scalar_one_or_none()
         if q:
             q.review_status = "APPROVED"
@@ -367,7 +367,7 @@ async def batch_reject(
         raise HTTPException(403, detail="权限不足")
     now = datetime.now(timezone.utc)
     for qid in question_ids:
-        result = await db.execute(select(Question).where(Question.id == uuid.UUID(qid)))
+        result = await db.execute(select(Question).where(Question.id == qid))
         q = result.scalar_one_or_none()
         if q:
             q.review_status = "REJECTED"
@@ -473,7 +473,7 @@ async def start_scrape(
             parameters={"knowledge_point": knowledge_point, "subject": subject,
                          "grade_level": grade_level, "difficulty": difficulty,
                          "question_type": question_type, "count": count},
-            created_by=uuid.UUID(current_user.id),
+            created_by=current_user.id,
         )
         db.add(task)
         await db.commit()
@@ -506,7 +506,7 @@ async def start_scrape(
         return {"ok": False, "error": f"抓取异常: {str(e)}"}
 
     # Auto-save to DB
-    uid = uuid.UUID(current_user.id)
+    uid = current_user.id
     kps = [kp.strip() for kp in knowledge_point.split(",") if kp.strip()]
     grade_json = {"scope": "grade", "grades": [grade_level]}
     if kps:
@@ -781,7 +781,7 @@ async def import_paper_confirm(
             explanation=qdata.get("explanation", ""),
             source="OCR_UPLOAD",
             review_status="PENDING",
-            created_by=uuid.UUID(current_user.id),
+            created_by=current_user.id,
         )
         db.add(question)
         saved.append(question)

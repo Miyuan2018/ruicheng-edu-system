@@ -82,7 +82,7 @@ async def create_node(
 
     node = KnowledgeNode(
         syllabus_id=syllabus_id,
-        parent_id=uuid.UUID(parent_id) if parent_id else None,
+        parent_id=parent_id if parent_id else None,
         name=name, node_type=node_type,
         sort_order=sort_order, version=syllabus.version,
         is_modified=True,
@@ -216,7 +216,7 @@ async def create_new_version(
         content=old.content, knowledge_tree=old.knowledge_tree,
         version=(old.version or 1) + 1, is_current=True,
         parent_syllabus_id=old.id,
-        created_by=uuid.UUID(current_user.id),
+        created_by=current_user.id,
     )
     old.is_current = False
     db.add(new_version)

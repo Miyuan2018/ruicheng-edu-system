@@ -28,7 +28,7 @@ async def create_question(
         data["meta_data"] = {"knowledge_points": question_in.knowledge_points}
     data["source"] = data.get("source") or "MANUAL"
     data["review_status"] = data.get("review_status") or "APPROVED"
-    data["created_by"] = uuid.UUID(current_user.id)
+    data["created_by"] = current_user.id
     question = Question(**data)
     db.add(question)
     await db.commit()
@@ -58,7 +58,7 @@ async def search_questions(
     # Filter by user's subjects (teachers only see their subjects)
     if current_user.user_type == "TEACHER":
         from app.models.admin import Admin
-        ar = await db.execute(select(Admin).where(Admin.id == uuid.UUID(current_user.id)))
+        ar = await db.execute(select(Admin).where(Admin.id == current_user.id))
         admin = ar.scalar_one_or_none()
         if admin and admin.subjects:
             subjs = admin.subjects if isinstance(admin.subjects, list) else _json.loads(admin.subjects) if isinstance(admin.subjects, str) else []
@@ -147,7 +147,7 @@ async def batch_import_questions(
             meta_data=item.get("meta_data"),
             source="MANUAL",
             review_status="APPROVED",
-            created_by=uuid.UUID(current_user.id),
+            created_by=current_user.id,
         )
         db.add(q)
         count += 1
@@ -158,7 +158,7 @@ async def batch_import_questions(
 @router.post("/export")
 async def export_selected(question_ids: List[str], db: AsyncSession = Depends(get_db)):
     """Export specific questions by IDs."""
-    ids = [uuid.UUID(i) for i in question_ids[:200]]
+    ids = [i for i in question_ids[:200]]
     result = await db.execute(select(Question).where(Question.id.in_(ids)))
     questions = result.scalars().all()
     return [{"id": str(q.id), "title": q.title, "question_type": q.question_type,
@@ -400,7 +400,7 @@ async def update_question(
         )
 
     # Check if user is the creator or is an admin
-    if question.created_by != uuid.UUID(current_user.id) and current_user.user_type != "SYS_ADMIN":
+    if question.created_by != current_user.id and current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -443,7 +443,7 @@ async def batch_delete_questions(
 ):
     if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
-    ids = [uuid.UUID(i) for i in question_ids[:200]]
+    ids = [i for i in question_ids[:200]]
     result = await db.execute(select(Question).where(Question.id.in_(ids)))
     for q in result.scalars().all():
         await db.delete(q)
@@ -474,7 +474,7 @@ async def get_questions(
     # Filter by user's subjects (teachers only see their subjects)
     if current_user.user_type == "TEACHER":
         from app.models.admin import Admin
-        ar = await db.execute(select(Admin).where(Admin.id == uuid.UUID(current_user.id)))
+        ar = await db.execute(select(Admin).where(Admin.id == current_user.id))
         admin = ar.scalar_one_or_none()
         if admin and admin.subjects:
             subjs = admin.subjects if isinstance(admin.subjects, list) else _json.loads(admin.subjects) if isinstance(admin.subjects, str) else []

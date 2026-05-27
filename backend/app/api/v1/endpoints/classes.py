@@ -24,7 +24,7 @@ async def create_class(
     cls = SchoolClass(
         name=name, subject=subject, grade_level=grade_level,
         description=description, is_active=is_active,
-        teacher_id=uuid.UUID(current_user.id),
+        teacher_id=current_user.id,
     )
     db.add(cls)
     await db.commit()
@@ -40,7 +40,7 @@ async def list_classes(
 ):
     query = select(SchoolClass)
     if current_user.user_type == "TEACHER":
-        query = query.where(SchoolClass.teacher_id == uuid.UUID(current_user.id))
+        query = query.where(SchoolClass.teacher_id == current_user.id)
     if search:
         query = query.where(SchoolClass.name.ilike(f"%{search}%"))
     query = query.order_by(SchoolClass.created_at.desc())

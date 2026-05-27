@@ -23,7 +23,7 @@ async def student_stats(
     if current_user.user_type != "STUDENT":
         raise HTTPException(403, detail="仅学生可访问")
 
-    student_id = uuid.UUID(current_user.id)
+    student_id = current_user.id
 
     # Completed papers count
     completed_result = await db.execute(
@@ -122,7 +122,7 @@ async def student_progress(
     if current_user.user_type != "STUDENT":
         raise HTTPException(403, detail="仅学生可访问")
 
-    student_id = uuid.UUID(current_user.id)
+    student_id = current_user.id
     since = datetime.now(timezone.utc) - timedelta(days=days)
     status_filter = ["GRADED", "GENERATED", "RE_GRADED"]
 

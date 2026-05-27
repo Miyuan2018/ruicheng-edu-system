@@ -36,8 +36,8 @@ async def upload_ocr_file(
     result = await process_image(contents, file_path, file.filename or "upload.jpg")
 
     ocr_upload = OcrUpload(
-        student_id=uuid.UUID(current_user.id),
-        exam_paper_id=uuid.UUID(exam_paper_id) if exam_paper_id else uuid.UUID(current_user.id),
+        student_id=current_user.id,
+        exam_paper_id=exam_paper_id if exam_paper_id else current_user.id,
         file_name=file.filename or "upload.jpg",
         file_path=file_path,
         file_size=len(contents),
@@ -83,7 +83,7 @@ async def upload_ocr_image(
     # Create new OCR upload
     ocr_upload = OcrUpload(
         **ocr_in.dict(),
-        student_id=uuid.UUID(current_user.id),
+        student_id=current_user.id,
         status="PENDING",
     )
     db.add(ocr_upload)
@@ -372,14 +372,14 @@ async def submit_ocr_answers(
         raise HTTPException(404, detail="试卷不存在")
 
     now = datetime.now(timezone.utc)
-    uid = uuid.UUID(current_user.id)
+    uid = current_user.id
 
     # 1. 创建 AnswerSubmission
     submission = AnswerSubmission(
-        exam_paper_id=uuid.UUID(req.exam_paper_id),
+        exam_paper_id=req.exam_paper_id,
         student_id=uid,
         submission_type="OCR",
-        ocr_upload_id=uuid.UUID(req.ocr_upload_id) if req.ocr_upload_id else None,
+        ocr_upload_id=req.ocr_upload_id if req.ocr_upload_id else None,
         status="GRADED",
         submitted_at=now,
     )

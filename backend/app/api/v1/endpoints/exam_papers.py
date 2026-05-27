@@ -31,7 +31,7 @@ async def create_exam_paper(
     # Remove extra fields not in ExamPaper model
     for key in ["question_count", "distribution", "difficulty_ratio"]:
         data.pop(key, None)
-    data["created_by"] = uuid.UUID(current_user.id)
+    data["created_by"] = current_user.id
 
     async with db.begin():
         exam_paper = ExamPaper(**data)
@@ -50,7 +50,7 @@ async def create_exam_paper(
                 correct_answer=qdata.get("correct_answer", ""),
                 explanation=qdata.get("explanation", ""),
                 source="MANUAL", review_status="APPROVED",
-                created_by=uuid.UUID(current_user.id),
+                created_by=current_user.id,
             )
             db.add(q)
             await db.flush()
@@ -81,7 +81,7 @@ async def get_my_papers(
     from app.models.answer_submission import AnswerSubmission
     from sqlalchemy import distinct
     subq = select(distinct(AnswerSubmission.exam_paper_id)).where(
-        AnswerSubmission.student_id == uuid.UUID(current_user.id)
+        AnswerSubmission.student_id == current_user.id
     ).subquery()
     query = select(ExamPaper).where(ExamPaper.id.in_(subq))
     if title:
@@ -101,7 +101,7 @@ async def get_my_papers(
         from sqlalchemy import func as _func
         sub_result = await db.execute(
             select(AnswerSubmission).where(
-                AnswerSubmission.student_id == uuid.UUID(current_user.id),
+                AnswerSubmission.student_id == current_user.id,
                 AnswerSubmission.exam_paper_id.in_(paper_ids)
             ).order_by(AnswerSubmission.submitted_at.desc())
         )
@@ -143,7 +143,7 @@ async def review_exam_paper(
     from app.models.answer_submission import AnswerSubmission
     sub_result = await db.execute(
         select(AnswerSubmission).where(
-            AnswerSubmission.student_id == uuid.UUID(current_user.id),
+            AnswerSubmission.student_id == current_user.id,
             AnswerSubmission.exam_paper_id == exam_paper_id,
         ).order_by(AnswerSubmission.submitted_at.desc()).limit(1)
     )
@@ -263,7 +263,7 @@ async def update_exam_paper(
 
     # Check if user is the creator or is an admin
     allowed = (
-        exam_paper.created_by == uuid.UUID(current_user.id)
+        exam_paper.created_by == current_user.id
         or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
         or current_user.user_type == "STUDENT"
     )
@@ -392,7 +392,7 @@ async def delete_exam_paper(
 
     # Check if user is the creator or is an admin
     allowed = (
-        exam_paper.created_by == uuid.UUID(current_user.id)
+        exam_paper.created_by == current_user.id
         or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
         or current_user.user_type == "STUDENT"
     )
@@ -430,7 +430,7 @@ async def update_submission_status(
     from app.models.answer_submission import AnswerSubmission
     sub_result = await db.execute(
         select(AnswerSubmission).where(
-            AnswerSubmission.student_id == uuid.UUID(current_user.id),
+            AnswerSubmission.student_id == current_user.id,
             AnswerSubmission.exam_paper_id == exam_paper_id,
         ).order_by(AnswerSubmission.submitted_at.desc()).limit(1)
     )
@@ -483,7 +483,7 @@ async def get_exam_papers(
             ExamPaper.grade_level['knowledge_points'].cast(String).ilike(f"%{keyword}%")
         ))
     if created_by == "me":
-        query = query.where(ExamPaper.created_by == uuid.UUID(current_user.id))
+        query = query.where(ExamPaper.created_by == current_user.id)
     query = query.offset(skip).limit(limit).order_by(ExamPaper.created_at.desc())
     result = await db.execute(query)
     papers = result.scalars().all()
@@ -541,7 +541,7 @@ async def add_question_to_exam_paper(
 
     # Check if user is the creator of the exam paper or is an admin
     allowed = (
-        exam_paper.created_by == uuid.UUID(current_user.id)
+        exam_paper.created_by == current_user.id
         or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
         or current_user.user_type == "STUDENT"
     )
@@ -596,7 +596,7 @@ async def remove_question_from_exam_paper(
 
     # Check if user is the creator of the exam paper or is an admin
     allowed = (
-        exam_paper.created_by == uuid.UUID(current_user.id)
+        exam_paper.created_by == current_user.id
         or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
         or current_user.user_type == "STUDENT"
     )
@@ -638,7 +638,7 @@ async def sort_questions_in_exam_paper(
 
     # Check if user is the creator of the exam paper or is an admin
     allowed = (
-        exam_paper.created_by == uuid.UUID(current_user.id)
+        exam_paper.created_by == current_user.id
         or current_user.user_type in ("SYS_ADMIN", "TEACHER", "QUESTION_ADMIN")
         or current_user.user_type == "STUDENT"
     )
