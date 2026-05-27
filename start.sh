@@ -209,8 +209,17 @@ for pkg in fastapi uvicorn sqlalchemy alembic pydantic asyncpg; do
 done
 if [ -n "$MISSING" ] || [ "$NEED_CREATE" = "1" ]; then
     warn "安装后端依赖..."
-    $PIP install -r "$BACKEND_DIR/requirements.txt" -q
-    $PIP install asyncpg email-validator "bcrypt==3.2.2" -q
+    # 优先尝试官方源，失败则自动切换阿里云镜像
+    $PIP install -r "$BACKEND_DIR/requirements.txt" -q \
+        --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+        || $PIP install -r "$BACKEND_DIR/requirements.txt" -q \
+            -i https://mirrors.aliyun.com/pypi/simple/ \
+            --trusted-host mirrors.aliyun.com
+    $PIP install asyncpg email-validator "bcrypt==3.2.2" -q \
+        --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+        || $PIP install asyncpg email-validator "bcrypt==3.2.2" -q \
+            -i https://mirrors.aliyun.com/pypi/simple/ \
+            --trusted-host mirrors.aliyun.com
     log "后端依赖安装完成"
 fi
 
