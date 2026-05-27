@@ -1,6 +1,5 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Numeric
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -9,9 +8,9 @@ from app.db.base import Base
 class OcrUpload(Base):
     __tablename__ = "ocr_uploads"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    student_id = Column(UUID, ForeignKey("students.id"), nullable=False, index=True)
-    exam_paper_id = Column(UUID, ForeignKey("exam_papers.id"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    student_id = Column(String(36), ForeignKey("students.id"), nullable=False, index=True)
+    exam_paper_id = Column(String(36), ForeignKey("exam_papers.id"), nullable=False, index=True)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_size = Column(Integer, nullable=False)
@@ -30,7 +29,7 @@ class OcrUpload(Base):
     # Table constraints
     __table_args__ = (
         CheckConstraint("file_size > 0", name='check_ocr_uploads_file_size_positive'),
-        CheckConstraint("status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')", name='check_ocr_uploads_status'),
+        CheckConstraint("status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'NEEDS_REVIEW')", name='check_ocr_uploads_status'),
     )
 
     def __repr__(self):

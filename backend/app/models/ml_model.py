@@ -1,6 +1,5 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, BigInteger, UniqueConstraint
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -9,7 +8,7 @@ from app.db.base import Base
 class MlModel(Base):
     __tablename__ = "ml_models"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(100), nullable=False)
     version = Column(String(50), nullable=False)
     model_type = Column(String(30), nullable=False)
@@ -20,7 +19,7 @@ class MlModel(Base):
     is_active = Column(Boolean, nullable=False, default=False)
     is_deprecated = Column(Boolean, nullable=False, default=False)
     performance_metrics = Column(JSON, nullable=True)
-    created_by = Column(UUID, ForeignKey("admins.id"), nullable=False, index=True)
+    created_by = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     deployed_at = Column(DateTime(timezone=True), nullable=True)

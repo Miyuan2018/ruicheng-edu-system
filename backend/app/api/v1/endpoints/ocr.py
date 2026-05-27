@@ -1,4 +1,8 @@
 import uuid
+import os
+import io
+import httpx
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,8 +10,10 @@ from sqlalchemy import select, update, delete
 from app.db.session import get_db
 from app.models.ocr_upload import OcrUpload
 from app.schemas.ocr import OcrUploadCreate, OcrUploadResponse, OcrUploadUpdate
+from app.services.ocr_service import process_image, TESSERACT_AVAILABLE
+from app.core.security import get_current_user, require_role
+from pydantic import BaseModel
 from typing import List, Optional
-from app.core.security import get_current_user
 
 router = APIRouter()
 
@@ -15,48 +21,49 @@ router = APIRouter()
 @router.post("/upload/file")
 async def upload_ocr_file(
     file: UploadFile = File(...),
-    subject: str = Form("数学"),
+    exam_paper_id: str = Form(None),
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Accept image upload (multipart), store OCR record, return mock result."""
+    """Accept image upload (multipart), run Tesseract OCR, store record."""
     if current_user.user_type != "STUDENT":
         raise HTTPException(status_code=403, detail="仅学生可用")
 
-    import base64, random
     contents = await file.read()
-    image_b64 = base64.b64encode(contents).decode("utf-8")
+    file_path = f"/tmp/ocr/{uuid.uuid4().hex}.jpg"
+
+    # Run OCR processing
+    result = await process_image(contents, file_path, file.filename or "upload.jpg")
 
     ocr_upload = OcrUpload(
         student_id=uuid.UUID(current_user.id),
+        exam_paper_id=uuid.UUID(exam_paper_id) if exam_paper_id else uuid.UUID(current_user.id),
         file_name=file.filename or "upload.jpg",
-        file_path=f"/tmp/ocr/{uuid.uuid4().hex}.jpg",
+        file_path=file_path,
         file_size=len(contents),
         file_type=file.content_type or "image/jpeg",
-        status="COMPLETED",
-        ocr_engine="mock-v2.3",
-        confidence_score=0.85 + random.random() * 0.1,
-        processed_text=f"识别完成：共5题\n选择题3题、填空题2题",
+        status=result["status"],
+        ocr_engine=result.get("engine", "tesseract") if TESSERACT_AVAILABLE else "unavailable",
+        confidence_score=result.get("confidence"),
+        processed_text=result.get("raw_text", "")[:4000],
         structured_data={
-            "questions": [
-                {"title": "计算: (-5)+12", "type": "FILL_BLANK", "student_answer": "7", "correct": True},
-                {"title": "y=2x+1的斜率", "type": "FILL_BLANK", "student_answer": "3", "correct": False, "correct_answer": "2"},
-                {"title": "下列哪个是二次函数？", "type": "SINGLE_CHOICE", "options": ["A. y=2x+1", "B. y=x²", "C. y=1/x", "D. y=|x|"], "student_answer": "A", "correct": False, "correct_answer": "B"},
-                {"title": "等腰三角形底角相等（判断）", "type": "SINGLE_CHOICE", "options": ["A. 正确", "B. 错误"], "student_answer": "A", "correct": True},
-                {"title": "证明: 三角形内角和为180°", "type": "SUBJECTIVE", "student_answer": "作图...", "correct": None},
-            ],
-            "total_score": 100,
-            "estimated_score": 60,
-            "error_count": 2,
+            "questions": result.get("questions", []),
+            "total_questions": result.get("total_questions", 0),
+            "error": result.get("error"),
         },
     )
     db.add(ocr_upload)
     await db.commit()
     await db.refresh(ocr_upload)
+
     return {
-        "ok": True, "upload_id": str(ocr_upload.id),
-        "status": "COMPLETED",
+        "ok": result["status"] != "FAILED",
+        "upload_id": str(ocr_upload.id),
+        "status": result["status"],
+        "confidence": result.get("confidence"),
+        "needs_review": result["status"] == "NEEDS_REVIEW",
         "result": ocr_upload.structured_data,
+        "tesseract_installed": TESSERACT_AVAILABLE,
     }
 
 
@@ -67,7 +74,7 @@ async def upload_ocr_image(
     db: AsyncSession = Depends(get_db),
 ):
     # Only students can upload OCR images
-    if current_user.role != "STUDENT":
+    if current_user.user_type != "STUDENT":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -100,7 +107,7 @@ async def get_ocr_status(
         )
 
     # Check if user is the owner of the OCR upload or is a teacher/admin
-    if ocr_upload.student_id != current_user.id and current_user.role not in ["TEACHER", "ADMIN"]:
+    if ocr_upload.student_id != current_user.id and current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -124,7 +131,7 @@ async def get_ocr_result(
         )
 
     # Check if user is the owner of the OCR upload or is a teacher/admin
-    if ocr_upload.student_id != current_user.id and current_user.role not in ["TEACHER", "ADMIN"]:
+    if ocr_upload.student_id != current_user.id and current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -136,11 +143,12 @@ async def get_ocr_result(
 @router.get("", response_model=List[OcrUploadResponse])
 async def get_ocr_uploads(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     status: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    limit = min(limit, 200)
     query = select(OcrUpload)
 
     # Apply filters
@@ -148,7 +156,7 @@ async def get_ocr_uploads(
         query = query.where(OcrUpload.status == status)
 
     # Students can only see their own uploads, teachers/admins can see all
-    if current_user.role == "STUDENT":
+    if current_user.user_type == "STUDENT":
         query = query.where(OcrUpload.student_id == current_user.id)
 
     # Apply pagination
@@ -167,7 +175,7 @@ async def update_ocr_upload(
     db: AsyncSession = Depends(get_db),
 ):
     # Only students can update their own OCR uploads
-    if current_user.role != "STUDENT":
+    if current_user.user_type != "STUDENT":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -205,7 +213,7 @@ async def delete_ocr_upload(
     db: AsyncSession = Depends(get_db),
 ):
     # Only students can delete their own OCR uploads
-    if current_user.role != "STUDENT":
+    if current_user.user_type != "STUDENT":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -231,17 +239,55 @@ async def delete_ocr_upload(
     return None
 
 
+class PaddleOCRTestRequest(BaseModel):
+    endpoint: str
+
+
+@router.post("/test-paddleocr")
+async def test_paddleocr(
+    req: PaddleOCRTestRequest,
+    current_user=Depends(require_role("SYS_ADMIN")),
+):
+    """Test PaddleOCR endpoint connectivity by sending a minimal test image."""
+    # Create a 1x1 white pixel PNG as test image
+    try:
+        from PIL import Image
+        img = Image.new("RGB", (1, 1), color=(255, 255, 255))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        test_bytes = buf.getvalue()
+    except ImportError:
+        # Fallback: minimal valid PNG bytes (1x1 white pixel)
+        test_bytes = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=3.0)) as client:
+            r = await client.post(
+                req.endpoint,
+                files={"image": ("test.png", test_bytes, "image/png")},
+            )
+            if r.status_code == 200:
+                return {"ok": True, "message": "PaddleOCR 连接成功"}
+            return {"ok": False, "message": f"PaddleOCR 返回 {r.status_code}: {r.text[:200]}"}
+    except httpx.ConnectError:
+        return {"ok": False, "message": f"无法连接 PaddleOCR ({req.endpoint})"}
+    except httpx.TimeoutException:
+        return {"ok": False, "message": f"连接 PaddleOCR 超时 ({req.endpoint})"}
+    except Exception as e:
+        return {"ok": False, "message": f"连接异常: {str(e)}"}
+
+
 @router.get("/config")
 async def get_ocr_config(
     current_user = Depends(get_current_user),
 ):
-    # TODO: Implement OCR configuration retrieval
-    # For now, return a placeholder
+    from app.services.config_service import load_config
+    ocr_cfg = load_config().get("ocr", {})
     return {
-        "engine": "paddleocr",
-        "lang": "ch",
-        "use_gpu": True,
-        "confidence_threshold": 0.5,
+        "engine": ocr_cfg.get("ocr_engine", "tesseract"),
+        "paddleocr_endpoint": ocr_cfg.get("paddleocr_endpoint", ""),
+        "max_concurrent_ocr": ocr_cfg.get("max_concurrent_ocr", 5),
+        "confidence_threshold": ocr_cfg.get("ocr_confidence_threshold", 0.7),
     }
 
 
@@ -251,7 +297,7 @@ async def update_ocr_config(
     current_user = Depends(get_current_user),
 ):
     # Only admins can update OCR configuration
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -284,3 +330,130 @@ async def get_batch_ocr_status(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Batch status functionality not yet implemented",
     )
+
+
+# ── OCR 答题提交 ──────────────────────────────────────────
+
+class OcrQuestionItem(BaseModel):
+    title: str
+    question_type: str = "SUBJECTIVE"
+    options: list | None = None
+    correct_answer: str | None = None
+    student_answer: str | None = None
+    score: int = 5
+
+
+class OcrSubmitRequest(BaseModel):
+    exam_paper_id: str
+    ocr_upload_id: str | None = None
+    questions: list[OcrQuestionItem]
+
+
+@router.post("/submit-answers")
+async def submit_ocr_answers(
+    req: OcrSubmitRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """将 OCR 识别的题目保存到数据库，并创建答题提交记录。"""
+    import json
+    from app.models.question import Question
+    from app.models.answer_submission import AnswerSubmission
+    from app.models.answer_detail import AnswerDetail
+    from app.models.exam_paper import ExamPaper
+
+    if current_user.user_type != "STUDENT":
+        raise HTTPException(403, detail="仅学生可提交答案")
+
+    # 验证试卷存在
+    paper_result = await db.execute(select(ExamPaper).where(ExamPaper.id == req.exam_paper_id))
+    paper = paper_result.scalar_one_or_none()
+    if not paper:
+        raise HTTPException(404, detail="试卷不存在")
+
+    now = datetime.now(timezone.utc)
+    uid = uuid.UUID(current_user.id)
+
+    # 1. 创建 AnswerSubmission
+    submission = AnswerSubmission(
+        exam_paper_id=uuid.UUID(req.exam_paper_id),
+        student_id=uid,
+        submission_type="OCR",
+        ocr_upload_id=uuid.UUID(req.ocr_upload_id) if req.ocr_upload_id else None,
+        status="GRADED",
+        submitted_at=now,
+    )
+    db.add(submission)
+    await db.flush()
+
+    # 2. 保存 OCR 识别的题目 + 创建答题详情
+    total_score = 0.0
+    total_max = 0.0
+    for item in req.questions:
+        # 构建 correct_answer JSON
+        ca_value = item.correct_answer or ""
+        if item.question_type in ("SINGLE_CHOICE", "MULTIPLE_CHOICE") and item.options:
+            ca_json = json.dumps({
+                "options": [{"label": chr(65 + i), "text": o} for i, o in enumerate(item.options)],
+                "correct_answer": ca_value,
+            }, ensure_ascii=False)
+        elif item.question_type == "FILL_BLANK":
+            ca_json = json.dumps({"options": None, "correct_answer": [ca_value] if ca_value else []}, ensure_ascii=False)
+        else:
+            ca_json = json.dumps({"options": None, "correct_answer": {"keywords": [ca_value] if ca_value else [], "max_score": item.score}}, ensure_ascii=False)
+
+        # 保存 Question
+        q = Question(
+            title=item.title,
+            question_type=item.question_type,
+            difficulty="MEDIUM",
+            subject=paper.subject if hasattr(paper, 'subject') else "数学",
+            score=item.score,
+            correct_answer=ca_json,
+            source="OCR_UPLOAD",
+            review_status="APPROVED",
+            created_by=uid,
+        )
+        db.add(q)
+        await db.flush()
+
+        # 创建 AnswerDetail
+        detail = AnswerDetail(
+            answer_submission_id=submission.id,
+            question_id=q.id,
+            student_answer=item.student_answer,
+        )
+        db.add(detail)
+        total_max += item.score
+
+    await db.commit()
+
+    # 3. 自动评分
+    try:
+        from app.api.v1.endpoints.answers import _grade_submission
+        async with db.begin():
+            await _grade_submission(submission.id, db)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("OCR grading failed")
+
+    # 4. 生成错题本
+    try:
+        await db.refresh(submission)
+        pct = submission.percentage
+        if pct is not None and float(pct) < 100:
+            from app.services.mistake_service import generate_mistake_book
+            await generate_mistake_book(current_user.id, db, exam_paper_id=req.exam_paper_id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Mistake book generation failed")
+
+    await db.refresh(submission)
+    return {
+        "ok": True,
+        "submission_id": str(submission.id),
+        "question_count": len(req.questions),
+        "total_score": float(submission.total_score or 0),
+        "percentage": float(submission.percentage or 0),
+        "status": submission.status,
+    }

@@ -1,7 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Table
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -11,9 +10,9 @@ from app.db.base import Base
 exam_paper_questions = Table(
     'exam_paper_questions',
     Base.metadata,
-    Column('id', UUID, primary_key=True, default=uuid.uuid4),
-    Column('exam_paper_id', UUID, ForeignKey('exam_papers.id'), nullable=False, index=True),
-    Column('question_id', UUID, ForeignKey('questions.id'), nullable=False, index=True),
+    Column('id', String(36), primary_key=True, default=lambda: str(uuid.uuid4())),
+    Column('exam_paper_id', String(36), ForeignKey('exam_papers.id'), nullable=False, index=True),
+    Column('question_id', String(36), ForeignKey('questions.id'), nullable=False, index=True),
     Column('position', Integer, nullable=False, default=0),  # For ordering questions in the exam
     Column('score', Integer, nullable=False, default=0),     # Points for this question in the exam
     CheckConstraint('position >= 0', name='check_exam_paper_questions_position_non_negative'),
@@ -24,7 +23,7 @@ exam_paper_questions = Table(
 class ExamPaper(Base):
     __tablename__ = "exam_papers"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     subject = Column(String(50), nullable=True, index=True)
@@ -34,7 +33,7 @@ class ExamPaper(Base):
     duration_minutes = Column(Integer, nullable=True)  # Total exam duration in minutes
     subtitle = Column(String(200), nullable=True)
     instructions = Column(Text, nullable=True)
-    created_by = Column(UUID, ForeignKey("admins.id"), nullable=False, index=True)
+    created_by = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 

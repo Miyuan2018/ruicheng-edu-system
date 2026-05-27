@@ -1,59 +1,66 @@
-import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, message, Steps, Button, Space, Row, Col, Card, Table, Tag } from 'antd';
+import { useEffect, useState } from 'react';
+import { Modal, Form, Input, Select, InputNumber, message, Steps, Button, Space, Row, Col, Card, Tag } from 'antd';
 import apiClient from '../../api/client';
 import PaperTemplatePreview from './PaperTemplatePreview';
 import { useReferenceValues, toLabelMap, toSelectOptions } from '../../hooks/useReferenceValues';
 
-export default function PaperEditModal(props) {
+interface PaperEditModalProps {
+  open: boolean;
+  paper: any;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export default function PaperEditModal(props: PaperEditModalProps) {
   const { 'question-types': qtypes, 'difficulty-levels': difficultyLevels, 'paper-statuses': paperStatuses, 'grade-levels': grades } = useReferenceValues();
-  var open = props.open;
-  var paper = props.paper;
-  var onClose = props.onClose;
-  var onSuccess = props.onSuccess;
-  var form = Form.useForm()[0];
-  var loadingState = useState(false);
-  var loading = loadingState[0];
-  var gradeScopeState = useState('grade_comprehensive');
-  var gradeScope = gradeScopeState[0];
-  var setGradeScope = gradeScopeState[1];
-  var setLoading = loadingState[1];
-  var subjectOptionsState = useState([]);
-  var subjectOptions = subjectOptionsState[0];
-  var setSubjectOptions = subjectOptionsState[1];
+  const open = props.open;
+  const paper = props.paper;
+  const onClose = props.onClose;
+  const onSuccess = props.onSuccess;
+  const form = Form.useForm()[0];
+  const loadingState = useState(false);
+  const loading = loadingState[0];
+  const gradeScopeState = useState('grade_comprehensive');
+  const gradeScope = gradeScopeState[0];
+  const setGradeScope = gradeScopeState[1];
+  const setLoading = loadingState[1];
+  const subjectOptionsState = useState<any[]>([]);
+  const subjectOptions = subjectOptionsState[0];
+  const setSubjectOptions = subjectOptionsState[1];
   useEffect(function () {
     apiClient.get('/subjects/all').then(function (res) {
-      setSubjectOptions((res.data || []).filter(function (s) { return s.is_active; }).map(function (s) { return { value: s.name, label: s.name }; }));
+      setSubjectOptions((res.data || []).filter(function (s: any) { return s.is_active; }).map(function (s: any) { return { value: s.name, label: s.name }; }));
     }).catch(function () {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  var stepState = useState(0);
-  var step = stepState[0];
-  var setStep = stepState[1];
-  var isEdit = !!paper;
+  const stepState = useState(0);
+  const step = stepState[0];
+  const setStep = stepState[1];
+  const isEdit = !!paper;
 
-  var distState = useState({ SINGLE_CHOICE: 5, MULTIPLE_CHOICE: 2, FILL_BLANK: 3, SUBJECTIVE: 1 });
-  var dist = distState[0];
-  var setDist = distState[1];
-  var ratioState = useState({ EASY: 40, MEDIUM: 40, HARD: 20 });
-  var diffRatio = ratioState[0];
-  var setDiffRatio = ratioState[1];
-  var availQuestionsState = useState([]);
-  var availQuestions = availQuestionsState[0];
-  var setAvailQuestions = availQuestionsState[1];
-  var selectedIdsState = useState([]);
-  var selectedIds = selectedIdsState[0];
-  var setSelectedIds = selectedIdsState[1];
-  var previewQuestionsState = useState([]);
-  var diffFilterMapState = useState({}); var diffFilterMap = diffFilterMapState[0]; var setDiffFilterMap = diffFilterMapState[1];
-  var previewQuestions = previewQuestionsState[0];
-  var setPreviewQuestions = previewQuestionsState[1];
-  var selectModeState = useState('manual');
-  var selectMode = selectModeState[0];
-  var setSelectMode = selectModeState[1];
-  var stepContent;
+  const distState = useState<Record<string, number>>({ SINGLE_CHOICE: 5, MULTIPLE_CHOICE: 2, FILL_BLANK: 3, SUBJECTIVE: 1 });
+  const dist = distState[0];
+  const setDist = distState[1];
+  const ratioState = useState<Record<string, number>>({ EASY: 40, MEDIUM: 40, HARD: 20 });
+  const diffRatio = ratioState[0];
+  const setDiffRatio = ratioState[1];
+  const availQuestionsState = useState<any[]>([]);
+  const availQuestions = availQuestionsState[0];
+  const setAvailQuestions = availQuestionsState[1];
+  const selectedIdsState = useState<any[]>([]);
+  const selectedIds = selectedIdsState[0];
+  const setSelectedIds = selectedIdsState[1];
+  const previewQuestionsState = useState<any[]>([]);
+  const diffFilterMapState = useState<Record<string, any>>({}); const diffFilterMap = diffFilterMapState[0]; const setDiffFilterMap = diffFilterMapState[1];
+  const previewQuestions = previewQuestionsState[0];
+  const setPreviewQuestions = previewQuestionsState[1];
+  const selectModeState = useState('manual');
+  const setSelectMode = selectModeState[1];
+  let stepContent;
   // 保存表单值，切换 step 后 Form 卸载时不会丢失
-  var savedFormValuesState = useState({});
-  var savedFormValues = savedFormValuesState[0];
-  var setSavedFormValues = savedFormValuesState[1];
+  const savedFormValuesState = useState<Record<string, any>>({});
+  const savedFormValues = savedFormValuesState[0];
+  const setSavedFormValues = savedFormValuesState[1];
 
   useEffect(function () {
     if (open) {
@@ -61,27 +68,28 @@ export default function PaperEditModal(props) {
       if (paper) form.setFieldsValue(paper);
       else form.resetFields();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, paper]);
 
-  var totalQuestions = 0;
-  Object.keys(dist).forEach(function (k) { totalQuestions = totalQuestions + dist[k]; });
+  let totalQuestions = 0;
+  Object.keys(dist).forEach(function (k: string) { totalQuestions = totalQuestions + dist[k]; });
 
   async function handleSubmit() {
     if (step === 0) {
       await form.validateFields();
-      var fv = form.getFieldsValue();
+      const fv = form.getFieldsValue();
       setSavedFormValues(fv);
       setStep(1);
       return;
     }
-    var values = savedFormValues;
+    const values = savedFormValues;
     setLoading(true);
     try {
-      var payload = {
+      const payload = {
         title: values.title,
         subtitle: values.subtitle || '',
         subject: values.subject,
-        grade_level: { scope: values.grade_scope || 'grade_comprehensive', grades: values.grade_level || [], chapter: values.chapter || undefined, knowledge_points: values.knowledge_points_input ? values.knowledge_points_input.split(',').map(function(s) { return s.trim(); }) : undefined },
+        grade_level: { scope: values.grade_scope || 'grade_comprehensive', grades: values.grade_level || [], chapter: values.chapter || undefined, knowledge_points: values.knowledge_points_input ? values.knowledge_points_input.split(',').map(function(s: any) { return s.trim(); }) : undefined },
         total_score: values.total_score,
         duration_minutes: values.duration_minutes,
         status: values.status,
@@ -96,38 +104,37 @@ export default function PaperEditModal(props) {
         message.success('更新成功');
       } else {
         // Auto-select: batch query all questions by subject, then filter in-memory
-        var picked = [];
+        const picked: any[] = [];
+        let pool: any[] = [];
         try {
-          var allResp = await apiClient.get('/questions', { params: { subject: payload.subject, limit: 200 } });
-          var pool = Array.isArray(allResp.data) ? allResp.data : (allResp.data.items || []);
+          const allResp = await apiClient.get('/questions', { params: { subject: payload.subject, limit: 200 } });
+          pool = Array.isArray(allResp.data) ? allResp.data : (allResp.data.items || []);
           if (pool.length === 0) { message.warning('题库中没有' + (payload.subject || '') + '学科的试题，请先录入试题'); setLoading(false); return; }
 
-          var keys = Object.keys(dist);
-          for (var ki = 0; ki < keys.length; ki++) {
-            var qtype = keys[ki];
-            var count = dist[qtype];
+          const keys = Object.keys(dist);
+          for (let ki = 0; ki < keys.length; ki++) {
+            const qtype = keys[ki];
+            const count = dist[qtype];
             if (count <= 0) continue;
-            var easyCount = Math.round(count * diffRatio.EASY / 100);
-            var mediumCount = Math.round(count * diffRatio.MEDIUM / 100);
-            var hardCount = count - easyCount - mediumCount;
-            var typePool = pool.filter(function (q) { return q.question_type === qtype; });
+            const easyCount = Math.round(count * diffRatio.EASY / 100);
+            const mediumCount = Math.round(count * diffRatio.MEDIUM / 100);
+            const hardCount = count - easyCount - mediumCount;
+            const typePool = pool.filter(function (q: any) { return q.question_type === qtype; });
             if (typePool.length < count) { message.warning(toLabelMap(qtypes)[qtype] + '题库中仅有' + typePool.length + '道，需要' + count + '道，请调整分布'); }
-            var diffs = [{ diff: 'EASY', cnt: easyCount }, { diff: 'MEDIUM', cnt: mediumCount }, { diff: 'HARD', cnt: hardCount }];
-            var typePicked = 0;
-            for (var di = 0; di < diffs.length; di++) {
-              var d = diffs[di];
+            const diffs = [{ diff: 'EASY', cnt: easyCount }, { diff: 'MEDIUM', cnt: mediumCount }, { diff: 'HARD', cnt: hardCount }];
+            for (let di = 0; di < diffs.length; di++) {
+              const d = diffs[di];
               if (d.cnt <= 0) continue;
-              var matched = typePool.filter(function (q) { return q.difficulty === d.diff && picked.indexOf(q) < 0; });
-              for (var qi = 0; qi < matched.length && qi < d.cnt; qi++) {
+              const matched = typePool.filter(function (q: any) { return q.difficulty === d.diff && picked.indexOf(q) < 0; });
+              for (let qi = 0; qi < matched.length && qi < d.cnt; qi++) {
                 picked.push(matched[qi]);
-                typePicked++;
               }
               if (matched.length < d.cnt) {
                 message.warning(toLabelMap(qtypes)[qtype] + toLabelMap(difficultyLevels)[d.diff] + '题库不足：需要' + d.cnt + '道，仅有' + matched.length + '道');
               }
             }
           }
-        } catch (e) { message.error('自动选题查询失败'); setLoading(false); return; }
+        } catch { message.error('自动选题查询失败'); setLoading(false); return; }
         if (picked.length === 0) { message.error('未找到匹配的试题，请调整选题条件或先录入试题'); setLoading(false); return; }
         message.success('自动选题完成：共' + picked.length + '道，请在下方确认或调整');
         setSelectedIds(picked.map(function (q) { return q.id; }));
@@ -135,10 +142,11 @@ export default function PaperEditModal(props) {
         setSelectMode('auto');
         setStep(2);
       }
-    } catch (e) {
-      var detail = '操作失败';
-      if (e && e.response && e.response.data) {
-        detail = e.response.data.detail || JSON.stringify(e.response.data);
+    } catch (e: unknown) {
+      const err = e as any;
+      let detail = '操作失败';
+      if (err && err.response && err.response.data) {
+        detail = err.response.data.detail || JSON.stringify(err.response.data);
       }
       message.error(detail);
     } finally {
@@ -147,81 +155,108 @@ export default function PaperEditModal(props) {
   }
 
   function goManualSelect() {
-    var values = savedFormValues;
+    const values = savedFormValues;
     setSelectedIds([]);
     setSelectMode('manual');
     setStep(2);
     apiClient.get('/questions', { params: { subject: values.subject, limit: 100 } }).then(function (resp) {
-      var data = resp.data;
+      const data = resp.data;
       setAvailQuestions(Array.isArray(data) ? data : (data.items || []));
     }).catch(function () { message.error('加载试题失败'); });
   }
 
   async function handleManualCreate() {
-    var questions = previewQuestions;
+    const questions = previewQuestions;
     if (questions.length === 0) { message.warning('请至少选择一道试题'); return; }
-    var values = savedFormValues;
+    const values = savedFormValues;
     setLoading(true);
     try {
-      var payload = { title: values.title, subject: values.subject, grade_level: { scope: values.grade_scope || 'grade_comprehensive', grades: values.grade_level || [], chapter: values.chapter || undefined, knowledge_points: values.knowledge_points_input ? values.knowledge_points_input.split(',').map(function(s) { return s.trim(); }) : undefined },
+      const payload = { title: values.title, subject: values.subject, grade_level: { scope: values.grade_scope || 'grade_comprehensive', grades: values.grade_level || [], chapter: values.chapter || undefined, knowledge_points: values.knowledge_points_input ? values.knowledge_points_input.split(',').map(function(s: any) { return s.trim(); }) : undefined },
         total_score: values.total_score, duration_minutes: values.duration_minutes,
         status: values.status, subtitle: values.subtitle || "", description: values.description, instructions: values.notes || "" };
-      var resp = await apiClient.post('/exam-papers', payload);
-      var pid = resp.data.id;
+      const resp = await apiClient.post('/exam-papers', payload);
+      const pid = resp.data.id;
       if (!pid) { message.error('试卷创建失败'); setLoading(false); return; }
-      var scorePerQ = Math.round((values.total_score || 100) / Math.max(questions.length, 1));
-      for (var si = 0; si < questions.length; si++) {
+      const scorePerQ = Math.round((values.total_score || 100) / Math.max(questions.length, 1));
+      for (let si = 0; si < questions.length; si++) {
         try {
           await apiClient.post('/exam-papers/' + pid + '/questions', {
             question_id: questions[si].id, position: si + 1, score: questions[si].score || scorePerQ
           });
-        } catch (e) { /* skip individual question errors */ }
+        } catch { /* skip individual question errors */ }
       }
       message.success('试卷创建成功，已添加 ' + questions.length + ' 道试题');
       onSuccess();
-    } catch (e) {
-      var detail = '操作失败';
-      if (e && e.response && e.response.data) { detail = e.response.data.detail || JSON.stringify(e.response.data); }
+    } catch (e: unknown) {
+      const err = e as any;
+      let detail = '操作失败';
+      if (err && err.response && err.response.data) { detail = err.response.data.detail || JSON.stringify(err.response.data); }
       message.error(detail);
     } finally { setLoading(false); }
   }
 
-  var statsRow = React.createElement(Row, { gutter: 24 },
-    React.createElement(Col, { span: 6 }, React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('b', null, '总题数'), React.createElement('div', { style: { fontSize: 24 } }, totalQuestions))),
-    React.createElement(Col, { span: 6 }, React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('b', null, '总分'), React.createElement('div', { style: { fontSize: 24 } }, savedFormValues.total_score || 100))),
-    React.createElement(Col, { span: 6 }, React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('b', null, '每题均分'), React.createElement('div', { style: { fontSize: 24 } }, Math.round((savedFormValues.total_score || 100) / Math.max(totalQuestions, 1))))),
-    React.createElement(Col, { span: 6 }, React.createElement('div', { style: { textAlign: 'center' } }, React.createElement('b', null, '时长'), React.createElement('div', { style: { fontSize: 24 } }, (savedFormValues.duration_minutes || 60) + '分钟')))
+  const statsRow = (
+    <Row gutter={24}>
+      <Col span={6}>
+        <div style={{ textAlign: 'center' }}>
+          <b>总题数</b>
+          <div style={{ fontSize: 24 }}>{totalQuestions}</div>
+        </div>
+      </Col>
+      <Col span={6}>
+        <div style={{ textAlign: 'center' }}>
+          <b>总分</b>
+          <div style={{ fontSize: 24 }}>{savedFormValues.total_score || 100}</div>
+        </div>
+      </Col>
+      <Col span={6}>
+        <div style={{ textAlign: 'center' }}>
+          <b>每题均分</b>
+          <div style={{ fontSize: 24 }}>{Math.round((savedFormValues.total_score || 100) / Math.max(totalQuestions, 1))}</div>
+        </div>
+      </Col>
+      <Col span={6}>
+        <div style={{ textAlign: 'center' }}>
+          <b>时长</b>
+          <div style={{ fontSize: 24 }}>{(savedFormValues.duration_minutes || 60) + '分钟'}</div>
+        </div>
+      </Col>
+    </Row>
   );
 
-  var typeCards = Object.keys(toLabelMap(qtypes)).map(function (key) {
-    return React.createElement(Col, { span: 6, key: key },
-      React.createElement(Card, { style: { textAlign: 'center' } },
-        React.createElement('div', { style: { fontWeight: 'bold', marginBottom: 8 } }, toLabelMap(qtypes)[key]),
-        React.createElement(InputNumber, { min: 0, max: 50, value: dist[key], onChange: function (v) { var nd = {}; Object.keys(dist).forEach(function (k) { nd[k] = k === key ? (v || 0) : dist[k]; }); setDist(nd); }, style: { width: 80 } }),
-        React.createElement('div', { style: { color: '#999', fontSize: 12, marginTop: 4 } }, '道')
-      )
+  const typeCards = Object.keys(toLabelMap(qtypes)).map(function (key: string) {
+    return (
+      <Col span={6} key={key}>
+        <Card style={{ textAlign: 'center' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 8 }}>{toLabelMap(qtypes)[key]}</div>
+          <InputNumber min={0} max={50} value={dist[key]} onChange={function (v) { const nd: Record<string, number> = {}; Object.keys(dist).forEach(function (k: string) { nd[k] = k === key ? (v || 0) as number : dist[k]; }); setDist(nd); }} style={{ width: 80 }} />
+          <div style={{ color: '#999', fontSize: 12, marginTop: 4 }}>道</div>
+        </Card>
+      </Col>
     );
   });
 
-  var diffSliders = ['EASY', 'MEDIUM', 'HARD'].map(function (diff) {
-    var label = diff === 'EASY' ? '简单' : diff === 'MEDIUM' ? '中等' : '困难';
-    return React.createElement(Col, { span: 8, key: diff },
-      React.createElement('div', { style: { textAlign: 'center', marginBottom: 4 } }, label),
-      React.createElement(InputNumber, {
-        value: diffRatio[diff], min: 0, max: 100, style: { width: '100%' },
-        onChange: function (v) { if (v !== null && v >= 0 && v <= 100) { var nr = {}; Object.keys(diffRatio).forEach(function (k) { nr[k] = k === diff ? v : diffRatio[k]; }); setDiffRatio(nr); } }
-      }),
-      React.createElement('div', { style: { textAlign: 'center', color: '#999' } }, diffRatio[diff] + '%')
+  const diffSliders = ['EASY', 'MEDIUM', 'HARD'].map(function (diff: string) {
+    const label = diff === 'EASY' ? '简单' : diff === 'MEDIUM' ? '中等' : '困难';
+    return (
+      <Col span={8} key={diff}>
+        <div style={{ textAlign: 'center', marginBottom: 4 }}>{label}</div>
+        <InputNumber
+          value={diffRatio[diff]} min={0} max={100} style={{ width: '100%' }}
+          onChange={function (v) { const numV = v as number; if (v !== null && numV >= 0 && numV <= 100) { const nr: Record<string, number> = {}; Object.keys(diffRatio).forEach(function (k: string) { nr[k] = k === diff ? numV : diffRatio[k]; }); setDiffRatio(nr); } }}
+        />
+        <div style={{ textAlign: 'center', color: '#999' }}>{diffRatio[diff] + '%'}</div>
+      </Col>
     );
   });
 
-  var diffSummary = ['EASY', 'MEDIUM', 'HARD'].map(function (diff) {
-    var cnt = Math.round(totalQuestions * diffRatio[diff] / 100);
-    var label = diff === 'EASY' ? '简单' : diff === 'MEDIUM' ? '中等' : '困难';
-    return React.createElement(Col, { span: 8, key: 's' + diff, style: { textAlign: 'center', color: '#999', fontSize: 13 } }, '约 ' + cnt + ' 道' + label + '题');
+  const diffSummary = ['EASY', 'MEDIUM', 'HARD'].map(function (diff: string) {
+    const cnt = Math.round(totalQuestions * diffRatio[diff] / 100);
+    const label = diff === 'EASY' ? '简单' : diff === 'MEDIUM' ? '中等' : '困难';
+    return <Col span={8} key={'s' + diff} style={{ textAlign: 'center', color: '#999', fontSize: 13 }}>{'约 ' + cnt + ' 道' + label + '题'}</Col>;
   });
 
-  function goToPreview(questions) {
+  function goToPreview(questions: any[]) {
     setPreviewQuestions(questions);
     setStep(3);
   }
@@ -232,265 +267,308 @@ export default function PaperEditModal(props) {
     else setStep(Math.max(0, step - 1));
   }
 
-  var footerButtons;
+  let footerButtons;
   if (step === 0) {
-    footerButtons = React.createElement(Space, null,
-      React.createElement(Button, { onClick: onClose }, '取消'),
-      React.createElement(Button, { type: 'primary', onClick: function () { handleSubmit(); } }, '下一步：选题方式')
+    footerButtons = (
+      <Space>
+        <Button onClick={onClose}>取消</Button>
+        <Button type="primary" onClick={function () { handleSubmit(); }}>下一步：选题方式</Button>
+      </Space>
     );
-    stepContent = React.createElement(Form, { form: form, layout: 'vertical' },
-      // ── 基本信息 ──
-      React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 } }, '基本信息'),
-      React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 16 },
-          React.createElement(Form.Item, { name: 'title', label: '试卷名称', rules: [{ required: true, message: '请输入试卷名称' }] },
-            React.createElement(Input, { placeholder: '如：八年级数学期中测试' })
-          )
-        ),
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'status', label: '状态', initialValue: 'DRAFT' },
-            React.createElement(Select, { options: toSelectOptions(paperStatuses) })
-          )
-        )
-      ),
-      React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'subject', label: '学科', rules: [{ required: true, message: '请选择学科' }] },
-            React.createElement(Select, { placeholder: '选择学科', options: subjectOptions })
-          )
-        ),
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'total_score', label: '总分', initialValue: 100 },
-            React.createElement(InputNumber, { min: 1, max: 300, style: { width: '100%' } })
-          )
-        ),
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'duration_minutes', label: '时长(分钟)', initialValue: 60 },
-            React.createElement(InputNumber, { min: 1, max: 300, style: { width: '100%' } })
-          )
-        )
-      ),
+    stepContent = (
+      <Form form={form} layout="vertical">
+        {/* 基本信息 */}
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>基本信息</div>
+        <Row gutter={16}>
+          <Col span={16}>
+            <Form.Item name="title" label="试卷名称" rules={[{ required: true, message: '请输入试卷名称' }]}>
+              <Input placeholder="如：八年级数学期中测试" />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="status" label="状态" initialValue="DRAFT">
+              <Select options={toSelectOptions(paperStatuses)} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item name="subject" label="学科" rules={[{ required: true, message: '请选择学科' }]}>
+              <Select placeholder="选择学科" options={subjectOptions} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="total_score" label="总分" initialValue={100}>
+              <InputNumber min={1} max={300} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="duration_minutes" label="时长(分钟)" initialValue={60}>
+              <InputNumber min={1} max={300} style={{ width: '100%' }} />
+            </Form.Item>
+          </Col>
+        </Row>
 
-      // ── 年级范围 ──
-      React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#888', marginTop: 8, marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 } }, '年级范围'),
-      React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'grade_scope', label: '适用范围', initialValue: 'grade' },
-            React.createElement(Select, { options: [
-              { value: 'comprehensive', label: '综合 (跨年级)' },
-              { value: 'grade_comprehensive', label: '年级综合' },
-              { value: 'chapter', label: '章节' },
-              { value: 'knowledge_point', label: '知识点' },
-            ], onChange: function(v) { setGradeScope(v); } })
-          )
-        ),
-        React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'grade_level', label: '年级',
-            rules: [{ required: true, message: '请选择年级' }] },
-            React.createElement(Select, {
-              mode: gradeScope === 'comprehensive' ? 'multiple' : undefined,
-              placeholder: '选择年级',
-              options: toSelectOptions(grades) })
-          )
-        ),
-        (gradeScope === 'chapter' || gradeScope === 'knowledge_point') ? React.createElement(Col, { span: 8 },
-          React.createElement(Form.Item, { name: 'chapter', label: '章节名称',
-            rules: [{ required: true, message: '请输入章节名称' }] },
-            React.createElement(Input, { placeholder: '如：二次函数' })
-          )
-        ) : null
-      ),
-      gradeScope === 'knowledge_point' ? React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 16 },
-          React.createElement(Form.Item, { name: 'knowledge_points_input', label: '知识点',
-            rules: [{ required: true, message: '请输入知识点' }] },
-            React.createElement(Input, { placeholder: '如：顶点式, 判别式, 图像平移' })
-          ),
-          React.createElement('div', { style: { color: '#888', fontSize: 11, marginTop: -16 } },
-            '多个知识点用逗号分隔'
-          )
-        )
-      ) : null,
+        {/* 年级范围 */}
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginTop: 8, marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>年级范围</div>
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item name="grade_scope" label="适用范围" initialValue="grade">
+              <Select options={[
+                { value: 'comprehensive', label: '综合 (跨年级)' },
+                { value: 'grade_comprehensive', label: '年级综合' },
+                { value: 'chapter', label: '章节' },
+                { value: 'knowledge_point', label: '知识点' },
+              ]} onChange={function(v: any) { setGradeScope(v); }} />
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="grade_level" label="年级"
+              rules={[{ required: true, message: '请选择年级' }]}>
+              <Select
+                mode={gradeScope === 'comprehensive' ? 'multiple' : undefined}
+                placeholder="选择年级"
+                options={toSelectOptions(grades)} />
+            </Form.Item>
+          </Col>
+          {(gradeScope === 'chapter' || gradeScope === 'knowledge_point') ? (
+            <Col span={8}>
+              <Form.Item name="chapter" label="章节名称"
+                rules={[{ required: true, message: '请输入章节名称' }]}>
+                <Input placeholder="如：二次函数" />
+              </Form.Item>
+            </Col>
+          ) : null}
+        </Row>
+        {gradeScope === 'knowledge_point' ? (
+          <Row gutter={16}>
+            <Col span={16}>
+              <Form.Item name="knowledge_points_input" label="知识点"
+                rules={[{ required: true, message: '请输入知识点' }]}>
+                <Input placeholder="如：顶点式, 判别式, 图像平移" />
+              </Form.Item>
+              <div style={{ color: '#888', fontSize: 11, marginTop: -16 }}>
+                多个知识点用逗号分隔
+              </div>
+            </Col>
+          </Row>
+        ) : null}
 
-      // ── 描述 ──
-      React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#888', marginTop: 8, marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 } }, '描述信息'),
-      React.createElement(Row, { gutter: 16 },
-        React.createElement(Col, { span: 12 },
-          React.createElement(Form.Item, { name: 'subtitle', label: '副标题' },
-            React.createElement(Input, { placeholder: '如：满分100分，考试时间60分钟' })
-          )
-        ),
-        React.createElement(Col, { span: 12 },
-          React.createElement(Form.Item, { name: 'description', label: '试卷描述' },
-            React.createElement(Input, { placeholder: '简要描述试卷内容和范围' })
-          )
-        )
-      ),
-      React.createElement(Form.Item, { name: 'notes', label: '注意事项' },
-        React.createElement(Input.TextArea, { rows: 2, placeholder: '考生注意事项，如：请使用2B铅笔填涂答题卡' })
-      )
+        {/* 描述 */}
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginTop: 8, marginBottom: 12, borderBottom: '1px solid #f0f0f0', paddingBottom: 8 }}>描述信息</div>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="subtitle" label="副标题">
+              <Input placeholder="如：满分100分，考试时间60分钟" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="description" label="试卷描述">
+              <Input placeholder="简要描述试卷内容和范围" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="notes" label="注意事项">
+          <Input.TextArea rows={2} placeholder="考生注意事项，如：请使用2B铅笔填涂答题卡" />
+        </Form.Item>
+      </Form>
     );
   } else if (step === 1) {
-    footerButtons = React.createElement(Space, null,
-      React.createElement(Button, { onClick: function () { setStep(0); } }, '上一步'),
-      React.createElement(Button, { type: 'primary', onClick: function () { handleSubmit(); }, loading: loading }, '自动选题组卷'),
-      React.createElement(Button, { onClick: goManualSelect }, '手动选题组卷')
+    footerButtons = (
+      <Space>
+        <Button onClick={function () { setStep(0); }}>上一步</Button>
+        <Button type="primary" onClick={function () { handleSubmit(); }} loading={loading}>自动选题组卷</Button>
+        <Button onClick={goManualSelect}>手动选题组卷</Button>
+      </Space>
     );
-    stepContent = React.createElement('div', null,
-      statsRow,
-      React.createElement('div', { style: { marginTop: 24, marginBottom: 12, fontWeight: 'bold', fontSize: 14 } }, '题型分布'),
-      React.createElement(Row, { gutter: 16 }, ...typeCards),
-      React.createElement('div', { style: { marginTop: 24, marginBottom: 12, fontWeight: 'bold', fontSize: 14 } }, '难度比例'),
-      React.createElement(Row, { gutter: 16 }, ...diffSliders),
-      React.createElement(Row, { style: { marginTop: 8 } }, ...diffSummary)
+    stepContent = (
+      <div>
+        {statsRow}
+        <div style={{ marginTop: 24, marginBottom: 12, fontWeight: 'bold', fontSize: 14 }}>题型分布</div>
+        <Row gutter={16}>{typeCards}</Row>
+        <div style={{ marginTop: 24, marginBottom: 12, fontWeight: 'bold', fontSize: 14 }}>难度比例</div>
+        <Row gutter={16}>{diffSliders}</Row>
+        <Row style={{ marginTop: 8 }}>{diffSummary}</Row>
+      </div>
     );
   } else if (step === 2) {
-    footerButtons = React.createElement(Space, null,
-      React.createElement(Button, { onClick: function () { setStep(1); } }, '上一步'),
-      React.createElement(Button, { type: 'primary', onClick: function () {
-        var selected = availQuestions.filter(function (q) { return selectedIds.indexOf(q.id) >= 0; });
-        if (selected.length === 0) { message.warning('请至少选择一道试题'); return; }
-        goToPreview(selected);
-      } }, '预览确认')
+    footerButtons = (
+      <Space>
+        <Button onClick={function () { setStep(1); }}>上一步</Button>
+        <Button type="primary" onClick={function () {
+          const selected = availQuestions.filter(function (q: any) { return selectedIds.indexOf(q.id) >= 0; });
+          if (selected.length === 0) { message.warning('请至少选择一道试题'); return; }
+          goToPreview(selected);
+        }}>预览确认</Button>
+      </Space>
     );
-    var typeOrder = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
-    var selectedQs = availQuestions.filter(function (q) { return selectedIds.indexOf(q.id) >= 0; });
-    var totalScore = savedFormValues.total_score || 100;
-    var totalRequired = 0;
-    Object.keys(dist).forEach(function (k) { totalRequired += dist[k] || 0; });
+    const typeOrder = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
+    const selectedQs = availQuestions.filter(function (q: any) { return selectedIds.indexOf(q.id) >= 0; });
+    const totalScore = savedFormValues.total_score || 100;
+    let totalRequired = 0;
+    Object.keys(dist).forEach(function (k: string) { totalRequired += dist[k] || 0; });
 
     // LEFT: status panel
-    var leftCards = typeOrder.map(function (t) {
-      var req = dist[t] || 0;
+    const leftCards = typeOrder.map(function (t) {
+      const req = dist[t] || 0;
       if (req <= 0) return null;
-      var sel = selectedQs.filter(function (q) { return q.question_type === t; }).length;
-      return React.createElement('div', { key: t, style: { display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 } },
-        React.createElement('span', null, toLabelMap(qtypes)[t]),
-        React.createElement('span', { style: { color: sel >= req ? '#52c41a' : '#ff4d4f', fontWeight: 'bold' } }, sel + '/' + req)
+      const sel = selectedQs.filter(function (q: any) { return q.question_type === t; }).length;
+      return (
+        <div key={t} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 13 }}>
+          <span>{toLabelMap(qtypes)[t]}</span>
+          <span style={{ color: sel >= req ? '#52c41a' : '#ff4d4f', fontWeight: 'bold' }}>{sel + '/' + req}</span>
+        </div>
       );
     }).filter(Boolean);
 
-    var leftPanel = React.createElement('div', { style: { width: '28%', paddingRight: 12, borderRight: '1px solid #f0f0f0' } },
-      React.createElement('div', { style: { fontWeight: 'bold', fontSize: 14, marginBottom: 12 } }, '选题状态'),
-      React.createElement('div', { style: { marginBottom: 8, fontSize: 13 } }, '已选: ' + selectedQs.length + '/' + totalRequired + ' 道'),
-      React.createElement('div', { style: { marginBottom: 8, fontSize: 13 } }, '得分: ' + selectedQs.reduce(function (s,q) { return s+(q.score||0); }, 0) + '/' + totalScore),
-      React.createElement('hr', null),
-      ...leftCards
+    const leftPanel = (
+      <div style={{ width: '28%', paddingRight: 12, borderRight: '1px solid #f0f0f0' }}>
+        <div style={{ fontWeight: 'bold', fontSize: 14, marginBottom: 12 }}>选题状态</div>
+        <div style={{ marginBottom: 8, fontSize: 13 }}>{'已选: ' + selectedQs.length + '/' + totalRequired + ' 道'}</div>
+        <div style={{ marginBottom: 8, fontSize: 13 }}>{'得分: ' + selectedQs.reduce(function (s: number, q: any) { return s+(q.score||0); }, 0) + '/' + totalScore}</div>
+        <hr />
+        {leftCards}
+      </div>
     );
 
     // RIGHT: question browser by type (split into selected top / unselected bottom)
-    var rightPanels = typeOrder.map(function (qtype) {
-      var required = dist[qtype] || 0;
+    const rightPanels = typeOrder.map(function (qtype) {
+      const required = dist[qtype] || 0;
       if (required <= 0) return null;
-      var typeQs = availQuestions.filter(function (q) { return q.question_type === qtype; });
+      const typeQs = availQuestions.filter(function (q: any) { return q.question_type === qtype; });
       // Split into selected and unselected
-      var selectedOfType = typeQs.filter(function (q) { return selectedIds.indexOf(q.id) >= 0; });
-      var unselectedOfType = typeQs.filter(function (q) { return selectedIds.indexOf(q.id) < 0; });
+      const selectedOfType = typeQs.filter(function (q: any) { return selectedIds.indexOf(q.id) >= 0; });
+      const unselectedOfType = typeQs.filter(function (q: any) { return selectedIds.indexOf(q.id) < 0; });
       // Apply diff filter only to unselected
-      var typeDiffFilter = diffFilterMap[qtype] || '';
-      var filteredUnselected = typeDiffFilter ? unselectedOfType.filter(function (q) { return q.difficulty === typeDiffFilter; }) : unselectedOfType;
-      var selCount = selectedOfType.length;
+      const typeDiffFilter = diffFilterMap[qtype] || '';
+      const filteredUnselected = typeDiffFilter ? unselectedOfType.filter(function (q: any) { return q.difficulty === typeDiffFilter; }) : unselectedOfType;
+      const selCount = selectedOfType.length;
 
       // Helper: render a question row
-      function renderQRow(q, isSelected) {
-        var diffColor = q.difficulty === 'EASY' ? 'green' : q.difficulty === 'MEDIUM' ? 'orange' : 'red';
-        var diffLabel = q.difficulty === 'EASY' ? '简' : q.difficulty === 'MEDIUM' ? '中' : '难';
-        return React.createElement('div', { key: q.id, onClick: function () {
-          if (isSelected) {
-            // Remove from selection
-            setSelectedIds(selectedIds.filter(function (id) { return id !== q.id; }));
-          } else {
-            // Add to selection (check limits)
-            var currentSelected = selectedIds.filter(function (id) { return id !== q.id; });
-            var typeSel = currentSelected.filter(function (id) {
-              var fq = availQuestions.filter(function (x) { return x.id === id; })[0];
-              return fq && fq.question_type === qtype;
-            }).length;
-            if (typeSel >= required) {
-              message.warning(toLabelMap(qtypes)[qtype] + '已达到' + required + '道上限');
-              return;
+      function renderQRow(q: any, isSelected: boolean) {
+        const diffColor = q.difficulty === 'EASY' ? 'green' : q.difficulty === 'MEDIUM' ? 'orange' : 'red';
+        const diffLabel = q.difficulty === 'EASY' ? '简' : q.difficulty === 'MEDIUM' ? '中' : '难';
+        return (
+          <div key={q.id} onClick={function () {
+            if (isSelected) {
+              // Remove from selection
+              setSelectedIds(selectedIds.filter(function (id) { return id !== q.id; }));
+            } else {
+              // Add to selection (check limits)
+              const currentSelected = selectedIds.filter(function (id) { return id !== q.id; });
+              const typeSel = currentSelected.filter(function (id) {
+                const fq = availQuestions.filter(function (x: any) { return x.id === id; })[0];
+                return fq && fq.question_type === qtype;
+              }).length;
+              if (typeSel >= required) {
+                message.warning(toLabelMap(qtypes)[qtype] + '已达到' + required + '道上限');
+                return;
+              }
+              setSelectedIds(selectedIds.concat([q.id]));
             }
-            setSelectedIds(selectedIds.concat([q.id]));
-          }
-        }, style: { padding: '4px 8px', cursor: 'pointer', background: isSelected ? '#e6f7ff' : '#fff', borderBottom: '1px solid #f0f0f0', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-          React.createElement('span', { style: { flex: 1 } },
-            (q.title || '').substring(0, 60) + (isSelected ? '' : ''),
-            isSelected ? null : React.createElement(Tag, { color: diffColor, style: { marginLeft: 4, fontSize: 10 } }, diffLabel)
-          ),
-          isSelected ? React.createElement('span', { style: { color: '#ff4d4f', fontSize: 11, cursor: 'pointer' } }, '移除') : null,
-          isSelected ? null : React.createElement(Tag, { color: 'blue', style: { marginLeft: 4, fontSize: 10, cursor: 'pointer' } }, '添加')
+          }} style={{ padding: '4px 8px', cursor: 'pointer', background: isSelected ? '#e6f7ff' : '#fff', borderBottom: '1px solid #f0f0f0', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ flex: 1 }}>
+              {(q.title || '').substring(0, 60) + (isSelected ? '' : '')}
+              {isSelected ? null : <Tag color={diffColor} style={{ marginLeft: 4, fontSize: 10 }}>{diffLabel}</Tag>}
+            </span>
+            {isSelected ? <span style={{ color: '#ff4d4f', fontSize: 11, cursor: 'pointer' }}>移除</span> : null}
+            {isSelected ? null : <Tag color="blue" style={{ marginLeft: 4, fontSize: 10, cursor: 'pointer' }}>添加</Tag>}
+          </div>
         );
       }
 
       // TOP section: selected questions
-      var topSection = React.createElement('div', { style: { marginBottom: 4 } },
-        React.createElement('div', { style: { fontSize: 12, color: '#1890ff', fontWeight: 'bold', marginBottom: 4 } },
-          '已选 ' + selCount + '/' + required + ' 道（点击移除）'
-        ),
-        selectedOfType.length > 0
-          ? React.createElement('div', { style: { maxHeight: 100, overflow: 'auto' } },
-              ...selectedOfType.map(function (q) { return renderQRow(q, true); })
-            )
-          : React.createElement('div', { style: { padding: 8, textAlign: 'center', color: '#ccc', fontSize: 12 } }, '暂无已选题，从下方选择添加')
+      const topSection = (
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 12, color: '#1890ff', fontWeight: 'bold', marginBottom: 4 }}>
+            {'已选 ' + selCount + '/' + required + ' 道（点击移除）'}
+          </div>
+          {selectedOfType.length > 0
+            ? <div style={{ maxHeight: 100, overflow: 'auto' }}>
+                {selectedOfType.map(function (q) { return renderQRow(q, true); })}
+              </div>
+            : <div style={{ padding: 8, textAlign: 'center', color: '#ccc', fontSize: 12 }}>暂无已选题，从下方选择添加</div>
+          }
+        </div>
       );
 
       // BOTTOM section: filter + unselected questions
-      var bottomSection = React.createElement('div', null,
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 } },
-          React.createElement('div', { style: { fontSize: 12, color: '#666', fontWeight: 'bold' } }, '可选题目（点击添加）'),
-          React.createElement(Select, { placeholder: '难度筛选', allowClear: true, value: (diffFilterMap[qtype] || '') || undefined,
-            onChange: function (v) { var nd = {}; Object.keys(diffFilterMap).forEach(function (k) { nd[k] = diffFilterMap[k]; }); nd[qtype] = v || ''; setDiffFilterMap(nd); },
-            size: 'small', style: { width: 100 },
-            options: toSelectOptions(difficultyLevels) })
-        ),
-        filteredUnselected.length > 0
-          ? React.createElement('div', { style: { maxHeight: 140, overflow: 'auto' } },
-              ...filteredUnselected.map(function (q) { return renderQRow(q, false); })
-            )
-          : React.createElement('div', { style: { padding: 8, textAlign: 'center', color: '#ccc', fontSize: 12 } }, '无匹配题目')
+      const bottomSection = (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div style={{ fontSize: 12, color: '#666', fontWeight: 'bold' }}>可选题目（点击添加）</div>
+            <Select placeholder="难度筛选" allowClear value={(diffFilterMap[qtype] || '') || undefined}
+              onChange={function (v: any) { const nd: Record<string, any> = {}; Object.keys(diffFilterMap).forEach(function (k: string) { nd[k] = diffFilterMap[k]; }); nd[qtype] = v || ''; setDiffFilterMap(nd); }}
+              size="small" style={{ width: 100 }}
+              options={toSelectOptions(difficultyLevels)} />
+          </div>
+          {filteredUnselected.length > 0
+            ? <div style={{ maxHeight: 140, overflow: 'auto' }}>
+                {filteredUnselected.map(function (q) { return renderQRow(q, false); })}
+              </div>
+            : <div style={{ padding: 8, textAlign: 'center', color: '#ccc', fontSize: 12 }}>无匹配题目</div>
+          }
+        </div>
       );
 
-      return React.createElement(Card, { key: qtype, size: 'small', style: { marginBottom: 8 },
-        title: React.createElement('span', { style: { fontSize: 13 } }, toLabelMap(qtypes)[qtype])
-      },
-        topSection,
-        React.createElement('hr', { style: { margin: '8px 0' } }),
-        bottomSection
+      return (
+        <Card key={qtype} size="small" style={{ marginBottom: 8 }}
+          title={<span style={{ fontSize: 13 }}>{toLabelMap(qtypes)[qtype]}</span>}
+        >
+          {topSection}
+          <hr style={{ margin: '8px 0' }} />
+          {bottomSection}
+        </Card>
       );
     }).filter(function (p) { return p !== null; });
 
-    var rightPanel = React.createElement('div', { style: { width: '72%', paddingLeft: 12, maxHeight: '55vh', overflow: 'auto' } }, ...rightPanels);
-
-    stepContent = React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start' } }, leftPanel, rightPanel);
-  } else {
-    footerButtons = React.createElement(Space, null,
-      React.createElement(Button, { onClick: function () { setStep(2); } }, '上一步'),
-      React.createElement(Button, { type: 'primary', loading: loading, onClick: handleManualCreate }, '确认生成试卷')
+    const rightPanel = (
+      <div style={{ width: '72%', paddingLeft: 12, maxHeight: '55vh', overflow: 'auto' }}>
+        {rightPanels}
+      </div>
     );
-    stepContent = React.createElement('div', null,
-      React.createElement('div', { style: { marginBottom: 12, color: '#666' } }, '预览试卷结构，共 ' + previewQuestions.length + ' 道试题，可点击替换按钮更换试题'),
-      React.createElement(PaperTemplatePreview, {
-        title: savedFormValues.title || '试卷预览',
-        subtitle: savedFormValues.subtitle || '',
-        notes: savedFormValues.notes || '',
-        questions: previewQuestions,
-        readonly: false,
-        onReplace: function (q, qtype) {
-          var newIds = previewQuestions.filter(function (x) { return x.id !== q.id; }).map(function (x) { return x.id; });
-          setSelectedIds(newIds);
-          setPreviewQuestions(previewQuestions.filter(function (x) { return x.id !== q.id; }));
-          setStep(2);
-          message.info('请选择替换试题');
-        }
-      })
+
+    stepContent = (
+      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+        {leftPanel}
+        {rightPanel}
+      </div>
+    );
+  } else {
+    footerButtons = (
+      <Space>
+        <Button onClick={function () { setStep(2); }}>上一步</Button>
+        <Button type="primary" loading={loading} onClick={handleManualCreate}>确认生成试卷</Button>
+      </Space>
+    );
+    stepContent = (
+      <div>
+        <div style={{ marginBottom: 12, color: '#666' }}>{'预览试卷结构，共 ' + previewQuestions.length + ' 道试题，可点击替换按钮更换试题'}</div>
+        <PaperTemplatePreview
+          title={savedFormValues.title || '试卷预览'}
+          subtitle={savedFormValues.subtitle || ''}
+          notes={savedFormValues.notes || ''}
+          questions={previewQuestions}
+          readonly={false}
+          onReplace={function (q: any) {
+            const newIds = previewQuestions.filter(function (x: any) { return x.id !== q.id; }).map(function (x: any) { return x.id; });
+            setSelectedIds(newIds);
+            setPreviewQuestions(previewQuestions.filter(function (x: any) { return x.id !== q.id; }));
+            setStep(2);
+            message.info('请选择替换试题');
+          }}
+        />
+      </div>
     );
   }
 
-  return React.createElement(Modal, {
-    title: isEdit ? '编辑试卷' : '新建试卷',
-    open: open, onCancel: handleCancel, width: 900, footer: footerButtons
-  },
-    React.createElement(Steps, { current: step, style: { marginBottom: 24 }, items: [{ title: '基本信息' }, { title: '选题方式' }, { title: '选择试题' }, { title: '预览确认' }] }),
-    stepContent
+  return (
+    <Modal
+      title={isEdit ? '编辑试卷' : '新建试卷'}
+      open={open} onCancel={handleCancel} width={900} footer={footerButtons}
+    >
+      <Steps current={step} style={{ marginBottom: 24 }} items={[{ title: '基本信息' }, { title: '选题方式' }, { title: '选择试题' }, { title: '预览确认' }]} />
+      {stepContent}
+    </Modal>
   );
 }

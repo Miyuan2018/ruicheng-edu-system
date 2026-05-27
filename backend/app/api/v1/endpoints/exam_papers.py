@@ -32,33 +32,34 @@ async def create_exam_paper(
     for key in ["question_count", "distribution", "difficulty_ratio"]:
         data.pop(key, None)
     data["created_by"] = uuid.UUID(current_user.id)
-    exam_paper = ExamPaper(**data)
-    db.add(exam_paper)
-    await db.flush()
 
-    # Import questions if provided
-    for i, qdata in enumerate(questions_data):
-        q = Question(
-            title=qdata.get("title", ""),
-            question_type=qdata.get("question_type", "SINGLE_CHOICE"),
-            difficulty=qdata.get("difficulty", "MEDIUM"),
-            subject=qdata.get("subject", exam_paper.subject),
-            grade_level=qdata.get("grade_level", exam_paper.grade_level),
-            score=qdata.get("score", 5),
-            correct_answer=qdata.get("correct_answer", ""),
-            explanation=qdata.get("explanation", ""),
-            source="MANUAL", review_status="APPROVED",
-            created_by=uuid.UUID(current_user.id),
-        )
-        db.add(q)
+    async with db.begin():
+        exam_paper = ExamPaper(**data)
+        db.add(exam_paper)
         await db.flush()
-        # Link to paper
-        await db.execute(exam_paper_questions.insert().values(
-            id=uuid.uuid4(), exam_paper_id=exam_paper.id,
-            question_id=q.id, position=i+1, score=qdata.get("score", 5),
-        ))
 
-    await db.commit()
+        # Import questions if provided
+        for i, qdata in enumerate(questions_data):
+            q = Question(
+                title=qdata.get("title", ""),
+                question_type=qdata.get("question_type", "SINGLE_CHOICE"),
+                difficulty=qdata.get("difficulty", "MEDIUM"),
+                subject=qdata.get("subject", exam_paper.subject),
+                grade_level=qdata.get("grade_level", exam_paper.grade_level),
+                score=qdata.get("score", 5),
+                correct_answer=qdata.get("correct_answer", ""),
+                explanation=qdata.get("explanation", ""),
+                source="MANUAL", review_status="APPROVED",
+                created_by=uuid.UUID(current_user.id),
+            )
+            db.add(q)
+            await db.flush()
+            # Link to paper
+            await db.execute(exam_paper_questions.insert().values(
+                id=uuid.uuid4(), exam_paper_id=exam_paper.id,
+                question_id=q.id, position=i+1, score=qdata.get("score", 5),
+            ))
+
     await db.refresh(exam_paper)
     return exam_paper
 
@@ -66,7 +67,7 @@ async def create_exam_paper(
 @router.get("/my")
 async def get_my_papers(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     title: Optional[str] = None,
     status: Optional[str] = None,
     grade: Optional[str] = None,
@@ -74,6 +75,7 @@ async def get_my_papers(
     db: AsyncSession = Depends(get_db),
 ):
     """Return exam papers that the current student has submitted answers for."""
+    limit = min(limit, 200)
     if current_user.user_type != "STUDENT":
         raise HTTPException(403, detail="仅学生可访问")
     from app.models.answer_submission import AnswerSubmission
@@ -281,6 +283,93 @@ async def update_exam_paper(
     return exam_paper
 
 
+@router.post("/{exam_paper_id}/publish")
+async def publish_exam_paper(
+    exam_paper_id: uuid.UUID,
+    class_ids: list[str] = Body(default=[]),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Publish an exam paper and notify students in the specified (or all teacher's) classes."""
+    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
+
+    result = await db.execute(select(ExamPaper).where(ExamPaper.id == exam_paper_id))
+    exam_paper = result.scalar_one_or_none()
+    if not exam_paper:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="试卷不存在")
+
+    if exam_paper.status == "ARCHIVED":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档的试卷不可发布")
+
+    # Get teacher name for notification
+    from app.models.admin import Admin
+    admin_result = await db.execute(select(Admin).where(Admin.id == exam_paper.created_by))
+    admin = admin_result.scalar_one_or_none()
+    teacher_name = admin.full_name if admin else "老师"
+
+    # Determine which students to notify
+    from app.models.school_class import SchoolClass, class_students
+    from app.models.student import Student
+
+    if class_ids:
+        # Notify students in the specified classes
+        student_q = (
+            select(Student.id)
+            .join(class_students, class_students.c.student_id == Student.id)
+            .where(class_students.c.class_id.in_(class_ids))
+        )
+    else:
+        # Notify all students in classes taught by the paper creator
+        student_q = (
+            select(Student.id)
+            .join(class_students, class_students.c.student_id == Student.id)
+            .join(SchoolClass, SchoolClass.id == class_students.c.class_id)
+            .where(SchoolClass.teacher_id == exam_paper.created_by)
+        )
+
+    student_result = await db.execute(student_q)
+    student_ids = [row[0] for row in student_result.all()]
+
+    # Fetch class names for notification content
+    if class_ids:
+        class_name_q = select(SchoolClass.name).where(SchoolClass.id.in_(class_ids))
+    else:
+        class_name_q = select(SchoolClass.name).where(
+            SchoolClass.teacher_id == exam_paper.created_by
+        )
+    class_name_result = await db.execute(class_name_q)
+    class_names = [row[0] for row in class_name_result.all()]
+    class_name_str = "、".join(class_names) if class_names else "班级"
+
+    # Create notifications for each student
+    from app.services.notification_service import NotificationService
+    notified_count = 0
+    for student_id in student_ids:
+        await NotificationService.create_class_announcement_notification(
+            db=db,
+            recipient_id=str(student_id),
+            teacher_name=teacher_name,
+            class_name=class_name_str,
+            title=f"试卷发布: {exam_paper.title}",
+            content=f"「{exam_paper.title}」已发布，请前往我的试卷查看并完成答题。",
+        )
+        notified_count += 1
+
+    # Update paper status
+    exam_paper.status = "PUBLISHED"
+    await db.commit()
+    await db.refresh(exam_paper)
+
+    return {
+        "id": str(exam_paper.id),
+        "title": exam_paper.title,
+        "status": exam_paper.status,
+        "notified_count": notified_count,
+        "updated_at": exam_paper.updated_at,
+    }
+
+
 @router.delete("/{exam_paper_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_exam_paper(
     exam_paper_id: uuid.UUID,
@@ -319,12 +408,12 @@ async def delete_exam_paper(
     from app.models.error_notebook import ErrorNotebook
     from app.models.ocr_upload import OcrUpload
     from sqlalchemy import delete as sa_delete
-    await db.execute(sa_delete(exam_paper_questions).where(exam_paper_questions.c.exam_paper_id == exam_paper_id))
-    await db.execute(sa_delete(AnswerSubmission).where(AnswerSubmission.exam_paper_id == exam_paper_id))
-    await db.execute(sa_delete(ErrorNotebook).where(ErrorNotebook.exam_paper_id == exam_paper_id))
-    await db.execute(sa_delete(OcrUpload).where(OcrUpload.exam_paper_id == exam_paper_id))
-    await db.execute(delete(ExamPaper).where(ExamPaper.id == exam_paper_id))
-    await db.commit()
+    async with db.begin():
+        await db.execute(sa_delete(exam_paper_questions).where(exam_paper_questions.c.exam_paper_id == exam_paper_id))
+        await db.execute(sa_delete(AnswerSubmission).where(AnswerSubmission.exam_paper_id == exam_paper_id))
+        await db.execute(sa_delete(ErrorNotebook).where(ErrorNotebook.exam_paper_id == exam_paper_id))
+        await db.execute(sa_delete(OcrUpload).where(OcrUpload.exam_paper_id == exam_paper_id))
+        await db.execute(delete(ExamPaper).where(ExamPaper.id == exam_paper_id))
     return None
 
 
@@ -335,7 +424,7 @@ async def update_submission_status(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Change submission status for the current student's latest submission. Only 已生成 → 重新判 is allowed."""
+    """Change submission status for the current student's latest submission. Only GENERATED → RE_GRADED is allowed."""
     if current_user.user_type != "STUDENT":
         raise HTTPException(status_code=403, detail="仅学生可修改")
     from app.models.answer_submission import AnswerSubmission
@@ -348,30 +437,34 @@ async def update_submission_status(
     submission = sub_result.scalar_one_or_none()
     if not submission:
         raise HTTPException(status_code=404, detail="未找到提交记录")
-    if submission.status != "已生成":
+    if submission.status != "GENERATED":
         raise HTTPException(status_code=400, detail="仅已生成状态可修改为重新判")
-    if status_in != "重新判":
-        raise HTTPException(status_code=400, detail="仅允许修改为重新判")
-    submission.status = "重新判"
+    if status_in != "RE_GRADED":
+        raise HTTPException(status_code=400, detail="仅允许修改为RE_GRADED")
+    submission.status = "RE_GRADED"
     await db.commit()
-    return {"message": "状态已修改为重新判", "status": "重新判"}
+    return {"message": "状态已修改为重新判", "status": "RE_GRADED"}
 
 
 @router.get("")
 async def get_exam_papers(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     title: Optional[str] = None,
     status: Optional[str] = None,
     scope: Optional[str] = None,
     grade: Optional[str] = None,
     grades: Optional[str] = None,
+    subject: Optional[str] = None,
     keyword: Optional[str] = None,
+    created_by: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    limit = min(limit, 200)
     query = select(ExamPaper)
     if title: query = query.where(ExamPaper.title.ilike(f"%{title}%"))
+    if subject: query = query.where(ExamPaper.subject == subject)
     if status: query = query.where(ExamPaper.status == status)
     if scope:
         query = query.where(ExamPaper.grade_level['scope'].astext == scope)
@@ -389,6 +482,8 @@ async def get_exam_papers(
             ExamPaper.grade_level['chapter'].astext.ilike(f"%{keyword}%"),
             ExamPaper.grade_level['knowledge_points'].cast(String).ilike(f"%{keyword}%")
         ))
+    if created_by == "me":
+        query = query.where(ExamPaper.created_by == uuid.UUID(current_user.id))
     query = query.offset(skip).limit(limit).order_by(ExamPaper.created_at.desc())
     result = await db.execute(query)
     papers = result.scalars().all()

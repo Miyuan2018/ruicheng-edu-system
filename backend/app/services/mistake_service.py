@@ -48,29 +48,29 @@ async def generate_mistake_book(
     questions = {q.id: q for q in q_result.scalars().all()}
 
     now = datetime.now(timezone.utc)
-    book = ErrorNotebook(
-        student_id=sid,
-        title=title or f"错题本 - {now.strftime('%Y年%m月%d日')}",
-        exam_paper_id=_uuid.UUID(str(exam_paper_id)) if exam_paper_id else None,
-        generated_at=now,
-        question_count=len(unique_details),
-        status="GENERATED",
-    )
-    db.add(book)
-    await db.flush()
-
-    for detail in unique_details:
-        question = questions.get(detail.question_id)
-        entry = ErrorNotebookQuestion(
-            error_notebook_id=book.id,
-            original_question_id=detail.question_id,
-            error_type=_classify_error(detail, question),
-            explanation=("学生答案: " + (detail.student_answer or "未作答") + "\n正确答案: " + (detail.feedback or "请参考标准答案")),
-            created_at=now,
+    async with db.begin():
+        book = ErrorNotebook(
+            student_id=sid,
+            title=title or f"错题本 - {now.strftime('%Y年%m月%d日')}",
+            exam_paper_id=_uuid.UUID(str(exam_paper_id)) if exam_paper_id else None,
+            generated_at=now,
+            question_count=len(unique_details),
+            status="GENERATED",
         )
-        db.add(entry)
+        db.add(book)
+        await db.flush()
 
-    await db.commit()
+        for detail in unique_details:
+            question = questions.get(detail.question_id)
+            entry = ErrorNotebookQuestion(
+                error_notebook_id=book.id,
+                original_question_id=detail.question_id,
+                error_type=_classify_error(detail, question),
+                explanation=("学生答案: " + (detail.student_answer or "未作答") + "\n正确答案: " + (detail.feedback or "请参考标准答案")),
+                created_at=now,
+            )
+            db.add(entry)
+
     await db.refresh(book)
     return book
 

@@ -1,51 +1,116 @@
-"""Unified API response middleware — wraps all responses in {code, message, data} format."""
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+"""Unified API response middleware — wraps all responses in {code, message, data} format.
+
+Uses pure ASGI middleware to avoid body_iterator issues with BaseHTTPMiddleware.
+Sends wrapped responses directly via send() instead of JSONResponse to avoid
+receive channel exhaustion issues.
+"""
+import json
+import logging
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+logger = logging.getLogger(__name__)
 
 
-class ApiResponseMiddleware(BaseHTTPMiddleware):
-    """Auto-wrap all /api/ responses into {code, message, data} format."""
+class ApiResponseMiddleware:
+    """ASGI middleware that auto-wraps all /api/ responses into {code, message, data} format."""
 
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
+    def __init__(self, app: ASGIApp):
+        self.app = app
 
-        # Only wrap API responses
-        if not request.url.path.startswith("/api/"):
-            return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # Skip non-JSON responses
-        content_type = response.headers.get("content-type", "")
-        if "application/json" not in content_type:
-            return response
+        path = scope.get("path", "")
+        if not path.startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
 
-        # Get response body
-        body = b""
-        async for chunk in response.body_iterator:
-            body += chunk
+        status_code = 200
+        headers = []
+        body_parts = []
+        response_started = False
 
-        import json
+        async def send_wrapper(message):
+            nonlocal status_code, headers, body_parts, response_started
+
+            if message["type"] == "http.response.start":
+                response_started = True
+                status_code = message["status"]
+                headers = list(message.get("headers", []))
+                return
+
+            if message["type"] == "http.response.body":
+                body_parts.append(message.get("body", b""))
+                if message.get("more_body", False):
+                    return
+
+                # Full body received — try to wrap it
+                full_body = b"".join(body_parts)
+                try:
+                    content_type = ""
+                    for name, value in headers:
+                        if name == b"content-type":
+                            content_type = value.decode("latin-1", errors="replace")
+                            break
+
+                    if "application/json" not in content_type:
+                        await _send_raw(send, status_code, headers, full_body)
+                        return
+
+                    data = json.loads(full_body)
+
+                    # Already wrapped?
+                    if isinstance(data, dict) and "code" in data and "message" in data and "data" in data:
+                        await _send_raw(send, status_code, headers, full_body)
+                        return
+
+                    # Wrap the response
+                    if 400 <= status_code < 600:
+                        detail = data.get("detail", str(data)) if isinstance(data, dict) else str(data)
+                        wrapped = {"code": status_code, "message": detail, "detail": detail, "data": None}
+                    else:
+                        wrapped = {"code": 200, "message": "成功", "data": data}
+                        status_code = 200
+
+                    wrapped_body = json.dumps(wrapped, ensure_ascii=False).encode("utf-8")
+                    await _send_raw(
+                        send,
+                        status_code,
+                        [(b"content-type", b"application/json")],
+                        wrapped_body,
+                    )
+                except Exception:
+                    logger.exception("ApiResponseMiddleware wrapping error")
+                    await _send_raw(send, status_code, headers, full_body)
+                return
+
+            await send(message)
+
         try:
-            data = json.loads(body)
-        except (json.JSONDecodeError, TypeError):
-            return response
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            logger.exception("Unhandled exception in ApiResponseMiddleware")
+            if not response_started:
+                err_body = json.dumps(
+                    {"code": 500, "message": "Internal Server Error", "data": None},
+                    ensure_ascii=False,
+                ).encode("utf-8")
+                await _send_raw(send, 500, [(b"content-type", b"application/json")], err_body)
 
-        status_code = response.status_code
 
-        # Already wrapped?
-        if isinstance(data, dict) and "code" in data and "message" in data and "data" in data:
-            # Already in our format, just pass through
-            return JSONResponse(content=data, status_code=status_code)
-
-        # HTTP errors: keep backward compat
-        if 400 <= status_code < 600:
-            detail = data.get("detail", str(data)) if isinstance(data, dict) else str(data)
-            wrapped = {"code": status_code, "message": detail, "detail": detail, "data": None}
-            return JSONResponse(content=wrapped, status_code=status_code)
-
-        # Success responses: wrap in {code: 200, message: "成功", data: ...}
-        wrapped = {"code": 200, "message": "成功", "data": data}
-        return JSONResponse(content=wrapped, status_code=200)
+async def _send_raw(send, status_code, headers, body):
+    """Send a raw HTTP response via ASGI send()."""
+    await send({
+        "type": "http.response.start",
+        "status": status_code,
+        "headers": headers,
+    })
+    await send({
+        "type": "http.response.body",
+        "body": body,
+    })
 
 
 def api_response(data=None, message="成功", code=200):

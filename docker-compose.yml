@@ -1,32 +1,105 @@
 version: '3.8'
 
+# ============================================================
+#  睿承教育平台 V3.5 — Docker Compose 部署配置
+#  快速启动：  docker-compose up -d
+#  含演示数据：docker-compose up -d && docker-compose exec backend python demo_data.py
+#  停止：      docker-compose down
+# ============================================================
+
 services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ruicheng-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-edu_system}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: ruicheng-backend
+    restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./backend:/app
-      - ./backend/edu_system.db:/app/edu_system.db
+      - ./backend/sysconfig.json:/app/sysconfig.json:ro
     environment:
-      - DATABASE_TYPE=sqlite
-      - SQLITE_DB_PATH=/app/edu_system.db
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=60
-      - REFRESH_TOKEN_EXPIRE_DAYS=30
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      SECRET_KEY: ${SECRET_KEY:-ruicheng-edu-secret-key-change-in-production}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-edu_system}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: ruicheng-frontend
+    restart: unless-stopped
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend/src:/app/src
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     command: npm run dev -- --host 0.0.0.0
+
+  # 可选：异步任务队列（--profile async）
+  redis:
+    image: redis:7-alpine
+    container_name: ruicheng-redis
+    restart: unless-stopped
+    profiles: ["async"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ruicheng-celery
+    restart: unless-stopped
+    profiles: ["async"]
+    depends_on:
+      - redis
+      - backend
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_SERVER: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-edu_system}
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend/sysconfig.json:/app/sysconfig.json:ro
+
+volumes:
+  postgres_data:
+  redis_data:

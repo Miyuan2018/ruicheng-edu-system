@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
+from app.schemas.common import GradeLevel
+
 
 class ExamPaperBase(BaseModel):
     title: str = Field(..., max_length=200)
@@ -10,7 +12,7 @@ class ExamPaperBase(BaseModel):
     description: Optional[str] = None
     status: str = Field(default="DRAFT", pattern="^(DRAFT|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
-    grade_level: Optional[dict] = None
+    grade_level: Optional[GradeLevel] = None
     total_score: int = Field(default=0, ge=0)
     duration_minutes: Optional[int] = Field(None, ge=0)
     instructions: Optional[str] = None
@@ -25,7 +27,7 @@ class ExamPaperUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = Field(None, pattern="^(DRAFT|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
-    grade_level: Optional[dict] = None
+    grade_level: Optional[GradeLevel] = None
     total_score: Optional[int] = Field(None, ge=0)
     duration_minutes: Optional[int] = Field(None, ge=0)
     instructions: Optional[str] = None

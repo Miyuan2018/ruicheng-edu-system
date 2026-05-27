@@ -4,7 +4,7 @@ import os
 
 
 def _load_sysconfig():
-    """Load config from sysconfig.json, with env fallback."""
+    """Load config from sysconfig.json (non-sensitive), with env var override for secrets."""
     try:
         import json
         cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "sysconfig.json")
@@ -12,12 +12,12 @@ def _load_sysconfig():
             cfg = json.load(f)
         db = cfg.get("database", {})
         return {
-            "secret_key": cfg.get("secret_key", os.getenv("SECRET_KEY", "change-me")),
+            "secret_key": os.getenv("SECRET_KEY", cfg.get("secret_key", "change-me")),
             "server": db.get("server", "localhost"),
             "port": db.get("port", "5432"),
             "database": db.get("database", "edu_system"),
             "user": db.get("user", "postgres"),
-            "password": db.get("password", "postgres"),
+            "password": os.getenv("DATABASE_PASSWORD", db.get("password", "postgres")),
         }
     except Exception:
         return {
@@ -26,7 +26,7 @@ def _load_sysconfig():
             "port": os.getenv("POSTGRES_PORT", "5432"),
             "database": os.getenv("POSTGRES_DB", "edu_system"),
             "user": os.getenv("POSTGRES_USER", "postgres"),
-            "password": os.getenv("POSTGRES_PASSWORD", "postgres"),
+            "password": os.getenv("DATABASE_PASSWORD", "postgres"),
         }
 
 

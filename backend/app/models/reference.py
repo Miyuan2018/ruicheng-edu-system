@@ -1,14 +1,13 @@
 """Reference/lookup tables — seed data managed by SYS_ADMIN."""
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, Integer
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
 
 class QuestionType(Base):
     __tablename__ = "question_types"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     color = Column(String(20), nullable=True)
@@ -19,7 +18,7 @@ class QuestionType(Base):
 
 class DifficultyLevel(Base):
     __tablename__ = "difficulty_levels"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     color = Column(String(20), nullable=True)
@@ -30,7 +29,7 @@ class DifficultyLevel(Base):
 
 class GradeLevel(Base):
     __tablename__ = "grade_levels"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)
@@ -40,7 +39,7 @@ class GradeLevel(Base):
 
 class PaperStatus(Base):
     __tablename__ = "paper_statuses"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     is_active = Column(Boolean, default=True)
@@ -49,7 +48,7 @@ class PaperStatus(Base):
 
 class ErrorType(Base):
     __tablename__ = "error_types"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     is_active = Column(Boolean, default=True)
@@ -58,7 +57,7 @@ class ErrorType(Base):
 
 class QuestionSource(Base):
     __tablename__ = "question_sources"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     color = Column(String(20), nullable=True)
@@ -68,7 +67,7 @@ class QuestionSource(Base):
 
 class Province(Base):
     __tablename__ = "provinces"
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(30), nullable=False, unique=True)
     name = Column(String(50), nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)

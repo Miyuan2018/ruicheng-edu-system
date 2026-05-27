@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Card, Table, Button, Modal, Form, Input, Select, InputNumber, Row, Col, Popconfirm,
-  Tabs, Tag, Space, message, Typography, Tree, Progress, Badge, Alert, Divider, Pagination
+  Card, Table, Button, Form, Input, Select, InputNumber, Row, Col, Popconfirm,
+  Tabs, Tag, Space, message, Typography, Badge, Alert, Divider, Pagination,
+  Radio, Empty
 } from 'antd';
 import {
-  PlusOutlined, RobotOutlined, GlobalOutlined,
-  CheckOutlined, CloseOutlined, ScanOutlined, ReloadOutlined,
-  BookOutlined, ApiOutlined, SearchOutlined, DeleteOutlined, EditOutlined,
+  RobotOutlined, GlobalOutlined,
+  CheckOutlined, CloseOutlined,
+  ApiOutlined, SearchOutlined, DeleteOutlined, EditOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import { useReferenceValues, toLabelMap, toColorMap, toSelectOptions } from '../../hooks/useReferenceValues';
@@ -16,7 +18,7 @@ const { Title, Text } = Typography;
 
 export default function QuestionAdminPage() {
   const [activeTab, setActiveTab] = useState('generate');
-  const [syllabi, setSyllabi] = useState<any[]>([]);
+  const [, setSyllabi] = useState<any[]>([]);
   const [llmConfigs, setLlmConfigs] = useState<string[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [testPassed, setTestPassed] = useState(false);
@@ -24,7 +26,7 @@ export default function QuestionAdminPage() {
   const [subjectOptions, setSubjectOptions] = useState<{value:string,label:string}[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [llmProvider, setLlmProvider] = useState<string>('ollama');
-  const [dsApiKey, setDsApiKey] = useState('');
+  const [, setDsApiKey] = useState('');
   const [dsModel, setDsModel] = useState('deepseek-chat');
   const [dsModels, setDsModels] = useState<string[]>([]);
   const [genForm] = Form.useForm();
@@ -34,11 +36,16 @@ export default function QuestionAdminPage() {
     '- 数量：3道\n- 年级：G8\n- 学科：数学\n\n' +
     '返回格式：严格的JSON数组，不要markdown代码块。'
   );
-  const [knowledgeTree, setKnowledgeTree] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [taskProgress, setTaskProgress] = useState<any>(null);
+
+  // Dedup state
+  const [dedupLoading, setDedupLoading] = useState(false);
+  const [dedupResult, setDedupResult] = useState<{ ok: boolean; total_scanned: number; duplicate_groups: number; groups: { id: string; title: string; question_type: string; subject: string }[][] } | null>(null);
+  const [dedupSelections, setDedupSelections] = useState<Record<number, string>>({});
+  const [dedupMerging, setDedupMerging] = useState<number | null>(null);
 
   useEffect(() => {
     loadSyllabi();
@@ -46,7 +53,7 @@ export default function QuestionAdminPage() {
     loadPendingQuestions();
   }, []);
 
-  const { 'question-sources': sources, 'grade-levels': grades, 'difficulty-levels': diffs, 'question-types': qtypes } = useReferenceValues();
+  const { 'grade-levels': grades, 'difficulty-levels': diffs, 'question-types': qtypes } = useReferenceValues();
 
   const loadSyllabi = async () => {
     try { const { data } = await apiClient.get('/question-admin/syllabi'); setSyllabi(data); } catch {}
@@ -55,8 +62,8 @@ export default function QuestionAdminPage() {
     try {
       const { data } = await apiClient.get('/admin/llm/config');
       setLlmProvider(data.current || 'ollama');
-      var ollama = data.ollama || {};
-      var deepseek = data.deepseek || {};
+      const ollama = data.ollama || {};
+      const deepseek = data.deepseek || {};
       setLlmConfigs(ollama.available_models || []);
       setSelectedModel(ollama.model || '');
       setDsApiKey(deepseek.api_key || '');
@@ -68,7 +75,7 @@ export default function QuestionAdminPage() {
   const handleTestConnection = async () => {
     setTestLoading(true);
     try {
-      var payload: any = { provider: llmProvider };
+      const payload: any = { provider: llmProvider };
       if (llmProvider === 'ollama') {
         if (!selectedModel) { message.warning('请先选择模型'); setTestLoading(false); return; }
         payload.model = selectedModel;
@@ -89,27 +96,6 @@ export default function QuestionAdminPage() {
     try { const { data } = await apiClient.get('/question-admin/pending', { params: { limit: 1 } }); setPendingCount((data as any).total || 0); } catch {}
   };
 
-  // Syllabus
-  const handleCreateSyllabus = async (values: any) => {
-    try {
-      await apiClient.post('/question-admin/syllabi', null, { params: values });
-      message.success('考纲创建成功');
-      loadSyllabi();
-    } catch { message.error('创建失败'); }
-  };
-
-  const handleExtractKnowledge = async (syllabusId: string) => {
-    setLoading(true);
-    try {
-      const { data } = await apiClient.post(`/question-admin/syllabi/${syllabusId}/extract-knowledge`,
-        null, { params: { model_config_id: selectedModel } });
-      setKnowledgeTree(data.knowledge_tree);
-      message.success('知识点提取完成');
-      loadSyllabi();
-    } catch { message.error('提取失败'); }
-    finally { setLoading(false); }
-  };
-
   // Question Generation
   const handleGenerateQuestions = async (values: any) => {
     setLoading(true);
@@ -124,12 +110,13 @@ export default function QuestionAdminPage() {
         message.success('成功生成 ' + data.count + ' 道试题');
         loadPendingQuestions();
       } else {
-        var errMsg = data.error || data.detail || JSON.stringify(data);
+        const errMsg = data.error || data.detail || JSON.stringify(data);
         message.error(errMsg);
         setTaskProgress({ ok: false, error: errMsg, count: 0 });
       }
-    } catch(err) {
-      var msg = '网络请求失败';
+    } catch(e: unknown) {
+      const err = e as any;
+      let msg = '网络请求失败';
       if (err && err.response && err.response.data) {
         msg = err.response.data.detail || err.response.data.error || JSON.stringify(err.response.data);
       }
@@ -164,6 +151,69 @@ export default function QuestionAdminPage() {
     const v = scrapeForm.getFieldsValue();
     setScrapeConditions(`知识点: ${v.knowledge_point || ''}\n学科: ${v.subject || '数学'}\n年级: ${v.grade_level || 'G8'}\n难度: ${v.difficulty || 'MEDIUM'}\n题型: ${v.question_type || 'SINGLE_CHOICE'}\n数量: ${v.count || 3}`);
   };
+
+  // Dedup handlers
+  const handleDedupScan = async () => {
+    setDedupLoading(true);
+    setDedupResult(null);
+    setDedupSelections({});
+    try {
+      const { data } = await apiClient.post('/question-admin/dedup');
+      setDedupResult(data);
+      // Default: select first question in each group as "keep"
+      const sels: Record<number, string> = {};
+      (data.groups || []).forEach((g: { id: string }[], i: number) => {
+        if (g.length > 0) sels[i] = g[0].id;
+      });
+      setDedupSelections(sels);
+      if (data.duplicate_groups === 0) {
+        message.success('扫描完成，未发现重复试题');
+      } else {
+        message.success(`扫描完成，发现 ${data.duplicate_groups} 组重复`);
+      }
+    } catch {
+      message.error('扫描失败');
+    } finally {
+      setDedupLoading(false);
+    }
+  };
+
+  const handleDedupMerge = async (idx: number) => {
+    const keepId = dedupSelections[idx];
+    if (!keepId || !dedupResult) return;
+    const group = dedupResult.groups[idx];
+    const removeIds = group.filter(q => q.id !== keepId).map(q => q.id);
+    setDedupMerging(idx);
+    try {
+      // FastAPI List[str] query param: manually join to avoid axios bracket encoding
+      const params = new URLSearchParams();
+      params.append('keep_id', keepId);
+      removeIds.forEach(id => params.append('remove_ids', id));
+      const { data } = await apiClient.post(`/question-admin/dedup/merge?${params.toString()}`);
+      message.success(data.message || '合并成功');
+      // Remove merged group from result
+      setDedupResult((prev) => {
+        if (!prev) return prev;
+        const newGroups = prev.groups.filter((_, i) => i !== idx);
+        return { ...prev, groups: newGroups, duplicate_groups: newGroups.length };
+      });
+      setDedupSelections((prev) => {
+        const next: Record<number, string> = {};
+        Object.entries(prev).forEach(([k, v]) => {
+          const ki = Number(k);
+          if (ki < idx) next[ki] = v;
+          else if (ki > idx) next[ki - 1] = v;
+        });
+        return next;
+      });
+    } catch {
+      message.error('合并失败');
+    } finally {
+      setDedupMerging(null);
+    }
+  };
+
+  const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
 
   const tabItems = [
     {
@@ -200,7 +250,7 @@ export default function QuestionAdminPage() {
               <Form form={genForm} onFinish={handleGenerateQuestions} layout="horizontal" size="small"
                 labelCol={{ style: { width: 50, fontSize: 12 } }}
                 onValuesChange={(_, all) => {
-                  var p = `你是一位专业的教育题目生成专家。请根据以下要求生成试题，直接返回JSON数组。\n\n要求：\n- 知识点：${all.knowledge_point || '(未填)'}\n- 难度：${all.difficulty || 'MEDIUM'}\n- 题型：${all.question_type || 'SINGLE_CHOICE'}\n- 数量：${all.count || 3}道\n- 年级：${all.grade_level || 'G8'}\n- 学科：${all.subject || '数学'}\n\n返回格式：严格的JSON数组，不要markdown代码块。`;
+                  const p = `你是一位专业的教育题目生成专家。请根据以下要求生成试题，直接返回JSON数组。\n\n要求：\n- 知识点：${all.knowledge_point || '(未填)'}\n- 难度：${all.difficulty || 'MEDIUM'}\n- 题型：${all.question_type || 'SINGLE_CHOICE'}\n- 数量：${all.count || 3}道\n- 年级：${all.grade_level || 'G8'}\n- 学科：${all.subject || '数学'}\n\n返回格式：严格的JSON数组，不要markdown代码块。`;
                   setPromptText(p);
                 }}
                 initialValues={{ subject: '数学', grade_level: 'G8', difficulty: 'MEDIUM', question_type: 'SINGLE_CHOICE', count: 3 }}>
@@ -385,6 +435,92 @@ export default function QuestionAdminPage() {
       label: <span><CheckOutlined />审核试题 <Badge count={pendingCount} /></span>,
       children: <ReviewQuestionList onRefresh={() => loadPendingQuestions()} />,
     },
+    {
+      key: 'dedup',
+      label: <span><CopyOutlined />去重管理</span>,
+      children: (<>
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Button type="primary" size="small" icon={<CopyOutlined />} loading={dedupLoading} onClick={handleDedupScan}>
+              扫描重复试题
+            </Button>
+            {dedupResult && (
+              <span style={{ fontSize: 13, color: '#666' }}>
+                共扫描 <strong>{dedupResult.total_scanned}</strong> 道活跃试题，
+                发现 <strong>{dedupResult.duplicate_groups}</strong> 组重复
+              </span>
+            )}
+          </div>
+        </Card>
+
+        {dedupResult && (
+          dedupResult.groups.length === 0 ? (
+            <Empty description="未发现重复试题，题库状态良好" />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {dedupResult.groups.map((group, idx) => (
+                <Card size="small" key={idx} styles={{ body: { padding: '12px 16px' } }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text strong style={{ fontSize: 13 }}>重复组 #{idx + 1}（{group.length} 道相似题目）</Text>
+                    <Tag color="blue">相似度 ≥85%</Tag>
+                  </div>
+                  <Radio.Group
+                    value={dedupSelections[idx]}
+                    onChange={(e) => setDedupSelections((prev) => ({ ...prev, [idx]: e.target.value }))}
+                    style={{ width: '100%' }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {group.map((q) => (
+                        <div
+                          key={q.id}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 4,
+                            border: dedupSelections[idx] === q.id ? '1px solid #52c41a' : '1px solid #f0f0f0',
+                            background: dedupSelections[idx] === q.id ? '#f6ffed' : '#fafafa',
+                          }}
+                        >
+                          <Radio value={q.id}>
+                            <span style={{ fontSize: 13 }}>
+                              {q.title.length > 80 ? q.title.slice(0, 80) + '...' : q.title}
+                            </span>
+                            <Space size={4} style={{ marginLeft: 8 }}>
+                              <Tag style={{ fontSize: 11 }}>{typeMap[q.question_type] || q.question_type}</Tag>
+                              {q.subject && <Tag style={{ fontSize: 11 }}>{q.subject}</Tag>}
+                              {dedupSelections[idx] === q.id && <Tag color="green" style={{ fontSize: 11 }}>保留</Tag>}
+                            </Space>
+                          </Radio>
+                        </div>
+                      ))}
+                    </div>
+                  </Radio.Group>
+                  <div style={{ marginTop: 10, textAlign: 'right' }}>
+                    <Popconfirm
+                      title={`确定保留所选题目并禁用其余 ${group.length - 1} 道重复题？`}
+                      onConfirm={() => handleDedupMerge(idx)}
+                      disabled={!dedupSelections[idx]}
+                    >
+                      <Button
+                        type="primary"
+                        size="small"
+                        loading={dedupMerging === idx}
+                        disabled={!dedupSelections[idx]}
+                      >
+                        合并
+                      </Button>
+                    </Popconfirm>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )
+        )}
+
+        {dedupResult && dedupResult.duplicate_groups > 0 && dedupResult.groups.length === 0 && (
+          <Alert type="success" message="所有重复组已处理完毕" showIcon style={{ marginTop: 12 }} />
+        )}
+      </>),
+    },
   ];
 
   return (
@@ -432,6 +568,7 @@ function ReviewQuestionList({ onRefresh }: { onRefresh: () => void }) {
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadPage(page); }, [page]);
 
   const parseOptions = (v: any) => {
@@ -593,7 +730,9 @@ function QuestionListBySource({ sourceFilter, title }: { sourceFilter: string, t
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadPage(1); }, [sourceFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadPage(page); }, [page]);
 
   const handleBatchDelete = async () => {
@@ -601,7 +740,7 @@ function QuestionListBySource({ sourceFilter, title }: { sourceFilter: string, t
     try {
       await apiClient.post('/questions/batch-delete', selectedRowKeys);
       message.success('已删除 ' + selectedRowKeys.length + ' 道');
-      setSelectedRowKeys([]); fetchQuestions();
+      setSelectedRowKeys([]); loadPage(page);
     } catch { message.error('批量删除失败'); }
   };
 
@@ -609,7 +748,7 @@ function QuestionListBySource({ sourceFilter, title }: { sourceFilter: string, t
     try {
       await apiClient.delete('/questions/' + id);
       message.success('已删除');
-      fetchQuestions();
+      loadPage(page);
     } catch { message.error('删除失败'); }
   };
 

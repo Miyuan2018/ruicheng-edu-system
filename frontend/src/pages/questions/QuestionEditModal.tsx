@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, message, Switch, Button, Space, Tag, Row, Col } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useEffect, useState, useRef } from 'react';
+import { Modal, Form, Input, Select, InputNumber, message, Switch, Row, Col } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
+import ExplanationReviewModal from '../../components/topic-board/ExplanationReviewModal';
 
 const { TextArea } = Input;
 
@@ -21,6 +22,11 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
   const [loading, setLoading] = useState(false);
   const [qtype, setQtype] = useState('SINGLE_CHOICE');
   const [subjects, setSubjects] = useState<{ value: string; label: string }[]>([]);
+  const [llmGenerating, setLlmGenerating] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [generatedSteps, setGeneratedSteps] = useState<any[]>([]);
+  const [savingExplanation, setSavingExplanation] = useState(false);
+  const wasTypicalRef = useRef(false);
   const isEdit = !!question;
 
   useEffect(() => {
@@ -28,6 +34,7 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
       if (question) {
         // Set qtype FIRST so option fields render before setFieldsValue
         setQtype(question.question_type);
+        wasTypicalRef.current = question.is_typical || false;
         const fields: any = { ...question };
         // Extract grades and knowledge points from JSONB grade_level
         if (question.grade_level) {
@@ -78,6 +85,56 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
       }).catch(() => {});
     }
   }, [open]);
+
+  // Watch is_typical changes — trigger LLM when toggled ON
+  const isTypicalValue = Form.useWatch('is_typical', form);
+  useEffect(() => {
+    if (!isEdit || !open || !question) return;
+    const wasTypical = wasTypicalRef.current;
+    if (isTypicalValue && !wasTypical) {
+      wasTypicalRef.current = true;
+      setLlmGenerating(true);
+      apiClient.post('/questions/generate-explanation', { question_id: question.id })
+        .then((resp: any) => {
+          const steps = resp.data?.steps || [];
+          setGeneratedSteps(steps);
+          setReviewModalOpen(true);
+        })
+        .catch(() => {
+          message.error('LLM生成讲解失败，请稍后重试');
+        })
+        .finally(() => setLlmGenerating(false));
+    }
+  }, [isTypicalValue, isEdit, open, question]);
+
+  const handleSaveExplanation = async (steps: any[]) => {
+    if (!question) return;
+    setSavingExplanation(true);
+    try {
+      await apiClient.post('/topic-board', {
+        title: question.title,
+        question_id: question.id,
+        topic: question.subject,
+        difficulty_label: question.difficulty,
+        problem_statement: question.title,
+        graph_config: null,
+        is_active: true,
+        steps: steps.map((s: any, i: number) => ({
+          step_order: i + 1,
+          text: s.text,
+          panda_emotion: s.panda_emotion || 'explaining',
+          board_line: s.board_line || null,
+        })),
+      });
+      message.success('讲解已保存');
+      setReviewModalOpen(false);
+      setGeneratedSteps([]);
+    } catch {
+      message.error('保存讲解失败');
+    } finally {
+      setSavingExplanation(false);
+    }
+  };
 
   const buildAnswerJson = (values: any): string => {
     const type = values.question_type || qtype;
@@ -237,13 +294,25 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="is_typical" label="典型题" valuePropName="checked" style={{ marginBottom: 0 }}>
-                <Switch size="small" />
+              <Form.Item name="is_typical" label="重点题" valuePropName="checked" style={{ marginBottom: 0 }}>
+                <Switch size="small" disabled={llmGenerating} />
               </Form.Item>
+              {llmGenerating && (
+                <span style={{ fontSize: 12, color: '#667eea' }}>
+                  <LoadingOutlined style={{ marginRight: 4 }} />AI生成讲解中...
+                </span>
+              )}
             </Col>
           </Row>
         )}
       </Form>
+      <ExplanationReviewModal
+        open={reviewModalOpen}
+        onClose={() => { setReviewModalOpen(false); setGeneratedSteps([]); }}
+        steps={generatedSteps}
+        onSave={handleSaveExplanation}
+        saving={savingExplanation}
+      />
     </Modal>
   );
 }

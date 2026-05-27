@@ -10,19 +10,7 @@ BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 CONDA_ENV="$HOME/conda_workspace"
 
-# 初始化 conda
-CONDA_BASE="${CONDA_PREFIX:-$HOME/miniconda3}"
-if [ ! -d "$CONDA_BASE" ]; then
-    for loc in "$HOME/miniconda3" "$HOME/anaconda3" "/opt/conda"; do
-        if [ -d "$loc" ]; then CONDA_BASE="$loc"; break; fi
-    done
-fi
-if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
-    source "$CONDA_BASE/etc/profile.d/conda.sh"
-else
-    export PATH="$CONDA_BASE/bin:$PATH"
-fi
-
+# 颜色
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -33,7 +21,29 @@ log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; }
 info() { echo -e "${BLUE}[i]${NC} $1"; }
+die()  { err "$1"; exit 1; }
 
+# ---- 从 sysconfig.json 读取数据库配置 ----
+read_db_config() {
+    local cfg="$BACKEND_DIR/sysconfig.json"
+    if [ ! -f "$cfg" ]; then
+        return 1
+    fi
+    # 用 Python 解析 JSON，避免依赖 jq
+    "$CONDA_ENV/bin/python" -c "
+import json, sys
+with open('$cfg') as f:
+    cfg = json.load(f)
+db = cfg.get('database', {})
+print(db.get('server','localhost'))
+print(db.get('port','5432'))
+print(db.get('database','edu_system'))
+print(db.get('user','postgres'))
+print(db.get('password','postgres'))
+" 2>/dev/null
+}
+
+# ---- 清理函数 ----
 cleanup() {
     echo ""
     info "正在关闭服务..."
@@ -50,41 +60,35 @@ echo -e "${BLUE}   睿承教育平台 — 一键启动${NC}"
 echo -e "${BLUE}============================================${NC}"
 echo ""
 
-# ---- 0. 清理残留端口 ----
-info "清理残留进程..."
-for port in 8000 3000; do
-    for pid in $(fuser $port/tcp 2>/dev/null); do
-        kill $pid 2>/dev/null
+# ---- 0. 初始化 Conda ----
+info "初始化 Python 环境..."
+CONDA_BASE="${CONDA_PREFIX:-$HOME/miniconda3}"
+if [ ! -d "$CONDA_BASE" ]; then
+    for loc in "$HOME/miniconda3" "$HOME/anaconda3" "/opt/conda"; do
+        if [ -d "$loc" ]; then CONDA_BASE="$loc"; break; fi
     done
-done
-sleep 2
-log "端口已释放"
+fi
+if [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+    source "$CONDA_BASE/etc/profile.d/conda.sh"
+fi
+export PATH="$CONDA_BASE/bin:$PATH"
 
-# ---- 1. 检查 Conda 环境 ----
+# 优先用直接路径，避免 conda run 的开销
+PYTHON="$CONDA_ENV/bin/python"
+PIP="$CONDA_ENV/bin/pip"
+
+# ---- 1. 检查/创建 Conda 环境 ----
 info "检查 Python 环境..."
-if [ ! -d "$CONDA_ENV" ] || [ ! -f "$CONDA_ENV/bin/python" ]; then
-    err "Conda 环境 '$CONDA_ENV' 未找到，正在创建..."
+if [ ! -d "$CONDA_ENV" ] || [ ! -f "$PYTHON" ]; then
+    warn "Conda 环境 '$CONDA_ENV' 未找到，正在创建..."
     conda create -p "$CONDA_ENV" python=3.12 -y
+    PYTHON="$CONDA_ENV/bin/python"
+    PIP="$CONDA_ENV/bin/pip"
     log "环境创建完成"
 fi
+log "Python: $($PYTHON --version 2>&1)"
 
-# ---- 2. 检查后端依赖 ----
-info "检查后端依赖..."
-MISSING=""
-for pkg in fastapi uvicorn sqlalchemy alembic pydantic asyncpg; do
-    if ! conda run -p "$CONDA_ENV" pip show "$pkg" &>/dev/null; then
-        MISSING=1
-        break
-    fi
-done
-if [ -n "$MISSING" ]; then
-    warn "缺少依赖，正在安装..."
-    conda run -p "$CONDA_ENV" pip install -r "$BACKEND_DIR/requirements.txt" -q
-    conda run -p "$CONDA_ENV" pip install asyncpg email-validator "bcrypt<5" -q
-    log "后端依赖安装完成"
-fi
-
-# ---- 3. 确保配置文件 ----
+# ---- 2. 确保配置文件 ----
 info "检查配置文件..."
 if [ ! -f "$BACKEND_DIR/sysconfig.json" ]; then
     cat > "$BACKEND_DIR/sysconfig.json" << 'JSONEOF'
@@ -92,7 +96,7 @@ if [ ! -f "$BACKEND_DIR/sysconfig.json" ]; then
   "secret_key": "ruicheng-edu-secret-key-change-in-production",
   "database": {
     "server": "localhost",
-    "port": "5433",
+    "port": "5432",
     "database": "edu_system",
     "user": "postgres",
     "password": "postgres"
@@ -131,27 +135,72 @@ JSONEOF
     log "sysconfig.json 已创建"
 fi
 
-# ---- 4. 检查 PostgreSQL ----
+# ---- 3. 读取数据库配置 ----
+info "读取数据库配置..."
+DB_CONFIG=$(read_db_config) || {
+    warn "无法解析 sysconfig.json，使用默认值"
+    DB_CONFIG="localhost
+5432
+edu_system
+postgres
+postgres"
+}
+DB_HOST=$(echo "$DB_CONFIG" | sed -n '1p')
+DB_PORT=$(echo "$DB_CONFIG" | sed -n '2p')
+DB_NAME=$(echo "$DB_CONFIG" | sed -n '3p')
+DB_USER=$(echo "$DB_CONFIG" | sed -n '4p')
+DB_PASS=$(echo "$DB_CONFIG" | sed -n '5p')
+
+info "数据库配置: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+# 定义 PGPASSWORD 供后续 psql 使用
+export PGPASSWORD="$DB_PASS"
+
+# ---- 4. 清理残留端口 ----
+info "清理残留进程..."
+for port in 8000 3000; do
+    if command -v fuser &>/dev/null; then
+        for pid in $(fuser $port/tcp 2>/dev/null); do
+            kill $pid 2>/dev/null || true
+        done
+    fi
+done
+sleep 1
+log "端口检查完成"
+
+# ---- 5. 检查后端依赖 ----
+info "检查后端依赖..."
+MISSING=""
+for pkg in fastapi uvicorn sqlalchemy alembic pydantic asyncpg; do
+    if ! $PIP show "$pkg" &>/dev/null; then
+        MISSING=1
+        break
+    fi
+done
+if [ -n "$MISSING" ]; then
+    warn "缺少依赖，正在安装..."
+    $PIP install -r "$BACKEND_DIR/requirements.txt" -q
+    $PIP install asyncpg email-validator "bcrypt<5" -q
+    log "后端依赖安装完成"
+fi
+
+# ---- 6. 检查 PostgreSQL ----
 info "检查 PostgreSQL..."
-if ! PGPASSWORD=postgres psql -U postgres -h localhost -p 5433 -c "SELECT 1" &>/dev/null; then
-    err "无法连接 PostgreSQL (postgres/postgres@localhost:5433)"
+if ! psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -c "SELECT 1" &>/dev/null; then
+    err "无法连接 PostgreSQL (${DB_USER}@${DB_HOST}:${DB_PORT})"
     err "请确保 PostgreSQL 已启动: sudo systemctl start postgresql"
+    err "或检查 sysconfig.json 中 database 配置是否正确"
     exit 1
 fi
-PGPASSWORD=postgres psql -U postgres -h localhost -p 5433 -c "CREATE DATABASE edu_system" 2>/dev/null || true
+psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -c "CREATE DATABASE $DB_NAME" 2>/dev/null || true
 log "PostgreSQL 连接正常"
 
-# ---- 5. 数据库初始化 ----
+# ---- 7. 数据库迁移 ----
 info "运行数据库迁移..."
 cd "$BACKEND_DIR"
-conda run -p "$CONDA_ENV" alembic upgrade head 2>/dev/null || true
-log "数据库迁移完成"
-info "检查数据库表..."
-TABLES=$(PGPASSWORD=postgres psql -U postgres -d edu_system -h localhost -p 5433 -t \
-    -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "${TABLES:-0}" -lt 5 ]; then
-    warn "创建数据库表..."
-    conda run -p "$CONDA_ENV" python -c "
+if ! $PYTHON -m alembic upgrade head; then
+    warn "Alembic 迁移失败，尝试直接建表..."
+    $PYTHON -c "
 from app.db.base import Base
 from app.db.session import engine
 from app.models import *
@@ -161,24 +210,44 @@ async def init():
         await conn.run_sync(Base.metadata.create_all)
     print('done')
 asyncio.run(init())
-" 2>/dev/null
-    log "数据库表创建完成"
+" || die "数据库初始化失败，请检查数据库连接配置"
+    log "数据库表已创建"
 else
-    log "数据库表已就绪"
+    log "数据库迁移完成"
 fi
 
-# ---- 6. 种子管理员 ----
+# ---- 8. 种子数据 ----
+info "检查参考数据..."
+$PYTHON -c "
+import asyncio
+from app.db.session import AsyncSessionLocal
+from app.seed_reference import seed_reference_data
+async def run():
+    async with AsyncSessionLocal() as db:
+        await seed_reference_data(db)
+asyncio.run(run())
+" 2>/dev/null || warn "参考数据种子可能已存在"
+
 info "检查系统管理员..."
-HAS_DATA=$(PGPASSWORD=postgres psql -U postgres -d edu_system -h localhost -p 5433 -t \
-    -c "SELECT count(*) FROM sys_admins WHERE username='SYSAdmin'" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "${HAS_DATA:-0}" != "1" ]; then
+HAS_ADMIN=$($PYTHON -c "
+import asyncio
+from sqlalchemy import select, func
+from app.db.session import AsyncSessionLocal
+from app.models import SysAdmin
+async def check():
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(func.count()).select_from(SysAdmin).where(SysAdmin.username=='SYSAdmin'))
+        count = result.scalar()
+        print(count)
+asyncio.run(check())
+" 2>/dev/null || echo "0")
+
+if [ "${HAS_ADMIN:-0}" != "1" ]; then
     warn "创建系统管理员..."
-    cd "$BACKEND_DIR"
-    conda run -p "$CONDA_ENV" python -c "
-from app.models import *
+    $PYTHON -c "
+from app.models import SysAdmin
 from app.db.session import AsyncSessionLocal
 from app.core.security import get_password_hash
-from sqlalchemy import select
 import asyncio, uuid
 async def seed():
     async with AsyncSessionLocal() as db:
@@ -186,36 +255,38 @@ async def seed():
         hash_sys = get_password_hash('SYSPass')
         db.add(SysAdmin(id=sid, username='SYSAdmin', password_hash=hash_sys, full_name='系统管理员', is_active=True))
         await db.commit()
-        print('SYSAdmin created')
+        print('done')
 asyncio.run(seed())
-" 2>/dev/null
+" || warn "系统管理员可能已存在"
     log "系统管理员已创建"
 else
     log "系统管理员已存在"
 fi
 
-# ---- 7. 检查前端依赖 ----
+# ---- 9. 检查前端依赖 ----
 info "检查前端依赖..."
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
     warn "前端依赖未安装，正在安装..."
     cd "$FRONTEND_DIR"
-    npm install --silent
+    npm install
     log "前端依赖安装完成"
 fi
 
-# ---- 8. 启动后端 ----
+# ---- 10. 启动后端 ----
 info "启动后端服务 (端口 8000)..."
 cd "$BACKEND_DIR"
-conda run -p "$CONDA_ENV" uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+$PYTHON -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
 sleep 2
 
 if ! kill -0 $BACKEND_PID 2>/dev/null; then
     err "后端启动失败"
+    err "请检查上方错误日志"
     exit 1
 fi
 
-for i in $(seq 1 15); do
+info "等待后端就绪..."
+for i in $(seq 1 20); do
     if curl -s http://localhost:8000/health >/dev/null 2>&1; then
         break
     fi
@@ -225,12 +296,13 @@ done
 if curl -s http://localhost:8000/health >/dev/null 2>&1; then
     log "后端服务已启动 → http://localhost:8000"
 else
-    err "后端服务启动超时"
+    err "后端服务启动超时 (20s)"
+    err "请检查 http://localhost:8000/docs 是否可访问"
     kill $BACKEND_PID 2>/dev/null || true
     exit 1
 fi
 
-# ---- 9. 启动前端 ----
+# ---- 11. 启动前端 ----
 info "启动前端服务 (端口 3000)..."
 cd "$FRONTEND_DIR"
 npm run dev -- --host 0.0.0.0 &
@@ -243,20 +315,29 @@ if ! kill -0 $FRONTEND_PID 2>/dev/null; then
     exit 1
 fi
 
-if curl -s http://localhost:3000 >/dev/null 2>&1; then
+# 前端需要编译，给更多时间
+FRONTEND_READY=false
+for i in $(seq 1 15); do
+    if curl -s http://localhost:3000 >/dev/null 2>&1; then
+        FRONTEND_READY=true
+        break
+    fi
+    sleep 2
+done
+
+if [ "$FRONTEND_READY" = true ]; then
     log "前端服务已启动 → http://localhost:3000"
 else
-    warn "前端可能还在编译中，稍等片刻..."
-    sleep 3
+    warn "前端可能还在编译中，稍后访问 http://localhost:3000"
 fi
 
-# ---- 10. 汇总 ----
+# ---- 12. 汇总 ----
 echo ""
 echo -e "${GREEN}============================================${NC}"
 echo -e "${GREEN}   睿承教育平台启动成功！${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
-echo -e "  数据库:    ${BLUE}PostgreSQL 16 (localhost:5433/edu_system)${NC}"
+echo -e "  数据库:    ${BLUE}PostgreSQL (${DB_HOST}:${DB_PORT}/${DB_NAME})${NC}"
 echo ""
 echo -e "  ${BLUE}【学生端】${NC}"
 echo -e "    地址:     ${BLUE}http://localhost:3000/login${NC}"

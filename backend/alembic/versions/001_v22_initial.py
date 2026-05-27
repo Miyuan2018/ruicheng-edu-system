@@ -17,7 +17,7 @@ def upgrade():
         sa.Column('email', sa.String(100), nullable=True),
         sa.Column('phone', sa.String(20), nullable=True),
         sa.Column('avatar_url', sa.String(255), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
@@ -34,7 +34,7 @@ def upgrade():
         sa.Column('phone', sa.String(20), nullable=True),
         sa.Column('admin_type', sa.String(20), nullable=False),
         sa.Column('created_by', sa.String(36), sa.ForeignKey('sys_admins.id'), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
@@ -51,7 +51,7 @@ def upgrade():
         sa.Column('phone', sa.String(20), nullable=True),
         sa.Column('grade', sa.String(20), nullable=True),
         sa.Column('school', sa.String(100), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
@@ -68,7 +68,7 @@ def upgrade():
         sa.Column('subject', sa.String(50), nullable=True),
         sa.Column('start_date', sa.Date(), nullable=True),
         sa.Column('end_date', sa.Date(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
@@ -89,6 +89,16 @@ def upgrade():
         sa.PrimaryKeyConstraint('id'), sa.UniqueConstraint('code')
     )
     
+    # subjects
+    op.create_table('subjects',
+        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('name', sa.String(50), nullable=False),
+        sa.Column('category', sa.String(30), nullable=True),
+        sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint('id'), sa.UniqueConstraint('name')
+    )
+
     # questions
     op.create_table('questions',
         sa.Column('id', sa.String(36), nullable=False),
@@ -107,7 +117,7 @@ def upgrade():
         sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('source_task_id', sa.String(36), nullable=True),
         sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
@@ -146,7 +156,7 @@ def upgrade():
         sa.Column('class_id', sa.String(36), sa.ForeignKey('classes.id'), nullable=False),
         sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('joined_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.PrimaryKeyConstraint('id'), sa.UniqueConstraint('class_id', 'student_id')
     )
     
@@ -287,8 +297,8 @@ def upgrade():
         sa.Column('provider', sa.String(50), nullable=False),
         sa.Column('endpoint', sa.String(500), nullable=False),
         sa.Column('model_name', sa.String(100), nullable=False),
-        sa.Column('is_local', sa.Boolean(), nullable=True, server_default=sa.text('1')),
-        sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('1')),
+        sa.Column('is_local', sa.Boolean(), nullable=True, server_default=sa.text('true')),
+        sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
         sa.Column('config', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
@@ -305,7 +315,7 @@ def upgrade():
         sa.Column('knowledge_tree', sa.JSON(), nullable=True),
         sa.Column('status', sa.String(20), nullable=True, server_default='DRAFT'),
         sa.Column('version', sa.Integer(), nullable=True, server_default='1'),
-        sa.Column('is_current', sa.Boolean(), nullable=True, server_default=sa.text('1')),
+        sa.Column('is_current', sa.Boolean(), nullable=True, server_default=sa.text('true')),
         sa.Column('parent_syllabus_id', sa.String(36), nullable=True),
         sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -341,9 +351,9 @@ def upgrade():
         sa.Column('node_type', sa.String(20), nullable=False, server_default='POINT'),
         sa.Column('sort_order', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('version', sa.Integer(), nullable=True, server_default='1'),
-        sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
         sa.Column('invalid_reason', sa.String(30), nullable=True),
-        sa.Column('is_modified', sa.Boolean(), nullable=True, server_default=sa.text('0')),
+        sa.Column('is_modified', sa.Boolean(), nullable=True, server_default=sa.text('false')),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('meta_data', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),

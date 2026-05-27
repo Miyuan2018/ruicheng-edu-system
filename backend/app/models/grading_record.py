@@ -1,6 +1,5 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Numeric
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -9,8 +8,8 @@ from app.db.base import Base
 class GradingRecord(Base):
     __tablename__ = "grading_records"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    answer_submission_id = Column(UUID, ForeignKey("answer_submissions.id"), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    answer_submission_id = Column(String(36), ForeignKey("answer_submissions.id"), nullable=False, index=True)
     model_used = Column(String(100), nullable=True)
     model_version = Column(String(50), nullable=True)
     status = Column(String(20), nullable=False)

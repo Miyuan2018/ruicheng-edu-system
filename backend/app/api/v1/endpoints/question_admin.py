@@ -151,7 +151,41 @@ async def generate_questions(
     if count > 20:
         count = 20
 
-    # Call real LLM service
+    # Check Celery config for async dispatch
+    from app.services.config_service import load_config
+    celery_cfg = load_config().get("celery", {})
+    use_async = (
+        celery_cfg.get("enabled", False)
+        and count >= celery_cfg.get("async_threshold", 3)
+    )
+
+    if use_async:
+        # Create task record and dispatch to Celery
+        task = QuestionTask(
+            task_type="LLM_GENERATE", status="PENDING", total_items=count,
+            parameters={"knowledge_point": knowledge_point, "difficulty": difficulty,
+                         "question_type": question_type, "count": count,
+                         "subject": subject, "grade_level": grade_level},
+            model_used=model or "default",
+            created_by=uuid.UUID(current_user.id),
+        )
+        db.add(task)
+        await db.commit()
+        await db.refresh(task)
+
+        from app.tasks.llm_tasks import generate_questions_task
+        generate_questions_task.delay(
+            task_id=str(task.id),
+            knowledge_point=knowledge_point, difficulty=difficulty,
+            question_type=question_type, count=count,
+            subject=subject, grade_level=grade_level,
+            model=model, provider=provider,
+            created_by=current_user.id,
+        )
+        return {"ok": True, "async": True, "task_id": str(task.id),
+                "message": f"已提交异步生成任务 ({count}道题)"}
+
+    # Synchronous path (original)
     try:
         from app.services.llm_service import generate_questions as llm_generate
         result = await llm_generate(
@@ -230,6 +264,7 @@ async def list_pending_questions(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    limit = min(limit, 200)
     if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN", "TEACHER"):
         raise HTTPException(403, detail="权限不足")
     query = select(Question).where(Question.review_status.in_(("PENDING", "NEEDS_REVIEW")))
@@ -424,7 +459,38 @@ async def start_scrape(
     if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
-    # Real web scraping
+    # Check Celery config for async dispatch
+    from app.services.config_service import load_config
+    celery_cfg = load_config().get("celery", {})
+    use_async = (
+        celery_cfg.get("enabled", False)
+        and count >= celery_cfg.get("async_threshold", 3)
+    )
+
+    if use_async:
+        task = QuestionTask(
+            task_type="WEB_SCRAPE", status="PENDING", total_items=count,
+            parameters={"knowledge_point": knowledge_point, "subject": subject,
+                         "grade_level": grade_level, "difficulty": difficulty,
+                         "question_type": question_type, "count": count},
+            created_by=uuid.UUID(current_user.id),
+        )
+        db.add(task)
+        await db.commit()
+        await db.refresh(task)
+
+        from app.tasks.llm_tasks import scrape_questions_task
+        scrape_questions_task.delay(
+            task_id=str(task.id),
+            knowledge_point=knowledge_point, subject=subject,
+            grade_level=grade_level, difficulty=difficulty,
+            question_type=question_type, count=count,
+            created_by=current_user.id,
+        )
+        return {"ok": True, "async": True, "task_id": str(task.id),
+                "message": f"已提交异步抓取任务 ({count}道题)"}
+
+    # Synchronous path (original)
     from app.services.scraper import search_questions as do_scrape
 
     try:
@@ -724,3 +790,112 @@ async def import_paper_confirm(
     return {"ok": True, "count": len(saved),
             "ids": [str(q.id) for q in saved],
             "message": f"已入库 {len(saved)} 道试题，状态为待审核"}
+
+
+@router.post("/dedup")
+async def deduplicate_questions(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Scan all active questions for duplicates and return similarity groups."""
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(403, detail="权限不足")
+
+    from app.services.dedup_service import find_duplicates, compute_content_hash
+    from app.models.question import Question
+
+    # First pass: compute content_hash for questions without one
+    result = await db.execute(
+        select(Question).where(Question.is_active == True)
+    )
+    questions = result.scalars().all()
+
+    # Update content_hash for questions without it
+    updated = 0
+    for q in questions:
+        if not q.content_hash and q.title:
+            q.content_hash = compute_content_hash(q.title)
+            updated += 1
+    if updated:
+        await db.commit()
+
+    # Re-fetch with content_hash
+    result = await db.execute(
+        select(Question).where(Question.is_active == True)
+    )
+    questions = result.scalars().all()
+
+    # Build input for dedup service
+    q_list = [
+        {
+            "id": str(q.id),
+            "title": q.title,
+            "content_hash": q.content_hash,
+            "question_type": q.question_type,
+            "subject": q.subject,
+            "difficulty": q.difficulty,
+        }
+        for q in questions if q.content_hash
+    ]
+
+    # Find duplicates
+    groups = find_duplicates(q_list, threshold=0.85)
+
+    # Format response
+    response_groups = []
+    for group in groups:
+        response_groups.append([
+            {
+                "id": q["id"],
+                "title": q["title"],
+                "question_type": q.get("question_type"),
+                "subject": q.get("subject"),
+            }
+            for q in group
+        ])
+
+    return {
+        "ok": True,
+        "total_scanned": len(questions),
+        "duplicate_groups": len(response_groups),
+        "groups": response_groups,
+    }
+
+
+@router.post("/dedup/merge")
+async def merge_duplicate_questions(
+    keep_id: str,
+    remove_ids: List[str],
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Merge duplicate questions: keep one, mark others as inactive."""
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(403, detail="权限不足")
+
+    from app.models.question import Question
+
+    result = await db.execute(select(Question).where(Question.id == keep_id))
+    keep = result.scalar_one_or_none()
+    if not keep:
+        raise HTTPException(404, detail="保留的题目不存在")
+
+    # Mark removed questions as inactive
+    for rid in remove_ids:
+        result = await db.execute(select(Question).where(Question.id == rid))
+        q = result.scalar_one_or_none()
+        if q:
+            q.is_active = False
+            if q.meta_data is None:
+                q.meta_data = {}
+            q.meta_data["dedup_merged"] = True
+            q.meta_data["dedup_kept_id"] = keep_id
+            q.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return {
+        "ok": True,
+        "message": f"已合并，保留 {keep_id}，禁用 {len(remove_ids)} 道重复题",
+        "kept_id": keep_id,
+        "removed_count": len(remove_ids),
+    }

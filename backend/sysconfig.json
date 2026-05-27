@@ -1,11 +1,9 @@
 {
-  "secret_key": "change-me-in-production",
   "database": {
     "server": "localhost",
-    "port": "5433",
+    "port": "5432",
     "database": "edu_system",
-    "user": "postgres",
-    "password": "change-me"
+    "user": "postgres"
   },
   "llm": {
     "current": "deepseek",
@@ -26,7 +24,6 @@
     },
     "deepseek": {
       "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
-      "api_key": "change-me",
       "model": "deepseek-v4-pro[1m]",
       "available_models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro[1m]", "deepseek-v4-flash"]
     }

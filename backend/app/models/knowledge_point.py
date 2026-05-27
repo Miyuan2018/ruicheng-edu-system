@@ -1,6 +1,5 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -8,11 +7,11 @@ from app.db.base import Base
 class KnowledgePoint(Base):
     __tablename__ = "knowledge_points"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(50), nullable=False, unique=True, index=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    parent_id = Column(UUID, ForeignKey("knowledge_points.id"), nullable=True, index=True)
+    parent_id = Column(String(36), ForeignKey("knowledge_points.id"), nullable=True, index=True)
     subject = Column(String(50), nullable=False, index=True)
     grade_level = Column(String(20), nullable=True, index=True)
     difficulty_level = Column(String(10), nullable=True)

@@ -8,6 +8,8 @@ from .grading_record import GradingRecord
 from .error_notebook import ErrorNotebook
 from .error_notebook_question import ErrorNotebookQuestion
 from .self_study_task import SelfStudyTask
+from .explanation_session import ExplanationSession
+from .explanation_step import ExplanationStep
 from .knowledge_point_model import KnowledgePointModel
 from .ml_model import MlModel
 from .notification import Notification
@@ -23,12 +25,20 @@ from .student import Student
 from .reference import QuestionType, DifficultyLevel, GradeLevel, PaperStatus, ErrorType, QuestionSource, Province
 from .role import Role
 from .parent import Parent
+from .parent_student_link import ParentStudentLink
+from .encouragement import Encouragement
+from .encouragement_template import EncouragementTemplate
+from .reward_goal import RewardGoal
+from .celebration_event import CelebrationEvent
+from .question_recommendation import QuestionRecommendation
 
 __all__ = [
-    "Role", "Parent",
+    "Role", "Parent", "ParentStudentLink", "Encouragement", "EncouragementTemplate", "RewardGoal", "CelebrationEvent",
+    "QuestionRecommendation",
     "SchoolClass", "KnowledgePoint", "Question",
     "AnswerSubmission", "AnswerDetail", "OcrUpload", "GradingRecord",
     "ErrorNotebook", "ErrorNotebookQuestion", "SelfStudyTask",
+    "ExplanationSession", "ExplanationStep",
     "KnowledgePointModel", "MlModel", "Notification", "ExamPaper", "LlmConfig", "Syllabus", "QuestionTask", "KnowledgeNode", "Subject", "SysAdmin", "Admin", "Student",
     "QuestionType", "DifficultyLevel", "GradeLevel", "PaperStatus", "ErrorType", "QuestionSource", "Province",
 ]

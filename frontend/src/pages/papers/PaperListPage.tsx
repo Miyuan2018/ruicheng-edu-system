@@ -1,168 +1,285 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Tag, Typography, Space, Input, Select, message, Popconfirm, Dropdown } from 'antd';
-import { PlusOutlined, EyeOutlined, EditOutlined, DeleteOutlined, SearchOutlined, DownloadOutlined, PrinterOutlined, CameraOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Table, Button, Tag, Typography, Space, Input, Select, message, Popconfirm, Dropdown, Switch,
+} from 'antd';
+import {
+  PlusOutlined, EyeOutlined, DeleteOutlined, SearchOutlined,
+  DownloadOutlined, PrinterOutlined, CameraOutlined, ReloadOutlined, SendOutlined,
+} from '@ant-design/icons';
 import apiClient from '../../api/client';
 import PaperEditModal from './PaperEditModal';
 import PaperImportModal from './PaperImportModal';
 import PaperPreviewDrawer from './PaperPreviewDrawer';
 import { useReferenceValues, toLabelMap, toColorMap, toSelectOptions } from '../../hooks/useReferenceValues';
+import { getUserType, getAccessToken } from '../../store/auth';
 
-var Title = Typography.Title;
+const { Title } = Typography;
+
+interface PaperItem {
+  id: string;
+  title: string;
+  subject?: string;
+  grade_level?: { grades?: string[] };
+  question_count?: number;
+  total_score?: number;
+  duration_minutes?: number;
+  status?: string;
+}
 
 export default function PaperListPage() {
-  var userType = localStorage.getItem('user_type') || 'STUDENT';
-  var isStudent = userType === 'STUDENT';
-  var ps = useState([]); var papers = ps[0]; var setPapers = ps[1];
-  var ls = useState(false); var loading = ls[0]; var setLoading = ls[1];
-  var modalOpenState = useState(false); var modalOpen = modalOpenState[0]; var setModalOpen = modalOpenState[1];
-  var importOpenState = useState(false); var importOpen = importOpenState[0]; var setImportOpen = importOpenState[1];
-  var editPaperState = useState(null); var editPaper = editPaperState[0]; var setEditPaper = editPaperState[1];
-  var previewOpenState = useState(false); var previewOpen = previewOpenState[0]; var setPreviewOpen = previewOpenState[1];
-  var previewIdState = useState(null); var previewId = previewIdState[0]; var setPreviewId = previewIdState[1];
-  var searchTitleState = useState(''); var searchTitle = searchTitleState[0]; var setSearchTitle = searchTitleState[1];
-  var searchStatusState = useState(''); var searchStatus = searchStatusState[0]; var setSearchStatus = searchStatusState[1];
-  var searchScopeState = useState(''); var searchScope = searchScopeState[0]; var setSearchScope = searchScopeState[1];
-  var searchGradeState = useState(''); var searchGrade = searchGradeState[0]; var setSearchGrade = searchGradeState[1];
-  var searchKeywordState = useState(''); var searchKeyword = searchKeywordState[0]; var setSearchKeyword = searchKeywordState[1];
-  var { 'paper-statuses': paperStatuses, 'grade-levels': grades } = useReferenceValues();
-  var statusColors = toColorMap(paperStatuses);
-  var statusLabels = toLabelMap(paperStatuses);
+  const isStudent = getUserType() === 'STUDENT';
+  const [papers, setPapers] = useState<PaperItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [editPaper, setEditPaper] = useState<PaperItem | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [searchTitle, setSearchTitle] = useState('');
+  const [searchStatus, setSearchStatus] = useState('');
+  const [searchScope, setSearchScope] = useState('');
+  const [searchGrade, setSearchGrade] = useState<string | string[]>('');
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchSubject, setSearchSubject] = useState('');
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [subjectOptions, setSubjectOptions] = useState<{value:string,label:string}[]>([]);
+  const { 'paper-statuses': paperStatuses, 'grade-levels': grades } = useReferenceValues();
+  const statusColors = toColorMap(paperStatuses);
+  const statusLabels = toLabelMap(paperStatuses);
 
-  var fetchPapers = useCallback(async function () {
+  useEffect(() => {
+    apiClient.get('/subjects/my').then(({data}) => setSubjectOptions(data.map((s:string)=>({value:s,label:s})))).catch(()=>{});
+  }, []);
+
+  const fetchPapers = useCallback(async () => {
     setLoading(true);
     try {
-      var params = { limit: 50 };
+      const params: Record<string, string> = { limit: '50' };
       if (searchTitle) params.title = searchTitle;
       if (searchStatus) params.status = searchStatus;
       if (searchScope) params.scope = searchScope;
       if (searchGrade) {
-        if (Array.isArray(searchGrade)) { params.grades = searchGrade.join(','); }
-        else { params.grade = searchGrade; }
+        if (Array.isArray(searchGrade)) {
+          params.grades = searchGrade.join(',');
+        } else {
+          params.grade = searchGrade;
+        }
       }
       if (searchKeyword) params.keyword = searchKeyword;
-      var resp = await apiClient.get('/exam-papers', { params: params });
-      var data = resp.data;
-      if (Array.isArray(data)) { setPapers(data); }
-      else if (data && data.data && Array.isArray(data.data)) { setPapers(data.data); }
-      else if (data && data.items) { setPapers(data.items); }
-      else { setPapers([]); }
-    } catch (e) { message.error('加载试卷列表失败'); }
-    finally { setLoading(false); }
-  }, [searchTitle, searchStatus, searchScope, searchGrade, searchKeyword]);
+      if (searchSubject) params.subject = searchSubject;
+      if (onlyMine) params.created_by = 'me';
+      const resp = await apiClient.get('/exam-papers', { params });
+      const data = resp.data;
+      if (Array.isArray(data)) {
+        setPapers(data);
+      } else if (data && data.data && Array.isArray(data.data)) {
+        setPapers(data.data);
+      } else if (data && data.items) {
+        setPapers(data.items);
+      } else {
+        setPapers([]);
+      }
+    } catch {
+      message.error('加载试卷列表失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [searchTitle, searchStatus, searchScope, searchGrade, searchKeyword, searchSubject, onlyMine]);
 
-  useEffect(function () { fetchPapers(); }, [fetchPapers]);
+  useEffect(() => { fetchPapers(); }, [fetchPapers]);
 
-  function handleNew() { setEditPaper(null); setModalOpen(true); }
-  function handleEdit(paper) { setEditPaper(paper); setModalOpen(true); }
-  function handlePreview(id) { setPreviewId(id); setPreviewOpen(true); }
+  const handleNew = () => { setEditPaper(null); setModalOpen(true); };
+  const handlePreview = (id: string) => { setPreviewId(id); setPreviewOpen(true); };
 
-  async function handleDelete(id) {
-    try { await apiClient.delete('/exam-papers/' + id); message.success('删除成功'); fetchPapers(); }
-    catch (e) { message.error('删除失败'); }
-  }
+  const handleDelete = async (id: string) => {
+    try {
+      await apiClient.delete('/exam-papers/' + id);
+      message.success('删除成功');
+      fetchPapers();
+    } catch {
+      message.error('删除失败');
+    }
+  };
 
-  function handleSuccess() { setModalOpen(false); fetchPapers(); }
-  function handleImportSuccess() { setImportOpen(false); fetchPapers(); }
+  const handlePublish = async (id: string) => {
+    try {
+      const { data } = await apiClient.post('/exam-papers/' + id + '/publish', { class_ids: [] });
+      message.success(`发布成功！已通知 ${data.notified_count || 0} 名学生`);
+      fetchPapers();
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '发布失败');
+    }
+  };
 
-  function handleExport(paperId, format) {
-    var a = document.createElement('a');
-    a.href = '/api/v1/exam-papers/' + paperId + '/export/' + format;
-    var token = localStorage.getItem('access_token');
+  const handleSuccess = () => { setModalOpen(false); fetchPapers(); };
+  const handleImportSuccess = () => { setImportOpen(false); fetchPapers(); };
+
+  const handleExport = (paperId: string, format: string) => {
+    const url = '/api/v1/exam-papers/' + paperId + '/export/' + format;
+    const token = getAccessToken();
     if (token) {
-      // Use fetch to download with auth header
-      fetch(a.href, { headers: { Authorization: 'Bearer ' + token } })
-        .then(function (r) {
+      fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+        .then((r) => {
           if (!r.ok) { message.error('导出失败'); return; }
           return r.blob();
         })
-        .then(function (blob) {
+        .then((blob) => {
           if (!blob) return;
-          var url = URL.createObjectURL(blob);
-          a.href = url;
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
           a.download = 'paper.' + format;
           a.click();
-          URL.revokeObjectURL(url);
+          URL.revokeObjectURL(blobUrl);
           message.success('导出成功');
         })
-        .catch(function () { message.error('导出失败'); });
+        .catch(() => { message.error('导出失败'); });
     }
-  }
+  };
 
-  function handlePrint(paperId, title) {
-    var w = window.open('/print-preview?paperId=' + paperId, '_blank', 'width=900,height=700');
+  const handlePrint = (paperId: string) => {
+    const w = window.open('/print-preview?paperId=' + paperId, '_blank', 'width=900,height=700');
     if (!w) { message.info('请允许弹出窗口以预览打印'); }
-  }
+  };
 
-  var columns = [
-    { title: '试卷名称', dataIndex: 'title', ellipsis: true,
-      render: function (text, record) {
-        return React.createElement('a', { onClick: function () { handlePreview(record.id); } }, text);
-      }
+  const columns = [
+    {
+      title: '试卷名称',
+      dataIndex: 'title',
+      ellipsis: true,
+      render: (text: string, record: PaperItem) => (
+        <a onClick={() => handlePreview(record.id)}>{text}</a>
+      ),
     },
     { title: '学科', dataIndex: 'subject', width: 80 },
-    { title: '年级', dataIndex: 'grade_level', width: 80 },
-    { title: '题数', dataIndex: 'question_count', width: 60, align: 'center' },
-    { title: '总分', dataIndex: 'total_score', width: 60, align: 'center' },
-    { title: '时长(分)', dataIndex: 'duration_minutes', width: 70, align: 'center' },
-    { title: '状态', dataIndex: 'status', width: 80, render: function (s) {
-      return React.createElement(Tag, { color: (statusColors[s] || {}).color || 'default' }, statusLabels[s] || s);
-    }},
-    { title: '操作', width: 280, render: function (_, record) {
-      var exportItems = {
-        items: [
-          { key: 'word', label: '导出 Word (.docx)', icon: React.createElement(DownloadOutlined), onClick: function () { handleExport(record.id, 'word'); } },
-          { key: 'pdf', label: '导出 PDF', icon: React.createElement(DownloadOutlined), onClick: function () { handleExport(record.id, 'pdf'); } },
-        ]
-      };
-      return React.createElement(Space, null,
-        React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(EyeOutlined),
-          onClick: function () { handlePreview(record.id); } }, '预览'),
-        React.createElement(Dropdown, { menu: exportItems },
-          React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(DownloadOutlined) }, '导出')
-        ),
-        React.createElement(Button, { type: 'link', size: 'small', icon: React.createElement(PrinterOutlined),
-          onClick: function () { handlePrint(record.id, record.title); } }, '打印'),
-        React.createElement(Popconfirm, { title: '确定删除该试卷？', onConfirm: function () { handleDelete(record.id); } },
-          React.createElement(Button, { type: 'link', size: 'small', danger: true, icon: React.createElement(DeleteOutlined) }, '删除')
-        )
-      );
-    }}
+    {
+      title: '年级',
+      dataIndex: 'grade_level',
+      width: 100,
+      render: (v: unknown) => {
+        const g = (v as { grades?: string[] })?.grades || [];
+        return g.length ? g.join(', ') : '-';
+      },
+    },
+    { title: '题数', dataIndex: 'question_count', width: 60, align: 'center' as const },
+    { title: '总分', dataIndex: 'total_score', width: 60, align: 'center' as const },
+    { title: '时长(分)', dataIndex: 'duration_minutes', width: 70, align: 'center' as const },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 80,
+      render: (s: string) => (
+        <Tag color={(statusColors[s] || {}).color || 'default'}>{statusLabels[s] || s}</Tag>
+      ),
+    },
+    {
+      title: '操作',
+      width: 280,
+      render: (_: unknown, record: PaperItem) => {
+        const exportItems = {
+          items: [
+            { key: 'word', label: '导出 Word (.docx)', icon: <DownloadOutlined />, onClick: () => handleExport(record.id, 'word') },
+            { key: 'pdf', label: '导出 PDF', icon: <DownloadOutlined />, onClick: () => handleExport(record.id, 'pdf') },
+          ],
+        };
+        return (
+          <Space>
+            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(record.id)}>预览</Button>
+            <Dropdown menu={exportItems}>
+              <Button type="link" size="small" icon={<DownloadOutlined />}>导出</Button>
+            </Dropdown>
+            <Button type="link" size="small" icon={<PrinterOutlined />} onClick={() => handlePrint(record.id)}>打印</Button>
+            {record.status !== 'PUBLISHED' && record.status !== 'ARCHIVED' && (
+              <Popconfirm title="发布后将通知班级学生，确定发布？" onConfirm={() => handlePublish(record.id)}>
+                <Button type="link" size="small" icon={<SendOutlined />} style={{ color: '#1890ff' }}>发布</Button>
+              </Popconfirm>
+            )}
+            <Popconfirm title="确定删除该试卷？" onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
+    },
   ];
 
-  return React.createElement('div', null,
-    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 16 } },
-      React.createElement(Title, { level: 4, style: { margin: 0 } }, isStudent ? '试卷错题本' : '试卷管理'),
-      isStudent ? null : React.createElement(Space, null,
-        React.createElement(Button, { icon: React.createElement(CameraOutlined), onClick: function () { setImportOpen(true); } }, '试卷录入'),
-        React.createElement(Button, { type: 'primary', icon: React.createElement(PlusOutlined), onClick: handleNew }, '新建试卷')
-      )
-    ),
-    React.createElement('div', { style: { marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' } },
-      React.createElement(Input, { placeholder: '搜索试卷名称', value: searchTitle, onChange: function (e) { setSearchTitle(e.target.value); },
-        style: { width: 180 }, prefix: React.createElement(SearchOutlined), allowClear: true, size: 'small' }),
-      React.createElement(Select, { placeholder: '适用范围', value: searchScope || undefined, onChange: function (v) { setSearchScope(v || ''); setSearchKeyword(''); },
-        style: { width: 120 }, allowClear: true, size: 'small',
-        options: [
-          { value: 'comprehensive', label: '综合' },
-          { value: 'grade_comprehensive', label: '年级综合' },
-          { value: 'chapter', label: '章节' },
-          { value: 'knowledge_point', label: '知识点' },
-        ]}),
-      React.createElement(Select, { placeholder: '年级', value: searchGrade || undefined, onChange: function (v) { setSearchGrade(v || ''); },
-        style: { width: 100 }, allowClear: true, size: 'small',
-        mode: searchScope === 'comprehensive' ? 'multiple' : undefined,
-        options: toSelectOptions(grades) }),
-      (searchScope === 'chapter' || searchScope === 'knowledge_point') ? React.createElement(Input, { placeholder: '模糊查询章节/知识点', value: searchKeyword, onChange: function (e) { setSearchKeyword(e.target.value); },
-        style: { width: 180 }, prefix: React.createElement(SearchOutlined), allowClear: true, size: 'small' }) : null,
-      React.createElement(Select, { placeholder: '状态筛选', value: searchStatus || undefined, onChange: function (v) { setSearchStatus(v || ''); },
-        style: { width: 110 }, allowClear: true, size: 'small',
-        options: toSelectOptions(paperStatuses)
-      }),
-      React.createElement(Button, { icon: React.createElement(ReloadOutlined), onClick: fetchPapers, size: 'small' }, '刷新')
-    ),
-    React.createElement(Table, { rowKey: 'id', loading: loading, dataSource: papers, columns: columns, size: 'middle' }),
-    React.createElement(PaperEditModal, { open: modalOpen, paper: editPaper, onClose: function () { setModalOpen(false); }, onSuccess: handleSuccess }),
-    React.createElement(PaperImportModal, { open: importOpen, onClose: function () { setImportOpen(false); }, onSuccess: handleImportSuccess }),
-    React.createElement(PaperPreviewDrawer, { open: previewOpen, paperId: previewId, onClose: function () { setPreviewOpen(false); } })
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>{isStudent ? '试卷错题本' : '试卷管理'}</Title>
+        {!isStudent && (
+          <Space>
+            <Button icon={<CameraOutlined />} onClick={() => setImportOpen(true)}>试卷录入</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleNew}>新建试卷</Button>
+          </Space>
+        )}
+      </div>
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Input
+          placeholder="搜索试卷名称"
+          value={searchTitle}
+          onChange={(e) => setSearchTitle(e.target.value)}
+          style={{ width: 180 }}
+          prefix={<SearchOutlined />}
+          allowClear
+          size="small"
+        />
+        <Select placeholder="学科" value={searchSubject || undefined} onChange={(v) => setSearchSubject(v || '')} style={{ width: 100 }} allowClear size="small" options={subjectOptions} />
+        <Select
+          placeholder="适用范围"
+          value={searchScope || undefined}
+          onChange={(v) => { setSearchScope(v || ''); setSearchKeyword(''); }}
+          style={{ width: 120 }}
+          allowClear
+          size="small"
+          options={[
+            { value: 'comprehensive', label: '综合' },
+            { value: 'grade_comprehensive', label: '年级综合' },
+            { value: 'chapter', label: '章节' },
+            { value: 'knowledge_point', label: '知识点' },
+          ]}
+        />
+        <Select
+          placeholder="年级"
+          value={searchGrade || undefined}
+          onChange={(v) => setSearchGrade(v || '')}
+          style={{ width: 100 }}
+          allowClear
+          size="small"
+          mode={searchScope === 'comprehensive' ? 'multiple' : undefined}
+          options={toSelectOptions(grades)}
+        />
+        {(searchScope === 'chapter' || searchScope === 'knowledge_point') && (
+          <Input
+            placeholder="模糊查询章节/知识点"
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            style={{ width: 180 }}
+            prefix={<SearchOutlined />}
+            allowClear
+            size="small"
+          />
+        )}
+        <Select
+          placeholder="状态筛选"
+          value={searchStatus || undefined}
+          onChange={(v) => setSearchStatus(v || '')}
+          style={{ width: 110 }}
+          allowClear
+          size="small"
+          options={toSelectOptions(paperStatuses)}
+        />
+        <Space size="small" style={{ alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#666' }}>只看我的</span>
+          <Switch size="small" checked={onlyMine} onChange={(v) => setOnlyMine(v)} />
+        </Space>
+        <Button icon={<ReloadOutlined />} onClick={fetchPapers} size="small">刷新</Button>
+      </div>
+      <Table rowKey="id" loading={loading} dataSource={papers} columns={columns} size="middle" />
+      <PaperEditModal open={modalOpen} paper={editPaper} onClose={() => setModalOpen(false)} onSuccess={handleSuccess} />
+      <PaperImportModal open={importOpen} onClose={() => setImportOpen(false)} onSuccess={handleImportSuccess} />
+      <PaperPreviewDrawer open={previewOpen} paperId={previewId || ''} onClose={() => setPreviewOpen(false)} />
+    </div>
   );
 }
+

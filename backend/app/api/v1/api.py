@@ -3,7 +3,7 @@ from fastapi import APIRouter
 api_router = APIRouter()
 
 # Import and include routers from each service
-from app.api.v1.endpoints import auth_v2, llm_config, subjects, questions, exam_papers, answers, ocr, grading, error_notebooks, self_study, question_admin, knowledge_tree, classes, stats, database, reference
+from app.api.v1.endpoints import auth_v2, llm_config, subjects, questions, exam_papers, answers, ocr, grading, error_notebooks, self_study, question_admin, knowledge_tree, classes, stats, database, reference, student, notifications, topic_board, parent, teacher_interaction, recommendations
 
 api_router.include_router(auth_v2.router, prefix="/auth", tags=["auth-v2"])
 api_router.include_router(llm_config.router, prefix="/admin/llm", tags=["llm-config"])
@@ -20,5 +20,11 @@ api_router.include_router(error_notebooks.router, prefix="/error-notebooks", tag
 api_router.include_router(self_study.router, prefix="/self-study", tags=["self-study"])
 api_router.include_router(classes.router, prefix="/classes", tags=["classes"])
 api_router.include_router(stats.router, prefix="/teacher/stats", tags=["stats"])
+api_router.include_router(student.router, prefix="/student", tags=["student"])
 api_router.include_router(database.router, tags=["database"])
 api_router.include_router(reference.router, prefix="/reference", tags=["reference"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(topic_board.router, prefix="/topic-board", tags=["topic-board"])
+api_router.include_router(parent.router, prefix="/parent", tags=["parent"])
+api_router.include_router(teacher_interaction.router, prefix="/teacher/interaction", tags=["teacher-interaction"])
+api_router.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])

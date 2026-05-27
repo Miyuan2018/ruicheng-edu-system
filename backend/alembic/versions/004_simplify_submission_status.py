@@ -1,11 +1,11 @@
-"""simplify submission status to Chinese values
+"""simplify submission status to English enum values
 
 Revision ID: 004
 Revises: 003_add_is_typical
 Create Date: 2026-05-24
 
-将 answer_submissions.status 从英文4值简化为中文3值:
-  SUBMITTED/GRADING/GRADED/RETURNED → 已判分/已生成/重新判
+将 answer_submissions.status 统一为英文枚举值:
+  SUBMITTED/GRADING/GRADED/RETURNED/已判分/已生成/重新判 → GRADED/GENERATED/RE_GRADED
 """
 from typing import Sequence, Union
 from alembic import op
@@ -18,17 +18,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Drop old constraint first so UPDATE can write new values
-    op.drop_constraint('check_answer_submissions_status', 'answer_submissions', type_='check')
+    # 检查旧约束是否存在
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT count(*) FROM information_schema.table_constraints "
+        "WHERE table_name='answer_submissions' AND constraint_name='check_answer_submissions_status'"
+    ))
+    has_old_constraint = result.scalar() > 0
 
-    # 2. Map all existing status values to '已判分'
-    op.execute("UPDATE answer_submissions SET status = '已判分'")
+    if has_old_constraint:
+        op.drop_constraint('check_answer_submissions_status', 'answer_submissions', type_='check')
 
-    # 3. Create new constraint
+    # 将所有现有状态值映射为英文枚举
+    op.execute("UPDATE answer_submissions SET status = 'GRADED' WHERE status IN ('SUBMITTED', 'GRADING', 'GRADED', 'RETURNED', '已判分')")
+    op.execute("UPDATE answer_submissions SET status = 'GENERATED' WHERE status = '已生成'")
+    op.execute("UPDATE answer_submissions SET status = 'RE_GRADED' WHERE status = '重新判'")
+
+    # 创建新约束
     op.create_check_constraint(
         'check_answer_submissions_status',
         'answer_submissions',
-        "status IN ('已判分', '已生成', '重新判')"
+        "status IN ('GRADED', 'GENERATED', 'RE_GRADED')"
     )
 
 
@@ -39,4 +49,4 @@ def downgrade() -> None:
         'answer_submissions',
         "status IN ('SUBMITTED', 'GRADING', 'GRADED', 'RETURNED')"
     )
-    op.execute("UPDATE answer_submissions SET status = 'GRADED' WHERE status IN ('已判分', '已生成', '重新判')")
+    op.execute("UPDATE answer_submissions SET status = 'GRADED' WHERE status IN ('GRADED', 'GENERATED', 'RE_GRADED')")

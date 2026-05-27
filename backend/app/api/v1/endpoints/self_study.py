@@ -19,17 +19,16 @@ async def create_self_study_task(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Only students can create self-study tasks for themselves
-    if task_in.student_id != current_user.id and current_user.role not in ["TEACHER", "ADMIN"]:
+    # Students can only create tasks for themselves
+    if str(task_in.student_id) != current_user.id and current_user.user_type not in ("TEACHER", "SYS_ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
 
-    # Create new self-study task
-    self_study_task = SelfStudyTask(
-        **task_in.dict(),
-    )
+    data = task_in.dict()
+    data['student_id'] = str(data['student_id'])
+    self_study_task = SelfStudyTask(**data)
     db.add(self_study_task)
     await db.commit()
     await db.refresh(self_study_task)
@@ -51,7 +50,7 @@ async def get_self_study_task(
         )
 
     # Check if user is the owner of the self-study task or is a teacher/admin
-    if self_study_task.student_id != current_user.id and current_user.role not in ["TEACHER", "ADMIN"]:
+    if self_study_task.student_id != current_user.id and current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -67,13 +66,6 @@ async def update_self_study_task(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Only students can update their own self-study tasks
-    if current_user.role != "STUDENT":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
-
     result = await db.execute(select(SelfStudyTask).where(SelfStudyTask.id == task_id))
     self_study_task = result.scalar_one_or_none()
     if not self_study_task:
@@ -82,14 +74,18 @@ async def update_self_study_task(
             detail="Self-study task not found",
         )
 
-    # Check if user is the owner of the self-study task
-    if self_study_task.student_id != current_user.id:
+    # Students can only update their own tasks; teachers/admins can update any
+    if current_user.user_type == "STUDENT" and self_study_task.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    if current_user.user_type not in ("STUDENT", "TEACHER", "SYS_ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
 
-    # Update self-study task
     update_data = task_in.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(self_study_task, field, value)
@@ -105,13 +101,6 @@ async def delete_self_study_task(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Only students can delete their own self-study tasks
-    if current_user.role != "STUDENT":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions",
-        )
-
     result = await db.execute(select(SelfStudyTask).where(SelfStudyTask.id == task_id))
     self_study_task = result.scalar_one_or_none()
     if not self_study_task:
@@ -120,8 +109,13 @@ async def delete_self_study_task(
             detail="Self-study task not found",
         )
 
-    # Check if user is the owner of the self-study task
-    if self_study_task.student_id != current_user.id:
+    # Students can only delete their own tasks; teachers/admins can delete any
+    if current_user.user_type == "STUDENT" and self_study_task.student_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+    if current_user.user_type not in ("STUDENT", "TEACHER", "SYS_ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -135,22 +129,31 @@ async def delete_self_study_task(
 @router.get("/tasks", response_model=List[SelfStudyTaskResponse])
 async def get_self_study_tasks(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    status: Optional[str] = None,
+    subject: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Only admins can access all self-study tasks
-    if current_user.role != "ADMIN":
+    limit = min(limit, 200)
+    query = select(SelfStudyTask)
+
+    # Students see only their own tasks; teachers/admins see all
+    if current_user.user_type == "STUDENT":
+        query = query.where(SelfStudyTask.student_id == current_user.id)
+    elif current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
         )
 
-    result = await db.execute(
-        select(SelfStudyTask)
-        .offset(skip)
-        .limit(limit)
-    )
+    if status:
+        query = query.where(SelfStudyTask.status == status)
+    if subject:
+        query = query.where(SelfStudyTask.subject == subject)
+
+    query = query.offset(skip).limit(limit).order_by(SelfStudyTask.created_at.desc())
+    result = await db.execute(query)
     self_study_tasks = result.scalars().all()
     return self_study_tasks
 
@@ -161,7 +164,7 @@ async def extract_knowledge_points(
     db: AsyncSession = Depends(get_db),
 ):
     # Only teachers and admins can extract knowledge points
-    if current_user.role not in ["TEACHER", "ADMIN"]:
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -177,14 +180,15 @@ async def extract_knowledge_points(
 @router.get("/knowledge-points", response_model=List[dict])
 async def get_knowledge_points(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     subject: Optional[str] = None,
     grade_level: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    limit = min(limit, 200)
     # Only teachers and admins can access knowledge points
-    if current_user.role not in ["TEACHER", "ADMIN"]:
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -227,7 +231,7 @@ async def get_knowledge_point(
     db: AsyncSession = Depends(get_db),
 ):
     # Only teachers and admins can access knowledge points
-    if current_user.role not in ["TEACHER", "ADMIN"]:
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -261,7 +265,7 @@ async def generate_questions(
     db: AsyncSession = Depends(get_db),
 ):
     # Only teachers and admins can generate questions
-    if current_user.role not in ["TEACHER", "ADMIN"]:
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -280,7 +284,7 @@ async def get_question_generation_status(
     current_user = Depends(get_current_user),
 ):
     # Only teachers and admins can access question generation status
-    if current_user.role not in ["TEACHER", "ADMIN"]:
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -299,7 +303,7 @@ async def train_model(
     db: AsyncSession = Depends(get_db),
 ):
     # Only admins can trigger model training
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -318,7 +322,7 @@ async def get_model_train_status(
     current_user = Depends(get_current_user),
 ):
     # Only admins can access model training status
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -337,7 +341,7 @@ async def get_model_train_history(
     db: AsyncSession = Depends(get_db),
 ):
     # Only admins can access model training history
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -356,7 +360,7 @@ async def sync_data(
     db: AsyncSession = Depends(get_db),
 ):
     # Only admins can trigger data synchronization
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",
@@ -375,7 +379,7 @@ async def get_data_sync_status(
     current_user = Depends(get_current_user),
 ):
     # Only admins can access data synchronization status
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions",

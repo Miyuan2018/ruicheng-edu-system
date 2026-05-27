@@ -30,7 +30,7 @@ class OcrUploadUpdate(BaseModel):
     processed_text: Optional[str] = None
     structured_data: Optional[dict] = None
     error_message: Optional[str] = None
-    status: Optional[str] = Field(None, pattern="^(PENDING|PROCESSING|COMPLETED|FAILED)$")
+    status: Optional[str] = Field(None, pattern="^(PENDING|PROCESSING|COMPLETED|FAILED|NEEDS_REVIEW)$")
 
 
 class OcrUploadResponse(OcrUploadBase):

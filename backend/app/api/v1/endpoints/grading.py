@@ -29,11 +29,11 @@ async def start_grading(
     if not submission:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="答案提交不存在")
 
-    if current_user.role not in ["TEACHER", "ADMIN"] and str(submission.student_id) != str(current_user.id):
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"] and str(submission.student_id) != str(current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
 
     # Mark as grading
-    submission.status = "已判分"
+    submission.status = "GRADED"
     await db.commit()
 
     record = GradingRecord(
@@ -85,11 +85,12 @@ async def get_grading_result(
 async def get_grading_history_student(
     student_id: uuid.UUID,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if str(student_id) != str(current_user.id) and current_user.role not in ["TEACHER", "ADMIN"]:
+    limit = min(limit, 200)
+    if str(student_id) != str(current_user.id) and current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
 
     result = await db.execute(
@@ -105,11 +106,12 @@ async def get_grading_history_student(
 async def get_grading_history_exam(
     exam_paper_id: uuid.UUID,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role not in ["TEACHER", "ADMIN"]:
+    limit = min(limit, 200)
+    if current_user.user_type not in ["TEACHER", "SYS_ADMIN"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
 
     result = await db.execute(
@@ -130,7 +132,7 @@ async def get_grading_models(db: AsyncSession = Depends(get_db)):
 
 @router.post("/models/switch")
 async def switch_grading_model(model_id: uuid.UUID, current_user = Depends(get_current_user)):
-    if current_user.role != "ADMIN":
+    if current_user.user_type != "SYS_ADMIN":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")
     return {"message": "模型切换成功"}
 

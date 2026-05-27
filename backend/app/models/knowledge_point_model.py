@@ -1,6 +1,5 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Numeric, UniqueConstraint
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -9,7 +8,7 @@ from app.db.base import Base
 class KnowledgePointModel(Base):
     __tablename__ = "knowledge_point_models"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     source_url = Column(String(500), nullable=False)
     source_title = Column(String(200), nullable=True)
     content_hash = Column(String(64), nullable=False)

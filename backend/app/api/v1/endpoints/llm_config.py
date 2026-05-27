@@ -11,13 +11,18 @@ class ProviderConfigRequest(BaseModel):
     provider: str  # "ollama" or "deepseek"
     endpoint: str = ""
     model: str = ""
-    api_key: str = ""
+    # api_key is intentionally excluded — read from DEEPSEEK_API_KEY env var only
 
 
 @router.get("/config")
 async def get_llm_config(current_user=Depends(get_current_user)):
     cfg = load_config()
-    return cfg.get("llm", {})
+    llm = cfg.get("llm", {})
+    # Strip api_key before sending to frontend
+    ds = llm.get("deepseek", {})
+    ds["api_key"] = "***" if ds.get("api_key") else ""
+    llm["deepseek"] = ds
+    return llm
 
 
 @router.put("/config")
@@ -38,7 +43,6 @@ async def update_llm_config(
         prov_cfg["model"] = req.model or prov_cfg.get("model", "")
         prov_cfg.setdefault("available_models", [])
     else:
-        prov_cfg["api_key"] = req.api_key or prov_cfg.get("api_key", "")
         prov_cfg["model"] = req.model or prov_cfg.get("model", "deepseek-chat")
 
     llm[prov] = prov_cfg
@@ -155,7 +159,7 @@ async def update_section_config(
         return {"message": "missing section"}
 
     cfg = load_config()
-    if section not in ("grading", "ocr", "mistake", "system", "mistake_book"):
+    if section not in ("grading", "ocr", "mistake", "system", "mistake_book", "celery"):
         return {"message": f"unknown section: {section}"}
 
     key_map = {"mistake": "mistake_book"}
@@ -171,7 +175,34 @@ async def update_section_config(
     return {"message": f"{section} 配置已保存"}
 
 
-@router.get("/config")
+class RedisTestRequest(BaseModel):
+    redis_url: str
+
+
+@router.post("/test-redis")
+async def test_redis(
+    req: RedisTestRequest,
+    current_user=Depends(require_role("SYS_ADMIN")),
+):
+    """Test Redis connectivity."""
+    import redis as redis_lib
+    try:
+        r = redis_lib.Redis.from_url(req.redis_url, socket_connect_timeout=3)
+        r.ping()
+        info = r.info("server")
+        version = info.get("redis_version", "unknown")
+        return {"ok": True, "message": f"Redis 连接成功 (v{version})"}
+    except redis_lib.ConnectionError as e:
+        return {"ok": False, "message": f"无法连接 Redis: {e}"}
+    except Exception as e:
+        return {"ok": False, "message": f"Redis 连接异常: {str(e)}"}
+
+
+@router.get("/all-config")
 async def get_all_config(current_user=Depends(get_current_user)):
     require_role("SYS_ADMIN")(current_user)
-    return load_config()
+    cfg = load_config()
+    # Strip secrets from full config
+    ds = cfg.get("llm", {}).get("deepseek", {})
+    ds["api_key"] = "***" if ds.get("api_key") else ""
+    return cfg

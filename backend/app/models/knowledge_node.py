@@ -1,7 +1,6 @@
 """Versioned knowledge tree nodes."""
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Integer, Text
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -10,9 +9,9 @@ from app.db.base import Base
 class KnowledgeNode(Base):
     __tablename__ = "knowledge_nodes"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
-    syllabus_id = Column(UUID, ForeignKey("syllabi.id"), nullable=False, index=True)
-    parent_id = Column(UUID, ForeignKey("knowledge_nodes.id"), nullable=True, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    syllabus_id = Column(String(36), ForeignKey("syllabi.id"), nullable=False, index=True)
+    parent_id = Column(String(36), ForeignKey("knowledge_nodes.id"), nullable=True, index=True)
     name = Column(String(100), nullable=False)
     node_type = Column(String(20), nullable=False, default="POINT")  # AREA / POINT
     sort_order = Column(Integer, default=0)

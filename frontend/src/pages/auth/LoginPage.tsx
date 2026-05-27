@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, message, Tabs, Space, Steps, Select } from 'antd';
-import { UserOutlined, PhoneOutlined, BankOutlined, BookOutlined, SafetyOutlined, MobileOutlined } from '@ant-design/icons';
+import { UserOutlined, PhoneOutlined, BankOutlined, SafetyOutlined, MobileOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
+import { useAuthStore } from '../../store/auth';
 
 const { Title } = Typography;
 
@@ -16,14 +17,15 @@ export default function LoginPage() {
   const [smsCode, setSmsCode] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [form] = Form.useForm();
+  const { setAuth } = useAuthStore();
 
   // Registration state
   const [regStep, setRegStep] = useState(0);
   const [regPhone, setRegPhone] = useState('');
-  const [regSmsVerified, setRegSmsVerified] = useState(false);
+  const [, setRegSmsVerified] = useState(false);
   const [regCountdown, setRegCountdown] = useState(0);
   const [regCaptchaSvg, setRegCaptchaSvg] = useState('');
-  const [regCaptchaKey, setRegCaptchaKey] = useState('');
+  const [, setRegCaptchaKey] = useState('');
   const [regForm] = Form.useForm();
 
   const navigate = useNavigate();
@@ -57,10 +59,13 @@ export default function LoginPage() {
       const { data } = await apiClient.post('/auth/student/login', {
         username: values.username, captcha_key: captchaKey, captcha_code: values.captcha_code, sms_code: smsCode,
       });
-      localStorage.setItem('access_token', data.access_token); localStorage.setItem('refresh_token', data.refresh_token);
-      localStorage.setItem('user_type', 'STUDENT'); localStorage.setItem('user_name', data.full_name);
-      localStorage.setItem('user_id', data.user_id);
-      localStorage.setItem('user_id', data.user_id);
+      setAuth({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user_type: 'STUDENT',
+        user_name: data.full_name,
+        user_id: data.user_id,
+      });
       message.success(`欢迎, ${data.full_name}`); navigate('/dashboard');
     } catch (err: any) { message.error(err?.response?.data?.detail || '登录失败'); refreshCaptcha(); setSmsSent(false); } finally { setLoading(false); }
   };
@@ -96,9 +101,13 @@ export default function LoginPage() {
         grade: values.grade,
         school: values.school,
       });
-      localStorage.setItem('access_token', data.access_token); localStorage.setItem('refresh_token', data.refresh_token);
-      localStorage.setItem('user_type', 'STUDENT'); localStorage.setItem('user_name', data.full_name);
-      localStorage.setItem('user_id', data.user_id);
+      setAuth({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user_type: 'STUDENT',
+        user_name: data.full_name,
+        user_id: data.user_id,
+      });
       message.success('注册成功'); navigate('/dashboard');
     } catch (err: any) { message.error(err?.response?.data?.detail || '注册失败'); } finally { setLoading(false); }
   };
@@ -201,6 +210,9 @@ export default function LoginPage() {
           { key: 'login', label: '学生登录', children: <Form form={form} onFinish={handleLogin} size="large">{loginForm}</Form> },
           { key: 'register', label: '学生注册', children: <Form form={regForm} onFinish={handleRegSubmit} size="large">{registerForm}</Form> },
         ]} />
+        <div style={{ textAlign: 'center', marginTop: 16 }}>
+          <Button type="link" onClick={() => navigate('/parent/login')}>家长入口 →</Button>
+        </div>
       </Card>
     </div>
   );

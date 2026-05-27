@@ -1,7 +1,6 @@
 """Parent users — linked to students."""
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -10,7 +9,7 @@ from app.db.base import Base
 class Parent(Base):
     __tablename__ = "parents"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String(50), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(100), nullable=False)

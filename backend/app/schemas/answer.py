@@ -29,7 +29,7 @@ class AnswerDetailResponse(AnswerDetailBase):
 class AnswerSubmissionBase(BaseModel):
     exam_paper_id: uuid.UUID
     submission_type: str = Field(..., pattern="^(ONLINE|OCR)$")
-    status: Optional[str] = Field(None, pattern="^(已判分|已生成|重新判)$")
+    status: Optional[str] = Field(None, pattern="^(GRADED|GENERATED|RE_GRADED)$")
 
 
 class AnswerSubmissionCreate(AnswerSubmissionBase):

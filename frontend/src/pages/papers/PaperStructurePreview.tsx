@@ -1,77 +1,89 @@
-import React from 'react';
 import { Tag, Button } from 'antd';
 import { SwapOutlined } from '@ant-design/icons';
 import { useReferenceValues, toLabelMap, toColorMap } from '../../hooks/useReferenceValues';
 
-var TYPE_ORDER = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
+const TYPE_ORDER = ['FILL_BLANK', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'SUBJECTIVE'];
 
-export default function PaperStructurePreview(props) {
-  var questions = props.questions || [];
-  var totalScore = props.totalScore || 100;
-  var onReplace = props.onReplace;
-  var readonly = props.readonly || false;
-  var { 'question-types': qtypes, 'difficulty-levels': diffs } = useReferenceValues();
+interface QuestionItem {
+  id: string;
+  title?: string;
+  question_type?: string;
+  difficulty?: string;
+  score?: number;
+}
 
-  var groups = {};
-  TYPE_ORDER.forEach(function (t) { groups[t] = []; });
-  questions.forEach(function (q) {
-    var t = q.question_type || 'SINGLE_CHOICE';
+interface PaperStructurePreviewProps {
+  questions?: QuestionItem[];
+  totalScore?: number;
+  onReplace?: (q: QuestionItem, qtype: string) => void;
+  readonly?: boolean;
+}
+
+export default function PaperStructurePreview({ questions = [], totalScore = 100, onReplace, readonly = false }: PaperStructurePreviewProps) {
+  const { 'question-types': qtypes, 'difficulty-levels': diffs } = useReferenceValues();
+
+  const groups: Record<string, QuestionItem[]> = {};
+  TYPE_ORDER.forEach((t) => { groups[t] = []; });
+  questions.forEach((q) => {
+    const t = q.question_type || 'SINGLE_CHOICE';
     if (groups[t]) groups[t].push(q);
   });
 
-  var globalIndex = 0;
-  var sections = [];
+  let globalIndex = 0;
+  const sections: React.ReactNode[] = [];
 
-  TYPE_ORDER.forEach(function (qtype) {
-    var qs = groups[qtype] || [];
+  TYPE_ORDER.forEach((qtype) => {
+    const qs = groups[qtype] || [];
     if (qs.length === 0) return;
 
-    var typeScore = qs.reduce(function (s, q) { return s + (q.score || 0); }, 0);
-    var headerText = toLabelMap(qtypes)[qtype] + ' (' + qs.length + '道，共' + typeScore + '分)';
+    const typeScore = qs.reduce((s, q) => s + (q.score || 0), 0);
+    const headerText = toLabelMap(qtypes)[qtype] + ' (' + qs.length + '道，共' + typeScore + '分)';
 
-    var items = qs.map(function (q) {
+    const items = qs.map((q) => {
       globalIndex++;
-      var replaceBtn = null;
-      if (!readonly && onReplace) {
-        replaceBtn = React.createElement(Button, {
-          size: 'small', type: 'link', icon: React.createElement(SwapOutlined),
-          style: { fontSize: 11 },
-          onClick: function () { onReplace(q, qtype); }
-        }, '替换');
-      }
+      const replaceBtn = !readonly && onReplace ? (
+        <Button size="small" type="link" icon={<SwapOutlined />} style={{ fontSize: 11 }} onClick={() => onReplace(q, qtype)}>
+          替换
+        </Button>
+      ) : null;
 
-      return React.createElement('div', {
-        key: q.id,
-        style: { padding: '8px 12px', marginBottom: 4, background: '#fafafa', borderRadius: 4, border: '1px solid #f0f0f0' }
-      },
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-          React.createElement('span', { style: { flex: 1 } },
-            React.createElement('strong', null, globalIndex + '. '),
-            (q.title || '').substring(0, 80)
-          ),
-          React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
-            React.createElement(Tag, { color: toColorMap(diffs)[q.difficulty]?.color || 'default', style: { fontSize: 10 } }, toLabelMap(diffs)[q.difficulty] || q.difficulty),
-            React.createElement('span', { style: { fontSize: 11, color: '#999' } }, q.score + '分'),
-            replaceBtn
-          )
-        )
+      return (
+        <div key={q.id} style={{ padding: '8px 12px', marginBottom: 4, background: '#fafafa', borderRadius: 4, border: '1px solid #f0f0f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ flex: 1 }}>
+              <strong>{globalIndex}. </strong>
+              {(q.title || '').substring(0, 80)}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <Tag color={toColorMap(diffs)[q.difficulty || '']?.color || 'default'} style={{ fontSize: 10 }}>
+                {toLabelMap(diffs)[q.difficulty || ''] || q.difficulty}
+              </Tag>
+              <span style={{ fontSize: 11, color: '#999' }}>{q.score}分</span>
+              {replaceBtn}
+            </span>
+          </div>
+        </div>
       );
     });
 
     sections.push(
-      React.createElement('div', { key: qtype, style: { marginBottom: 20 } },
-        React.createElement('div', { style: { fontWeight: 'bold', fontSize: 15, marginBottom: 8, padding: '4px 0', borderBottom: '2px solid #1890ff' } }, headerText),
-        React.createElement('div', null, ...items)
-      )
+      <div key={qtype} style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 8, padding: '4px 0', borderBottom: '2px solid #1890ff' }}>
+          {headerText}
+        </div>
+        <div>{items}</div>
+      </div>
     );
   });
 
-  var header = React.createElement('div', { style: { textAlign: 'center', marginBottom: 20, padding: '12px', background: '#f6ffed', borderRadius: 8 } },
-    React.createElement('div', { style: { fontSize: 16, fontWeight: 'bold' } }, '试卷结构预览'),
-    React.createElement('div', { style: { color: '#666', fontSize: 13, marginTop: 4 } },
-      '共 ' + questions.length + ' 道试题，总分 ' + totalScore + ' 分'
-    )
+  const header = (
+    <div style={{ textAlign: 'center', marginBottom: 20, padding: '12px', background: '#f6ffed', borderRadius: 8 }}>
+      <div style={{ fontSize: 16, fontWeight: 'bold' }}>试卷结构预览</div>
+      <div style={{ color: '#666', fontSize: 13, marginTop: 4 }}>
+        共 {questions.length} 道试题，总分 {totalScore} 分
+      </div>
+    </div>
   );
 
-  return React.createElement('div', { style: { padding: '0 8px' } }, header, ...sections);
+  return <div style={{ padding: '0 8px' }}>{header}{sections}</div>;
 }

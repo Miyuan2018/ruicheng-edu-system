@@ -1,0 +1,69 @@
+.floatingBubble {
+  position: absolute;
+  max-width: 200px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1a1a2e;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  z-index: 30;
+}
+
+.floatingBubbleThought {
+  border: 2px dashed rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(4px);
+}
+
+.floatingBubbleSpeech {
+  border: 1.5px solid rgba(232, 122, 93, 0.13);
+  background: #fff;
+}
+
+.floatingBubbleCallout {
+  border: 1.5px solid rgba(196, 149, 106, 0.19);
+  background: #FFFBEB;
+  max-width: 150px;
+  font-size: 12px;
+}
+
+/* Tail base */
+.floatingBubble::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border: inherit;
+  transform: rotate(45deg);
+}
+
+/* thought: tail points DOWN */
+.floatingBubbleTop::after {
+  bottom: -5px;
+  left: 50%;
+  margin-left: -5px;
+  border-top: none;
+  border-left: none;
+}
+
+/* speech on LEFT: tail points RIGHT */
+.floatingBubbleLeft::after {
+  right: -5px;
+  top: 50%;
+  margin-top: -5px;
+  border-bottom: none;
+  border-left: none;
+}
+
+/* speech/callout on RIGHT: tail points LEFT */
+.floatingBubbleRight::after {
+  left: -5px;
+  top: 50%;
+  margin-top: -5px;
+  border-top: none;
+  border-right: none;
+}

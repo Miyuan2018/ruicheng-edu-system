@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.sys_admin import SysAdmin
 from app.models.admin import Admin
 from app.models.student import Student
+from app.models.parent import Parent
 from app.core.security import (
     verify_password, get_password_hash,
     create_access_token, create_refresh_token,
@@ -404,6 +405,17 @@ async def get_profile(current_user=Depends(get_current_user), db: AsyncSession =
             "is_active": user.is_active, "created_at": str(user.created_at),
             "last_login_at": str(user.last_login_at) if user.last_login_at else None,
         }}
+    elif utype == "PARENT":
+        r = await db.execute(select(Parent).where(Parent.id == uid))
+        user = r.scalar_one_or_none()
+        if not user: raise HTTPException(404, detail="用户不存在")
+        return {"ok": True, "data": {
+            "id": str(user.id), "username": user.username, "full_name": user.full_name,
+            "email": user.email, "phone": user.phone,
+            "user_type": "PARENT", "role_label": "家长",
+            "is_active": user.is_active, "created_at": str(user.created_at),
+            "last_login_at": str(user.last_login_at) if user.last_login_at else None,
+        }}
     else:
         r = await db.execute(select(Student).where(Student.id == uid))
         user = r.scalar_one_or_none()
@@ -428,6 +440,9 @@ async def update_profile(req: dict = Body(...), current_user=Depends(get_current
         user = r.scalar_one_or_none()
     elif utype in ("TEACHER", "QUESTION_ADMIN"):
         r = await db.execute(select(Admin).where(Admin.id == uid))
+        user = r.scalar_one_or_none()
+    elif utype == "PARENT":
+        r = await db.execute(select(Parent).where(Parent.id == uid))
         user = r.scalar_one_or_none()
     else:
         r = await db.execute(select(Student).where(Student.id == uid))
@@ -465,6 +480,9 @@ async def update_phone(req: PhoneUpdateRequest, current_user=Depends(get_current
     elif utype in ("TEACHER", "QUESTION_ADMIN"):
         r = await db.execute(select(Admin).where(Admin.id == uid))
         user = r.scalar_one_or_none()
+    elif utype == "PARENT":
+        r = await db.execute(select(Parent).where(Parent.id == uid))
+        user = r.scalar_one_or_none()
     else:
         r = await db.execute(select(Student).where(Student.id == uid))
         user = r.scalar_one_or_none()
@@ -473,3 +491,56 @@ async def update_phone(req: PhoneUpdateRequest, current_user=Depends(get_current
     user.phone = req.phone
     await db.commit()
     return {"ok": True, "message": "手机号已更新", "phone": req.phone}
+
+
+# ─── Parent Login / Register ─────────────────────────────
+
+class ParentRegisterRequest(BaseModel):
+    phone: str = Field(..., min_length=11, max_length=11)
+    sms_code: str = "111111"
+    full_name: str = Field(..., min_length=1)
+
+class ParentLoginRequest(BaseModel):
+    phone: str = Field(..., min_length=11, max_length=11)
+    sms_code: str = "111111"
+
+
+@router.post("/parent/register")
+async def parent_register(req: ParentRegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Parent self-registration via phone + SMS."""
+    if req.sms_code != "111111":
+        raise HTTPException(400, detail="短信验证码错误")
+
+    result = await db.execute(select(Parent).where(Parent.phone == req.phone))
+    if result.scalar_one_or_none():
+        raise HTTPException(400, detail="该手机号已注册为家长账号")
+
+    username = f"parent_{req.phone[-6:]}"
+    parent = Parent(
+        username=username,
+        password_hash="",
+        full_name=req.full_name,
+        phone=req.phone,
+    )
+    db.add(parent)
+    await db.commit()
+    await db.refresh(parent)
+    return _make_tokens(parent.id, "PARENT") | {"full_name": parent.full_name}
+
+
+@router.post("/parent/login")
+async def parent_login(req: ParentLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Parent login via phone + SMS."""
+    if req.sms_code != "111111":
+        raise HTTPException(400, detail="短信验证码错误")
+
+    result = await db.execute(select(Parent).where(Parent.phone == req.phone))
+    parent = result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(401, detail="该手机号未注册家长账号")
+    if not parent.is_active:
+        raise HTTPException(403, detail="账号已被停用")
+
+    parent.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+    return _make_tokens(parent.id, "PARENT") | {"full_name": parent.full_name}

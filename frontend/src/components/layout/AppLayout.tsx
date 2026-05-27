@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Avatar, Dropdown, theme, Tag } from 'antd';
 import {
@@ -15,8 +15,13 @@ import {
   MenuUnfoldOutlined,
   BarChartOutlined,
   BulbOutlined,
+  ScheduleOutlined,
+  HeartOutlined,
+  TrophyOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth';
+import NotificationBell from '../notification/NotificationBell';
 
 const { Header, Sider, Content } = Layout;
 
@@ -26,6 +31,7 @@ const menuItems = {
     { key: '/typical-questions', icon: <BulbOutlined />, label: '试题讲解' },
     { key: '/my-papers', icon: <FileTextOutlined />, label: '我的试卷' },
     { key: '/mistake-book', icon: <BookOutlined />, label: '消灭错题' },
+    { key: '/self-study', icon: <ScheduleOutlined />, label: '自学任务' },
   ],
   TEACHER: [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '教学仪表盘' },
@@ -33,6 +39,7 @@ const menuItems = {
       { key: '/syllabus', label: <span>考纲管理 <Tag color="orange" style={{ fontSize: 10, marginLeft: 4, lineHeight: 1 }}>未完成</Tag></span> },
       { key: '/question-admin', label: '智能出题' },
       { key: '/questions', label: '题库浏览' },
+      { key: '/teacher/recommendations', label: '推荐管理' },
     ]},
     { key: '/papers', icon: <FileTextOutlined />, label: '试卷管理' },
     { key: '/teacher/classes', icon: <TeamOutlined />, label: '班级管理' },
@@ -47,6 +54,7 @@ const menuItems = {
       { key: '/syllabus', label: <span>考纲管理 <Tag color="orange" style={{ fontSize: 10, marginLeft: 4, lineHeight: 1 }}>未完成</Tag></span> },
       { key: '/question-admin', label: '智能出题' },
       { key: '/questions', label: '题库浏览' },
+      { key: '/teacher/recommendations', label: '推荐管理' },
     ]},
     { key: '/papers', icon: <FileTextOutlined />, label: '试卷管理' },
   ],
@@ -61,6 +69,12 @@ const menuItems = {
     { key: '/admin/sys-admin', icon: <UserOutlined />, label: '管理账号' },
     { key: '/admin/config', icon: <SettingOutlined />, label: '系统配置' },
   ],
+  PARENT: [
+    { key: '/dashboard', icon: <DashboardOutlined />, label: '家长仪表盘' },
+    { key: '/parent/encourage', icon: <HeartOutlined />, label: '发送鼓励' },
+    { key: '/parent/reward-goals', icon: <TrophyOutlined />, label: '奖励目标' },
+    { key: '/parent/celebrations', icon: <StarOutlined />, label: '庆祝时刻' },
+  ],
 };
 
 export default function AppLayout() {
@@ -69,17 +83,13 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { token: themeToken } = theme.useToken();
+  const { userType, userName, logout } = useAuthStore();
 
-  const userType = localStorage.getItem('user_type') || 'STUDENT';
-  const userName = localStorage.getItem('user_name') || '用户';
-  const role = userType;
+  const role = (userType || 'STUDENT') as keyof typeof menuItems;
   const items = menuItems[role] || menuItems.STUDENT;
 
   const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user_type');
-    localStorage.removeItem('user_name');
+    logout();
     navigate('/login');
   };
 
@@ -100,8 +110,8 @@ export default function AppLayout() {
 
   const userMenuItems = {
     items: [
-      { key: 'profile', icon: React.createElement(UserOutlined), label: '个人信息' },
-      { key: 'logout', icon: React.createElement(LogoutOutlined), label: '退出登录', danger: true },
+      { key: 'profile', icon: <UserOutlined />, label: '个人信息' },
+      { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
     ],
     onClick: handleUserMenuClick,
   };
@@ -149,12 +159,15 @@ export default function AppLayout() {
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
           />
-          <Dropdown menu={userMenuItems} placement="bottomRight">
-            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar icon={<UserOutlined />} />
-              <span>{userName}</span>
-            </div>
-          </Dropdown>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <NotificationBell />
+            <Dropdown menu={userMenuItems} placement="bottomRight">
+              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar icon={<UserOutlined />} />
+                <span>{userName || '用户'}</span>
+              </div>
+            </Dropdown>
+          </div>
         </Header>
         <Content style={{ margin: 24, padding: 24, background: themeToken.colorBgContainer, borderRadius: 8 }}>
           <Outlet />

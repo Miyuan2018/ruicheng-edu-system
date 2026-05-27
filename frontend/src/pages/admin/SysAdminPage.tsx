@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, Modal, Form, Input, Select, Tag, Space, message, Typography, Card, Popconfirm, Divider, Row, Col } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, ReloadOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Form, Input, Select, Tag, Space, message, Typography, Popconfirm, Divider, Row, Col } from 'antd';
+import { PlusOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, ReloadOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
 
@@ -45,6 +45,7 @@ export default function SysAdminPage() {
     }).catch(() => {});
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAdmins(); }, [filterName, filterType, filterStatus, filterSubject, filterGrade]);
 
   const loadAdmins = async () => {
@@ -120,14 +121,6 @@ export default function SysAdminPage() {
     } catch (err: any) {
       message.error(err?.response?.data?.detail || '操作失败');
     }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await apiClient.delete(`/auth/admin/${id}`);
-      message.success('已删除');
-      loadAdmins();
-    } catch { message.error('删除失败'); }
   };
 
   const typeMap: Record<string, { color: string; label: string }> = {

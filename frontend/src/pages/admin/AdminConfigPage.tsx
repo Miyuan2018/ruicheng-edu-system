@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Tabs, Card, Form, InputNumber, Select, Switch, Button, message, Typography, Space, Input, Tag } from 'antd';
-import { SaveOutlined, ApiOutlined, ThunderboltOutlined, DatabaseOutlined, ReloadOutlined } from '@ant-design/icons';
+import { SaveOutlined, ApiOutlined, ThunderboltOutlined, DatabaseOutlined, ReloadOutlined, CloudServerOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 
 const { Title } = Typography;
@@ -11,6 +11,8 @@ export default function AdminConfigPage() {
   const [llmLoading, setLlmLoading] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [testResult, setTestResult] = useState('');
+  const [ocrTestLoading, setOcrTestLoading] = useState(false);
+  const [redisTestLoading, setRedisTestLoading] = useState(false);
 
   // ─── LLM ───
   const [llmProvider, setLlmProvider] = useState<string>('ollama');
@@ -27,6 +29,23 @@ export default function AdminConfigPage() {
       });
       if (ollama.available_models?.length) setModels(ollama.available_models);
     }).catch(() => {});
+
+    // Load full config for OCR + Celery sections
+    apiClient.get('/admin/llm/all-config').then(({ data }) => {
+      const ocr = data.ocr || {};
+      const celery = data.celery || {};
+      form.setFieldsValue({
+        ocr_engine: ocr.ocr_engine || 'tesseract',
+        paddleocr_endpoint: ocr.paddleocr_endpoint || '',
+        max_concurrent_ocr: ocr.max_concurrent_ocr || 5,
+        ocr_confidence_threshold: ocr.ocr_confidence_threshold || 0.8,
+        celery_enabled: celery.enabled || false,
+        celery_redis_url: celery.redis_url || 'redis://localhost:6379/0',
+        celery_worker_concurrency: celery.worker_concurrency || 2,
+        celery_async_threshold: celery.async_threshold || 3,
+      });
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTestConnection = async () => {
@@ -92,22 +111,53 @@ export default function AdminConfigPage() {
     finally { setLlmLoading(false); }
   };
 
-  // ─── OCR / System save ───
+  // ─── OCR / System / Celery save ───
   const handleSave = async (section: string) => {
     const allValues = form.getFieldsValue();
     setLoading(true);
     try {
       const sectionFields: Record<string, string[]> = {
-        ocr: ['ocr_engine', 'max_concurrent_ocr', 'ocr_confidence_threshold'],
+        ocr: ['ocr_engine', 'paddleocr_endpoint', 'max_concurrent_ocr', 'ocr_confidence_threshold'],
         system: ['log_level', 'backup_enabled'],
+        celery: ['celery_enabled', 'celery_redis_url', 'celery_worker_concurrency', 'celery_async_threshold'],
       };
       const fields = sectionFields[section] || [];
       const payload: any = { section };
-      fields.forEach(f => { if (allValues[f] !== undefined) payload[f] = allValues[f]; });
+      fields.forEach(f => {
+        if (allValues[f] !== undefined) {
+          // Strip 'celery_' prefix for backend config keys
+          const key = section === 'celery' && f.startsWith('celery_') ? f.slice(7) : f;
+          payload[key] = allValues[f];
+        }
+      });
       await apiClient.put('/admin/llm/section-config', payload);
       message.success('保存成功');
     } catch { message.error('保存失败'); }
     finally { setLoading(false); }
+  };
+
+  // ─── Test PaddleOCR ───
+  const handleTestPaddleOCR = async () => {
+    const endpoint = form.getFieldValue('paddleocr_endpoint');
+    if (!endpoint) { message.warning('请先输入 PaddleOCR 服务地址'); return; }
+    setOcrTestLoading(true);
+    try {
+      const { data } = await apiClient.post('/ocr/test-paddleocr', { endpoint });
+      if (data.ok) message.success(data.message); else message.error(data.message);
+    } catch { message.error('PaddleOCR 测试失败'); }
+    finally { setOcrTestLoading(false); }
+  };
+
+  // ─── Test Redis ───
+  const handleTestRedis = async () => {
+    const redisUrl = form.getFieldValue('celery_redis_url');
+    if (!redisUrl) { message.warning('请先输入 Redis 连接地址'); return; }
+    setRedisTestLoading(true);
+    try {
+      const { data } = await apiClient.post('/admin/llm/test-redis', { redis_url: redisUrl });
+      if (data.ok) message.success(data.message); else message.error(data.message);
+    } catch { message.error('Redis 测试失败'); }
+    finally { setRedisTestLoading(false); }
   };
 
   // ─── Database status ───
@@ -138,6 +188,7 @@ export default function AdminConfigPage() {
         password: dbPasswordDirty ? prev.password : '',
       }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbStatus]);
 
   const handleSaveDbConfig = async () => {
@@ -219,6 +270,7 @@ export default function AdminConfigPage() {
   );
 
   // ─── Tab 2: OCR 设置 ───
+  const ocrEngine = Form.useWatch('ocr_engine', form);
   const ocrTab = (
     <div>
       <Card title="OCR 设置" size="small" extra={
@@ -227,8 +279,8 @@ export default function AdminConfigPage() {
         <Space size="large" wrap>
           <Form.Item name="ocr_engine" label="OCR 引擎">
             <Select style={{ width: 150 }} options={[
-              { value: 'paddleocr', label: 'PaddleOCR' },
               { value: 'tesseract', label: 'Tesseract' },
+              { value: 'paddleocr', label: 'PaddleOCR (GPU)' },
             ]} />
           </Form.Item>
           <Form.Item name="max_concurrent_ocr" label="最大并发 OCR">
@@ -238,6 +290,16 @@ export default function AdminConfigPage() {
             <InputNumber min={0} max={1} step={0.05} />
           </Form.Item>
         </Space>
+        {ocrEngine === 'paddleocr' && (
+          <Form.Item label="PaddleOCR 服务地址" style={{ marginTop: 8 }}>
+            <Space.Compact style={{ width: '100%', maxWidth: 500 }}>
+              <Form.Item name="paddleocr_endpoint" noStyle>
+                <Input placeholder="http://paddleocr:8080/predict" />
+              </Form.Item>
+              <Button icon={<ApiOutlined />} onClick={handleTestPaddleOCR} loading={ocrTestLoading}>测试连接</Button>
+            </Space.Compact>
+          </Form.Item>
+        )}
       </Card>
     </div>
   );
@@ -371,6 +433,56 @@ export default function AdminConfigPage() {
     </div>
   );
 
+  // ─── Tab 5: 异步任务 ───
+  const celeryEnabled = Form.useWatch('celery_enabled', form);
+  const asyncTab = (
+    <div>
+      <Card
+        title={<span><CloudServerOutlined /> Celery 异步任务配置</span>}
+        size="small"
+        style={{ marginBottom: 16, border: '1px solid #722ed1' }}
+        extra={<Button icon={<SaveOutlined />} onClick={() => handleSave('celery')} loading={loading}>保存</Button>}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Form.Item name="celery_enabled" label="启用异步任务队列" valuePropName="checked" style={{ marginBottom: 0 }}>
+            <Switch checkedChildren="开" unCheckedChildren="关" />
+          </Form.Item>
+          <Form.Item label="Redis 连接地址" style={{ marginBottom: 0 }}>
+            <Space.Compact style={{ width: '100%', maxWidth: 500 }}>
+              <Form.Item name="celery_redis_url" noStyle>
+                <Input placeholder="redis://redis:6379/0" />
+              </Form.Item>
+              <Button icon={<ApiOutlined />} onClick={handleTestRedis} loading={redisTestLoading}>测试连接</Button>
+            </Space.Compact>
+          </Form.Item>
+          <Space size="large" wrap>
+            <Form.Item name="celery_worker_concurrency" label="Worker 并发数" style={{ marginBottom: 0 }}>
+              <InputNumber min={1} max={8} />
+            </Form.Item>
+            <Form.Item name="celery_async_threshold" label="异步触发阈值 (题数)" style={{ marginBottom: 0 }}>
+              <InputNumber min={1} max={20} />
+            </Form.Item>
+          </Space>
+          <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+            当生成/抓取题数 &ge; 阈值时自动使用异步任务；低于阈值则同步执行。修改配置后需重启 Worker。
+          </div>
+        </Space>
+      </Card>
+      <Card title="Worker 状态" size="small">
+        <Space>
+          <span>异步队列：</span>
+          {celeryEnabled
+            ? <Tag color="green">已启用</Tag>
+            : <Tag color="default">未启用</Tag>
+          }
+        </Space>
+        <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 8 }}>
+          启动 Worker: <code>docker compose --profile async up -d celery-worker</code> 或 <code>./celery_worker.sh</code>
+        </div>
+      </Card>
+    </div>
+  );
+
   return (
     <div>
       <Title level={4}>系统配置</Title>
@@ -381,9 +493,14 @@ export default function AdminConfigPage() {
         deepseek_model: 'deepseek-chat',
         max_concurrent_ocr: 5,
         ocr_confidence_threshold: 0.8,
-        ocr_engine: 'paddleocr',
+        ocr_engine: 'tesseract',
+        paddleocr_endpoint: 'http://paddleocr:8080/predict',
         log_level: 'INFO',
         backup_enabled: true,
+        celery_enabled: false,
+        celery_redis_url: 'redis://localhost:6379/0',
+        celery_worker_concurrency: 2,
+        celery_async_threshold: 3,
       }}>
         <Tabs
           defaultActiveKey="llm"
@@ -392,6 +509,7 @@ export default function AdminConfigPage() {
             { key: 'ocr', label: 'OCR 设置', children: ocrTab },
             { key: 'database', label: '数据库设置', children: dbTab },
             { key: 'other', label: '其他设置', children: otherTab },
+            { key: 'async', label: '异步任务', children: asyncTab },
           ]}
         />
       </Form>

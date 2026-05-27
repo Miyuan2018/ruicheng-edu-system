@@ -1,4 +1,8 @@
-"""Rule-based grading engine — handles JSON answer format for all question types."""
+"""Rule-based grading engine — handles JSON answer format for all question types.
+
+Each grader receives max_score directly and computes score_obtained relative to it.
+No post-hoc rescaling is performed.
+"""
 import json
 import re
 from typing import Optional
@@ -24,19 +28,19 @@ def _parse_answer(correct_answer: Optional[str]) -> dict:
         return {"correct_answer": correct_answer}
 
 
-def grade_single_choice(student_answer: str, answer_data: dict) -> GradeResult:
+def grade_single_choice(student_answer: str, answer_data: dict, max_score: float) -> GradeResult:
     expected = str(answer_data.get("correct_answer", "")).strip().upper()
     actual = (student_answer or "").strip().upper()
     correct = actual == expected
     return GradeResult(
         is_correct=correct,
-        score_obtained=1.0 if correct else 0.0,
-        max_score=1.0,
+        score_obtained=max_score if correct else 0.0,
+        max_score=max_score,
         feedback="正确" if correct else f"正确答案是 {expected}",
     )
 
 
-def grade_multiple_choice(student_answer: str, answer_data: dict) -> GradeResult:
+def grade_multiple_choice(student_answer: str, answer_data: dict, max_score: float) -> GradeResult:
     expected = answer_data.get("correct_answer", [])
     if isinstance(expected, str):
         expected = list(expected.upper().replace(",", "").replace(" ", ""))
@@ -44,26 +48,48 @@ def grade_multiple_choice(student_answer: str, answer_data: dict) -> GradeResult
     actual = (student_answer or "").upper().replace(",", "").replace(" ", "")
     actual_set = set(actual)
     if not expected_set:
-        return GradeResult(False, 0.0, 1.0, "题目答案未配置")
+        return GradeResult(False, 0.0, max_score, "题目答案未配置")
     overlap = len(actual_set & expected_set)
     total = len(expected_set)
     correct = actual_set == expected_set
-    score = overlap / total if total > 0 else 0.0
+    # Partial credit: overlap / total_correct * max_score
+    score = (overlap / total) * max_score if total > 0 else 0.0
     feedback = "完全正确" if correct else f"部分正确({overlap}/{total}), 正确答案是 {','.join(sorted(expected_set))}"
-    return GradeResult(is_correct=correct, score_obtained=score, max_score=1.0, feedback=feedback)
+    return GradeResult(is_correct=correct, score_obtained=score, max_score=max_score, feedback=feedback)
 
 
-def grade_fill_blank(student_answer: str, answer_data: dict) -> GradeResult:
+def grade_fill_blank(student_answer: str, answer_data: dict, max_score: float) -> GradeResult:
     acceptable = answer_data.get("correct_answer", [])
     if isinstance(acceptable, str):
         acceptable = [a.strip() for a in acceptable.split("|")]
-    s = (student_answer or "").strip().lower()
-    correct = any(s == str(a).strip().lower() for a in acceptable)
+
+    # Multiple blanks: each blank can have multiple acceptable answers
+    # If answer_data has a list of lists, each sub-list is for one blank
+    if isinstance(acceptable, list) and len(acceptable) > 0 and isinstance(acceptable[0], list):
+        # Multi-blank mode: [[ans1a, ans1b], [ans2a], ...]
+        total_blanks = len(acceptable)
+        matched = 0
+        student_answers = (student_answer or "").split("|")
+        for i, blank_acceptable in enumerate(acceptable):
+            s = student_answers[i].strip().lower() if i < len(student_answers) else ""
+            if any(s == str(a).strip().lower() for a in blank_acceptable):
+                matched += 1
+        correct = matched == total_blanks
+        score = (matched / total_blanks) * max_score if total_blanks > 0 else 0.0
+        all_answers = [" 或 ".join(str(a) for a in blank) for blank in acceptable]
+        feedback = "正确" if correct else f"正确答案是 {' | '.join(all_answers)}"
+    else:
+        # Single blank or multiple acceptable answers for one blank
+        s = (student_answer or "").strip().lower()
+        correct = any(s == str(a).strip().lower() for a in acceptable)
+        score = max_score if correct else 0.0
+        feedback = "正确" if correct else f"正确答案是 {' 或 '.join(str(a) for a in acceptable)}"
+
     return GradeResult(
         is_correct=correct,
-        score_obtained=1.0 if correct else 0.0,
-        max_score=1.0,
-        feedback="正确" if correct else f"正确答案是 {' 或 '.join(str(a) for a in acceptable)}",
+        score_obtained=score,
+        max_score=max_score,
+        feedback=feedback,
     )
 
 
@@ -100,11 +126,4 @@ GRADERS = {
 def grade_answer(question_type: str, student_answer: Optional[str], correct_answer: Optional[str], max_score: float) -> GradeResult:
     answer_data = _parse_answer(correct_answer)
     grader = GRADERS.get(question_type, grade_subjective)
-    if question_type == "SUBJECTIVE":
-        result = grader(student_answer or "", answer_data, max_score)
-    else:
-        result = grader(student_answer or "", answer_data)
-    if max_score and max_score != 1.0 and question_type != "SUBJECTIVE":
-        result.score_obtained = (result.score_obtained / result.max_score) * max_score
-        result.max_score = max_score
-    return result
+    return grader(student_answer or "", answer_data, max_score)

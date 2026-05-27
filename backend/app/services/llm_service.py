@@ -317,6 +317,147 @@ async def _generate_practice_deepseek(prompt: str, llm: dict) -> dict:
         return {"ok": False, "error": f"生成失败: {str(e)}"}
 
 
+# ── 讲解步骤生成 ────────────────────────────────────────────────────────────
+
+EXPLANATION_PROMPT = """你是资深的{subject}教师，擅长用通俗易懂的方式逐步讲解解题过程。
+请为以下题目生成分步讲解，用于熊猫教授动画教学展示。
+
+题目：{title}
+题型：{question_type}
+难度：{difficulty}
+正确答案：{correct_answer}
+{explanation_section}
+
+要求：
+1. 生成4-8个讲解步骤
+2. 第1步是"审题分析"，panda_emotion 设为 "thinking"
+3. 中间步骤逐步讲解解题过程，panda_emotion 设为 "explaining"
+4. 最后一步是总结归纳，panda_emotion 设为 "satisfied"
+5. text 是熊猫教授说的话（口语化、生动、适合学生理解）
+6. board_line 是显示在黑板上的关键公式或文字（HTML格式，可选，不需要则为null）
+
+直接返回JSON数组，不要任何其他文字，不要markdown代码块：
+[
+  {{"step_order": 1, "text": "同学们，我们来看看这道题...", "panda_emotion": "thinking", "board_line": "<b>已知条件</b>：..."}},
+  {{"step_order": 2, "text": "首先分析...", "panda_emotion": "explaining", "board_line": "..."}},
+  {{"step_order": 3, "text": "总结一下...", "panda_emotion": "satisfied", "board_line": null}}
+]"""
+
+
+async def generate_explanation(
+    title: str,
+    question_type: str = "SINGLE_CHOICE",
+    difficulty: str = "MEDIUM",
+    subject: str = "数学",
+    correct_answer: str = "",
+    explanation: str = "",
+) -> dict:
+    """Generate step-by-step explanation for topic board. Returns {ok, steps, error}."""
+    cfg = load_config()
+    llm = cfg.get("llm", {})
+    provider = llm.get("current", "ollama")
+
+    explanation_section = f"已有解析：{explanation}" if explanation else ""
+    prompt = EXPLANATION_PROMPT.format(
+        title=title,
+        question_type=question_type,
+        difficulty=difficulty,
+        subject=subject,
+        correct_answer=correct_answer,
+        explanation_section=explanation_section,
+    )
+
+    if provider == "deepseek":
+        return await _generate_explanation_deepseek(prompt, llm)
+    return await _generate_explanation_ollama(prompt, llm)
+
+
+async def _generate_explanation_ollama(prompt: str, llm: dict) -> dict:
+    ollama_cfg = llm.get("ollama", {})
+    endpoint = ollama_cfg.get("endpoint", "http://127.0.0.1:11434/v1")
+    model_name = ollama_cfg.get("model", "nemotron-3-super:120b")
+    base = endpoint.rstrip("/").replace("/v1", "")
+    url = f"{base}/api/generate"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
+            r = await client.post(url, json={
+                "model": model_name,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.7, "num_predict": 4096},
+            })
+            if r.status_code != 200:
+                return {"ok": False, "error": f"Ollama返回{r.status_code}"}
+            content = r.json().get("response", "")
+            steps = _parse_llm_response(content)
+            if not steps:
+                return {"ok": False, "error": "无法解析LLM返回的讲解步骤", "raw": content[:500]}
+            steps = _validate_steps(steps)
+            return {"ok": True, "steps": steps, "model": model_name}
+    except httpx.ConnectError:
+        return {"ok": False, "error": "无法连接Ollama服务"}
+    except Exception as e:
+        return {"ok": False, "error": f"生成失败: {str(e)}"}
+
+
+async def _generate_explanation_deepseek(prompt: str, llm: dict) -> dict:
+    ds_cfg = llm.get("deepseek", {})
+    api_key = ds_cfg.get("api_key", "")
+    model_name = ds_cfg.get("model", "deepseek-chat")
+    endpoint = ds_cfg.get("endpoint", "https://api.deepseek.com/anthropic/v1/messages")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
+            r = await client.post(
+                endpoint,
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model_name,
+                    "max_tokens": 4096,
+                    "system": "你是资深的教师，擅长用通俗易懂的方式逐步讲解解题过程。直接返回JSON数组，不要任何其他文字，不要markdown代码块。",
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            if r.status_code != 200:
+                return {"ok": False, "error": f"DeepSeek返回{r.status_code}"}
+            content_blocks = r.json().get("content", [])
+            content = "".join(b["text"] for b in content_blocks if b.get("type") == "text")
+            steps = _parse_llm_response(content)
+            if not steps:
+                return {"ok": False, "error": "无法解析LLM返回的讲解步骤", "raw": content[:500]}
+            steps = _validate_steps(steps)
+            return {"ok": True, "steps": steps, "model": model_name}
+    except httpx.ConnectError:
+        return {"ok": False, "error": "无法连接 DeepSeek API"}
+    except Exception as e:
+        return {"ok": False, "error": f"生成失败: {str(e)}"}
+
+
+def _validate_steps(steps: list) -> list:
+    """Validate and normalize explanation steps."""
+    valid_emotions = {"idle", "thinking", "explaining", "satisfied"}
+    result = []
+    for i, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        emotion = step.get("panda_emotion", "explaining")
+        if emotion not in valid_emotions:
+            emotion = "explaining"
+        result.append({
+            "step_order": step.get("step_order", i + 1),
+            "text": step.get("text", ""),
+            "panda_emotion": emotion,
+            "board_line": step.get("board_line"),
+        })
+    # Re-number step_order sequentially
+    for i, step in enumerate(result):
+        step["step_order"] = i + 1
+    return result
+
+
 def _parse_llm_response(content: str) -> list:
     """Extract JSON array from LLM response."""
     # Try direct parse

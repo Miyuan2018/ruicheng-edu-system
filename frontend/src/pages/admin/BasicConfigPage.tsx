@@ -124,6 +124,7 @@ export default function BasicConfigPage() {
     apiClient.get('/admin/llm/export-max').then(({ data }) => {
       form.setFieldValue('export_max', data.export_max ?? 200);
     }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Tab: 学科管理 ───

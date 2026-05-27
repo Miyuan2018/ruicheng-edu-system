@@ -11,6 +11,12 @@ import PaperListPage from './pages/papers/PaperListPage';
 import MyPapersPage from './pages/papers/MyPapersPage';
 import TypicalQuestionsPage from './pages/TypicalQuestionsPage';
 import MistakeBookPage from './pages/mistake-book/MistakeBookPage';
+import SelfStudyPage from './pages/self-study/SelfStudyPage';
+import TopicBoardPage from './pages/topic-board/TopicBoardPage';
+import ParentLoginPage from './pages/auth/ParentLoginPage';
+import ParentEncouragePage from './pages/parent/ParentEncouragePage';
+import ParentRewardGoalsPage from './pages/parent/ParentRewardGoalsPage';
+import ParentCelebrationsPage from './pages/parent/ParentCelebrationsPage';
 import TeacherClassesPage from './pages/teacher/TeacherClassesPage';
 import PaperStatsPage from './pages/teacher/PaperStatsPage';
 import QuestionStatsPage from './pages/teacher/QuestionStatsPage';
@@ -21,8 +27,9 @@ import QuestionAdminPage from './pages/admin/QuestionAdminPage';
 import SyllabusPage from './pages/admin/SyllabusPage';
 import SysAdminPage from './pages/admin/SysAdminPage';
 import PrintPreviewPage from './pages/papers/PrintPreviewPage';
+import { getAccessToken, getUserType } from './store/auth';
 
-function isAuth() { return !!localStorage.getItem('access_token'); }
+function isAuth() { return !!getAccessToken(); }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!isAuth()) return <Navigate to="/login" replace />;
@@ -35,7 +42,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function PapersPage() {
-  var userType = localStorage.getItem('user_type') || 'STUDENT';
+  const userType = getUserType();
   if (userType === 'STUDENT') return <MyPapersPage />;
   return <PaperListPage />;
 }
@@ -47,6 +54,7 @@ export default function AppRouter() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+            <Route path="/parent/login" element={<PublicRoute><ParentLoginPage /></PublicRoute>} />
             <Route path="/admin/login" element={<PublicRoute><AdminLoginPage /></PublicRoute>} />
             <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
@@ -56,6 +64,8 @@ export default function AppRouter() {
               <Route path="my-papers" element={<MyPapersPage />} />
               <Route path="typical-questions" element={<TypicalQuestionsPage />} />
               <Route path="mistake-book" element={<MistakeBookPage />} />
+              <Route path="self-study" element={<SelfStudyPage />} />
+              <Route path="topic-board" element={<TopicBoardPage />} />
               <Route path="teacher/classes" element={<TeacherClassesPage />} />
               <Route path="teacher/stats/paper" element={<PaperStatsPage />} />
               <Route path="teacher/stats/question" element={<QuestionStatsPage />} />
@@ -66,6 +76,9 @@ export default function AppRouter() {
               <Route path="question-admin" element={<QuestionAdminPage />} />
               <Route path="syllabus" element={<SyllabusPage />} />
               <Route path="profile" element={<ProfilePage />} />
+              <Route path="parent/encourage" element={<ParentEncouragePage />} />
+              <Route path="parent/reward-goals" element={<ParentRewardGoalsPage />} />
+              <Route path="parent/celebrations" element={<ParentCelebrationsPage />} />
             </Route>
             <Route path="/print-preview" element={<PrintPreviewPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

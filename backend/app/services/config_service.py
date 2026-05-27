@@ -1,27 +1,18 @@
-"""System configuration service — reads/writes sysconfig.json."""
+"""System configuration service — reads/writes sysconfig.json.
+
+Sensitive values (SECRET_KEY, DATABASE_PASSWORD, DEEPSEEK_API_KEY) are
+loaded from environment variables, NOT stored in sysconfig.json.
+"""
+
 import json
 import os
 import httpx
 from typing import Optional
 
 
-def _get_deepseek_default_api_key() -> str:
-    """Try to read DeepSeek API key from Claude settings files."""
-    try:
-        for settings_path in [
-            os.path.expanduser("~/.claude/settings.local.json"),
-            ".claude/settings.local.json",
-        ]:
-            if os.path.exists(settings_path):
-                with open(settings_path) as f:
-                    cfg = json.load(f)
-                token = cfg.get("env", {}).get("ANTHROPIC_AUTH_TOKEN", "")
-                base = cfg.get("env", {}).get("ANTHROPIC_BASE_URL", "")
-                if token and "deepseek" in base:
-                    return token
-    except Exception:
-        pass
-    return ""
+def _get_deepseek_api_key() -> str:
+    """Get DeepSeek API key from environment variable."""
+    return os.getenv("DEEPSEEK_API_KEY", "")
 
 
 def _get_deepseek_default_model() -> str:
@@ -36,7 +27,6 @@ DEFAULT_CONFIG = {
         "port": "5432",
         "database": "edu_system",
         "user": "postgres",
-        "password": "postgres",
     },
     "llm": {
         "current": "ollama",
@@ -47,7 +37,7 @@ DEFAULT_CONFIG = {
         },
         "deepseek": {
             "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
-            "api_key": _get_deepseek_default_api_key(),
+            "api_key": "",  # loaded from DEEPSEEK_API_KEY env var at runtime
             "model": _get_deepseek_default_model(),
             "available_models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro[1m]", "deepseek-v4-flash"],
         },
@@ -57,7 +47,8 @@ DEFAULT_CONFIG = {
         "grading_model": "rule",
     },
     "ocr": {
-        "ocr_engine": "paddleocr",
+        "ocr_engine": "tesseract",
+        "paddleocr_endpoint": "http://paddleocr:8080/predict",
         "max_concurrent_ocr": 5,
         "ocr_confidence_threshold": 0.8,
     },
@@ -69,19 +60,56 @@ DEFAULT_CONFIG = {
         "log_level": "INFO",
         "backup_enabled": False,
     },
+    "celery": {
+        "enabled": False,
+        "redis_url": "redis://localhost:6379/0",
+        "worker_concurrency": 2,
+        "async_threshold": 3,
+    },
 }
 
 
 def load_config() -> dict:
+    """Load config from sysconfig.json, injecting secrets from env vars."""
     if not os.path.exists(CONFIG_PATH):
-        return DEFAULT_CONFIG.copy()
-    with open(CONFIG_PATH, "r") as f:
-        return json.load(f)
+        cfg = DEFAULT_CONFIG.copy()
+    else:
+        with open(CONFIG_PATH, "r") as f:
+            cfg = json.load(f)
+
+    # Inject secrets from environment variables (never stored in JSON)
+    ds = cfg.get("llm", {}).get("deepseek", {})
+    ds["api_key"] = _get_deepseek_api_key()
+    # Database password is handled by config.py via DATABASE_PASSWORD env var
+
+    return cfg
+
+
+_SENSITIVE_KEYS = {
+    ("llm", "deepseek", "api_key"),
+    ("database", "password"),
+}
+
+
+def _strip_secrets(config: dict) -> dict:
+    """Remove sensitive fields before writing to file."""
+    cfg = json.loads(json.dumps(config))  # deep copy
+    for path in _SENSITIVE_KEYS:
+        d = cfg
+        for key in path[:-1]:
+            if key not in d:
+                return cfg
+            d = d[key]
+        if path[-1] in d:
+            d[path[-1]] = ""
+    return cfg
 
 
 def save_config(config: dict) -> None:
+    """Save config to sysconfig.json, stripping secrets first."""
+    safe = _strip_secrets(config)
     with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+        json.dump(safe, f, indent=2, ensure_ascii=False)
 
 
 async def fetch_ollama_models(endpoint: str) -> dict:

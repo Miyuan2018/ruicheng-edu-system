@@ -1,6 +1,25 @@
 import { create } from 'zustand';
-import axios from 'axios';
-import apiClient from '../api/client';
+
+const ACCESS_TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+const USER_TYPE_KEY = 'user_type';
+const USER_NAME_KEY = 'user_name';
+const USER_ID_KEY = 'user_id';
+
+// ── Helper functions for non-React contexts (axios interceptors) ──
+export const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY);
+export const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY);
+export const getUserType = () => localStorage.getItem(USER_TYPE_KEY) || 'STUDENT';
+export const getUserName = () => localStorage.getItem(USER_NAME_KEY) || '用户';
+export const getUserId = () => localStorage.getItem(USER_ID_KEY) || '';
+
+interface AuthData {
+  access_token: string;
+  refresh_token: string;
+  user_type: string;
+  user_name: string;
+  user_id: string;
+}
 
 interface User {
   id: string;
@@ -14,58 +33,63 @@ interface User {
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  accessToken: string | null;
+  refreshToken: string | null;
+  userType: string | null;
+  userName: string | null;
+  userId: string | null;
+  setAuth: (data: AuthData) => void;
   logout: () => void;
-  fetchUser: () => Promise<void>;
-}
-
-interface RegisterData {
-  email: string;
-  username: string;
-  password: string;
-  full_name: string;
-  role: string;
+  updateUserName: (name: string) => void;
+  setUser: (user: User | null) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isAuthenticated: !!localStorage.getItem('access_token'),
-  loading: false,
+  isAuthenticated: !!getAccessToken(),
+  accessToken: getAccessToken(),
+  refreshToken: getRefreshToken(),
+  userType: getUserType(),
+  userName: getUserName(),
+  userId: getUserId(),
 
-  login: async (email, password) => {
-    const formData = new URLSearchParams();
-    formData.append('username', email);
-    formData.append('password', password);
-    const { data } = await axios.post('/api/v1/auth/login', formData, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  setAuth: (data) => {
+    localStorage.setItem(ACCESS_TOKEN_KEY, data.access_token);
+    localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+    localStorage.setItem(USER_TYPE_KEY, data.user_type);
+    localStorage.setItem(USER_NAME_KEY, data.user_name);
+    localStorage.setItem(USER_ID_KEY, data.user_id);
+    set({
+      isAuthenticated: true,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      userType: data.user_type,
+      userName: data.user_name,
+      userId: data.user_id,
     });
-    localStorage.setItem('access_token', data.access_token);
-    localStorage.setItem('refresh_token', data.refresh_token);
-    set({ isAuthenticated: true });
-  },
-
-  register: async (userData) => {
-    const { data } = await apiClient.post('/auth/register', userData);
-    localStorage.setItem('access_token', data.access_token);
-    localStorage.setItem('refresh_token', data.refresh_token);
-    set({ isAuthenticated: true });
   },
 
   logout: () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    set({ user: null, isAuthenticated: false });
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(USER_TYPE_KEY);
+    localStorage.removeItem(USER_NAME_KEY);
+    localStorage.removeItem(USER_ID_KEY);
+    set({
+      user: null,
+      isAuthenticated: false,
+      accessToken: null,
+      refreshToken: null,
+      userType: null,
+      userName: null,
+      userId: null,
+    });
   },
 
-  fetchUser: async () => {
-    set({ loading: true });
-    try {
-      const { data } = await apiClient.get('/users/me');
-      set({ user: data, loading: false });
-    } catch {
-      set({ loading: false });
-    }
+  updateUserName: (name) => {
+    localStorage.setItem(USER_NAME_KEY, name);
+    set({ userName: name });
   },
+
+  setUser: (user) => set({ user }),
 }));

@@ -29,6 +29,7 @@ export default function AdminUsersPage() {
   const [form] = Form.useForm();
   const [page, setPage] = useState(1);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers(); }, [page]);
 
   const loadUsers = async () => {

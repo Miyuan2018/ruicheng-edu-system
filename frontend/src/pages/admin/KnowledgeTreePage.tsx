@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Card, Tree, Button, Modal, Form, Input, Select, InputNumber,
-  Space, Tag, Typography, message, Spin, Empty, Badge, Dropdown, Tooltip,
-  Row, Col, Divider, Descriptions, Popconfirm, Alert
+  Space, Tag, Typography, message, Spin, Empty, Badge, Dropdown,
+  Row, Col, Divider, Descriptions, Popconfirm, Alert, Timeline
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
   CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined,
-  BranchesOutlined, ApartmentOutlined, HistoryOutlined,
+  BranchesOutlined, ApartmentOutlined,
+  RollbackOutlined, HistoryOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import apiClient from '../../api/client';
@@ -40,6 +41,8 @@ export default function KnowledgeTreePage() {
   const [parentId, setParentId] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const [rollbackLoading, setRollbackLoading] = useState(false);
+  const [versionStats, setVersionStats] = useState<Record<number, { active: number; total: number }>>({});
 
   useEffect(() => { loadSyllabi(); }, []);
 
@@ -51,15 +54,34 @@ export default function KnowledgeTreePage() {
     try { const { data } = await apiClient.get(`/knowledge-tree/syllabi/${sid}/versions`); setVersions(data); } catch {}
   };
 
+  // Count active and total nodes in tree
+  const countNodes = (nodes: TreeNode[]): { active: number; total: number } => {
+    let active = 0, total = 0;
+    const walk = (list: TreeNode[]) => {
+      for (const n of list) {
+        total++;
+        if (n.is_active) active++;
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(nodes);
+    return { active, total };
+  };
+
   const loadTree = useCallback(async (sid: string, ver?: number) => {
     if (!sid) return;
     setLoading(true);
     try {
       const params = ver ? `?version=${ver}` : '';
       const { data } = await apiClient.get(`/knowledge-tree/syllabi/${sid}/tree${params}`);
-      setTreeData(data.tree || []);
-      setSelectedVersion(data.requested_version || data.current_version);
-      setExpandedKeys(data.tree?.map((n: TreeNode) => n.key) || []);
+      const tree = data.tree || [];
+      setTreeData(tree);
+      const loadedVer = data.requested_version || data.current_version;
+      setSelectedVersion(loadedVer);
+      setExpandedKeys(tree.map((n: TreeNode) => n.key));
+      // Compute version stats
+      const stats = countNodes(tree);
+      setVersionStats((prev) => ({ ...prev, [loadedVer]: stats }));
     } catch { message.error('加载知识树失败'); }
     finally { setLoading(false); }
   }, []);
@@ -136,7 +158,37 @@ export default function KnowledgeTreePage() {
     } catch { message.error('创建新版本失败'); }
   };
 
+  const handleRollback = async (targetVersion: number) => {
+    setRollbackLoading(true);
+    try {
+      const { data } = await apiClient.put(
+        `/knowledge-tree/syllabi/${selectedSyllabus}/rollback`,
+        null,
+        { params: { target_version: targetVersion } }
+      );
+      message.success(data.message || '回滚成功');
+      // Update selectedSyllabus to the rolled-back version's ID
+      if (data.syllabus_id) {
+        setSelectedSyllabus(data.syllabus_id);
+        loadVersions(data.syllabus_id);
+        loadTree(data.syllabus_id, targetVersion);
+      } else {
+        loadVersions(selectedSyllabus);
+        loadTree(selectedSyllabus, targetVersion);
+      }
+    } catch { message.error('回滚失败'); }
+    finally { setRollbackLoading(false); }
+  };
+
+  const currentVersion = versions.find((v: any) => v.is_current)?.version;
+
   // Custom tree node rendering
+  const getInvalidTag = (reason?: string) => {
+    if (reason === 'PARENT_MODIFIED') return <Tag color="orange" style={{ fontSize: 10 }}>父变更</Tag>;
+    if (reason === 'VERSION_CUT') return <Tag color="purple" style={{ fontSize: 10 }}>版本切割</Tag>;
+    return <Tag color="red" style={{ fontSize: 10 }}>无效</Tag>;
+  };
+
   const renderTreeNodes = (nodes: TreeNode[]): any[] =>
     nodes.map((node) => ({
       ...node,
@@ -151,11 +203,7 @@ export default function KnowledgeTreePage() {
           }}>
             {node.title}
           </span>
-          {!node.is_active && (
-            <Tag color={node.invalid_reason === 'PARENT_MODIFIED' ? 'orange' : 'red'} style={{ fontSize: 10 }}>
-              {node.invalid_reason === 'PARENT_MODIFIED' ? '父变更' : '无效'}
-            </Tag>
-          )}
+          {!node.is_active && getInvalidTag(node.invalid_reason)}
           {node.is_modified && <Badge status="processing" title="已修改" />}
           {node.node_type === 'AREA' && <Tag color="blue" style={{ fontSize: 10 }}>领域</Tag>}
         </span>
@@ -201,6 +249,23 @@ export default function KnowledgeTreePage() {
           <Col>
             <Button size="small" icon={<PlusOutlined />} onClick={handleNewVersion} disabled={!selectedSyllabus}>新版本</Button>
           </Col>
+          <Col>
+            <Popconfirm
+              title={`确定要回滚到版本 v${selectedVersion} 吗？`}
+              description="回滚后该版本将成为当前版本"
+              onConfirm={() => handleRollback(selectedVersion)}
+              disabled={!selectedSyllabus || selectedVersion === currentVersion}
+            >
+              <Button
+                size="small"
+                icon={<RollbackOutlined />}
+                loading={rollbackLoading}
+                disabled={!selectedSyllabus || selectedVersion === currentVersion}
+              >
+                回滚到此版本
+              </Button>
+            </Popconfirm>
+          </Col>
           <Col flex="auto" style={{ textAlign: 'right' }}>
             <Space>
               <Button size="small" icon={<ReloadOutlined />} onClick={() => loadTree(selectedSyllabus, selectedVersion)}>刷新</Button>
@@ -211,10 +276,42 @@ export default function KnowledgeTreePage() {
         </Row>
       </Card>
 
+      {/* Version Timeline */}
+      {selectedSyllabus && versions.length > 1 && (
+        <Card size="small" title={<span><HistoryOutlined style={{ marginRight: 6 }} />版本历史</span>} style={{ marginBottom: 16 }}>
+          <Timeline
+            items={versions.map((v: any) => ({
+              key: v.id,
+              color: v.is_current ? 'green' : 'gray',
+              dot: v.is_current ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : undefined,
+              children: (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text strong>v{v.version}</Text>
+                  {v.is_current && <Tag color="green" style={{ fontSize: 11 }}>当前</Tag>}
+                  {versionStats[v.version] && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      ({versionStats[v.version].active}/{versionStats[v.version].total} 节点)
+                    </Text>
+                  )}
+                  <Button type="link" size="small" style={{ padding: 0, fontSize: 12 }}
+                    onClick={() => handleVersionChange(v.version)}>查看</Button>
+                  {!v.is_current && (
+                    <Popconfirm title={`确定回滚到 v${v.version}？`} onConfirm={() => handleRollback(v.version)}>
+                      <Button type="link" size="small" danger style={{ padding: 0, fontSize: 12 }}>回滚</Button>
+                    </Popconfirm>
+                  )}
+                </span>
+              ),
+            }))}
+          />
+        </Card>
+      )}
+
       {/* Legend */}
       <div style={{ marginBottom: 12, display: 'flex', gap: 16, fontSize: 13 }}>
         <span><Badge status="success" /> 有效节点</span>
         <span><Badge status="warning" /> 父变更失效</span>
+        <span><Badge color="purple" /> 版本切割失效</span>
         <span><Badge status="error" /> 手动无效</span>
         <span><Badge status="processing" /> 已修改</span>
         <span>| 右键节点查看更多操作</span>
@@ -261,9 +358,11 @@ export default function KnowledgeTreePage() {
                   <Descriptions.Item label="状态">
                     {selectedNode.is_active
                       ? <Tag color="green">有效</Tag>
-                      : <Tag color={selectedNode.invalid_reason === 'PARENT_MODIFIED' ? 'orange' : 'red'}>
-                        {selectedNode.invalid_reason === 'PARENT_MODIFIED' ? '父节点变更导致失效' : '手动设为无效'}
-                      </Tag>
+                      : selectedNode.invalid_reason === 'PARENT_MODIFIED'
+                        ? <Tag color="orange">父节点变更导致失效</Tag>
+                        : selectedNode.invalid_reason === 'VERSION_CUT'
+                          ? <Tag color="purple">版本切割失效</Tag>
+                          : <Tag color="red">手动设为无效</Tag>
                     }
                   </Descriptions.Item>
                   <Descriptions.Item label="已修改">

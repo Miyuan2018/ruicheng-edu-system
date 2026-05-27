@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_, or_
 from app.db.session import get_db
@@ -48,10 +48,11 @@ async def search_questions(
     keyword: Optional[str] = None,
     knowledge_point: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    limit = min(limit, 200)
     query = select(Question)
 
     # Filter by user's subjects (teachers only see their subjects)
@@ -172,11 +173,12 @@ async def export_questions(
     subject: Optional[str] = None, grade_level: Optional[str] = None,
     question_type: Optional[str] = None, difficulty: Optional[str] = None,
     keyword: Optional[str] = None, knowledge_point: Optional[str] = None,
-    limit: int = 200,
+    limit: int = 20,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Export questions filtered by criteria, max 200."""
+    limit = min(limit, 200)
     import json as _json
     from app.services.config_service import load_config
     cfg = load_config()
@@ -225,13 +227,14 @@ async def deduplicate_questions(
 @router.get("/typical")
 async def get_typical_questions(
     skip: int = 0,
-    limit: int = 50,
+    limit: int = 20,
     subject: Optional[str] = None,
     grade: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List typical questions (marked by teachers) — accessible by all authenticated users."""
+    limit = min(limit, 200)
     query = select(Question).where(
         Question.is_typical == True,
         Question.is_active == True,
@@ -244,11 +247,66 @@ async def get_typical_questions(
     query = query.offset(skip).limit(limit).order_by(Question.updated_at.desc())
     result = await db.execute(query)
     questions = result.scalars().all()
-    return [{"id": str(q.id), "title": q.title, "question_type": q.question_type,
-             "difficulty": q.difficulty, "subject": q.subject, "grade_level": q.grade_level,
-             "correct_answer": q.correct_answer, "explanation": q.explanation,
-             "source": q.source, "created_at": q.created_at.isoformat()}
-            for q in questions]
+
+    # Check which questions have active explanation sessions
+    from app.models.explanation_session import ExplanationSession
+    q_ids = [str(q.id) for q in questions]
+    if q_ids:
+        sess_result = await db.execute(
+            select(ExplanationSession.question_id).where(
+                ExplanationSession.question_id.in_(q_ids),
+                ExplanationSession.is_active == True,
+            )
+        )
+        has_explanation_set = set(row[0] for row in sess_result.all())
+    else:
+        has_explanation_set = set()
+
+    result_list = []
+    for q in questions:
+        q_dict = {
+            "id": str(q.id),
+            "title": q.title,
+            "question_type": q.question_type,
+            "difficulty": q.difficulty,
+            "subject": q.subject,
+            "score": q.score,
+            "correct_answer": q.correct_answer,
+            "explanation": q.explanation,
+            "has_explanation": str(q.id) in has_explanation_set,
+        }
+        result_list.append(q_dict)
+    return result_list
+
+
+@router.post("/generate-explanation")
+async def generate_explanation_endpoint(
+    question_id: str = Body(..., embed=True),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Call LLM to generate explanation steps for a question. Does NOT save."""
+    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(403, detail="权限不足")
+
+    result = await db.execute(select(Question).where(Question.id == question_id))
+    q = result.scalar_one_or_none()
+    if not q:
+        raise HTTPException(404, detail="试题不存在")
+
+    from app.services.llm_service import generate_explanation
+    resp = await generate_explanation(
+        title=q.title,
+        question_type=q.question_type,
+        difficulty=q.difficulty,
+        subject=q.subject,
+        correct_answer=q.correct_answer or "",
+        explanation=q.explanation or "",
+    )
+    if not resp.get("ok"):
+        raise HTTPException(500, detail=resp.get("error", "LLM生成失败"))
+
+    return {"steps": resp["steps"], "model": resp.get("model", "")}
 
 
 @router.put("/{question_id}/typical")
@@ -266,8 +324,41 @@ async def toggle_typical(
     if not q:
         raise HTTPException(404, detail="试题不存在")
     q.is_typical = is_typical
+    if not is_typical:
+        # Clean up existing explanation session for this question
+        from app.models.explanation_session import ExplanationSession
+        sess_result = await db.execute(
+            select(ExplanationSession).where(
+                ExplanationSession.question_id == str(question_id)
+            )
+        )
+        old_session = sess_result.scalar_one_or_none()
+        if old_session:
+            await db.delete(old_session)
     await db.commit()
     return {"id": str(q.id), "is_typical": q.is_typical, "message": "已标记为典型题" if is_typical else "已取消典型题标记"}
+
+
+@router.get("/has-explanations")
+async def has_explanations(
+    ids: str = Query(..., description="Comma-separated question IDs"),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch check which questions have active explanation sessions."""
+    from app.models.explanation_session import ExplanationSession
+    id_list = [i.strip() for i in ids.split(",") if i.strip()]
+    if not id_list:
+        return {}
+
+    result = await db.execute(
+        select(ExplanationSession.question_id).where(
+            ExplanationSession.question_id.in_(id_list),
+            ExplanationSession.is_active == True,
+        )
+    )
+    has_set = set(row[0] for row in result.all())
+    return {qid: (qid in has_set) for qid in id_list}
 
 
 @router.get("/{question_id}", response_model=QuestionResponse)
@@ -363,7 +454,7 @@ async def batch_delete_questions(
 @router.get("")
 async def get_questions(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
     subject: Optional[str] = None,
     grade_level: Optional[str] = None,
     grade: Optional[str] = None,
@@ -372,10 +463,12 @@ async def get_questions(
     question_type: Optional[str] = None,
     difficulty: Optional[str] = None,
     review_status: Optional[str] = None,
+    is_typical: Optional[bool] = None,
     keyword: Optional[str] = None,
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    limit = min(limit, 200)
     query = select(Question)
 
     # Filter by user's subjects (teachers only see their subjects)
@@ -405,6 +498,8 @@ async def get_questions(
         query = query.where(Question.difficulty == difficulty)
     if review_status:
         query = query.where(Question.review_status == review_status)
+    if is_typical is not None:
+        query = query.where(Question.is_typical == is_typical)
     if keyword:
         from sqlalchemy import or_, String
         query = query.where(or_(

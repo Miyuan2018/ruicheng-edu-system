@@ -1,10 +1,12 @@
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import datetime
 
 
 class GradingRecordBase(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     answer_submission_id: uuid.UUID
     model_id: Optional[str] = None
     status: str = Field(default="PENDING", pattern="^(PENDING|PROCESSING|COMPLETED|FAILED)$")
@@ -18,6 +20,8 @@ class GradingRecordCreate(GradingRecordBase):
 
 
 class GradingRecordUpdate(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     answer_submission_id: Optional[str] = None
     model_id: Optional[str] = None
     status: Optional[str] = Field(None, pattern="^(PENDING|PROCESSING|COMPLETED|FAILED)$")

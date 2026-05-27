@@ -1,0 +1,84 @@
+.chalkboardFrame {
+  border: 12px solid #5C3D2E;
+  border-radius: 8px;
+  box-shadow:
+    inset 3px 3px 6px rgba(0, 0, 0, 0.3),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.05),
+    4px 4px 12px rgba(0, 0, 0, 0.2);
+  background: #1B3A2D;
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+}
+
+.chalkboardFrame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.04;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='4' height='4' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='1' height='1' fill='%23fff' opacity='0.3'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%23fff' opacity='0.2'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23000' opacity='0.2'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+.chalkboardInner {
+  height: 100%;
+  padding: 24px 32px;
+  overflow: auto;
+}
+
+.chalkHeader {
+  font-family: "Chalkboard SE", "Chalkdust", "Marker Felt", "Comic Sans MS", cursive;
+  font-size: 26px;
+  font-weight: 700;
+  color: #F5F0E8;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.08);
+  border-bottom: 2px dashed rgba(245, 240, 232, 0.2);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.chalkContent {
+  font-family: "Chalkboard SE", "Chalkdust", "Marker Felt", "Comic Sans MS", cursive;
+  font-size: 20px;
+  line-height: 1.7;
+  color: #F5F0E8;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.chalkAccentYellow {
+  color: #E8D44D;
+}
+
+.chalkAccentRed {
+  color: #E87A5D;
+}
+
+.chalkNote {
+  font-family: "Chalkboard SE", "Chalkdust", "Marker Felt", "Comic Sans MS", cursive;
+  font-size: 15px;
+  color: #C5C0B8;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.chalkMath {
+  display: inline-block;
+  color: #F5F0E8;
+}
+
+.chalkMath :global(.katex) {
+  font-size: 1.1em;
+  color: #F5F0E8;
+}
+
+.stepLine {
+  padding: 2px 6px;
+  font-size: clamp(13px, 1.8vw, 18px);
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+}
+
+.stepLineActive {
+  border-left-color: #E8D44D;
+}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, message, Space, Steps, Select, Tag } from 'antd';
 import { LockOutlined, UserOutlined, SafetyOutlined, MobileOutlined, IdcardOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
+import { useAuthStore } from '../../store/auth';
 
 const { Title, Text } = Typography;
 
@@ -21,6 +22,7 @@ export default function AdminLoginPage() {
   const [userInfo, setUserInfo] = useState<{ user_type: string; full_name: string } | null>(null);
   const [form] = Form.useForm();
   const navigate = useNavigate();
+  const { setAuth } = useAuthStore();
 
   const refreshCaptcha = async () => {
     try { const { data } = await apiClient.get('/auth/captcha'); setCaptchaSvg(data.captcha_svg); setCaptchaKey(data.captcha_key); } catch {}
@@ -64,11 +66,13 @@ export default function AdminLoginPage() {
         sms_code: values.sms_code, role: values.role,
         verify_token: verifyToken,
       });
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
-      localStorage.setItem('user_type', data.user_type);
-      localStorage.setItem('user_name', data.full_name);
-      localStorage.setItem('user_id', data.user_id);
+      setAuth({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user_type: data.user_type,
+        user_name: data.full_name,
+        user_id: data.user_id,
+      });
       message.success(`欢迎, ${data.full_name}`);
       const routes: Record<string, string> = {
         SYS_ADMIN: '/admin/sys-admin', TEACHER: '/dashboard', QUESTION_ADMIN: '/question-admin',

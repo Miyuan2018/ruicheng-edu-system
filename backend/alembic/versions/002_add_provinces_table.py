@@ -18,17 +18,24 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id'), sa.UniqueConstraint('code')
     )
-    try:
+    # 检查 subjects 表是否已有 code 列，避免重复添加
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name='subjects' AND column_name='code'"
+    ))
+    if result.scalar() == 0:
         op.add_column('subjects', sa.Column('code', sa.String(30), nullable=True))
         op.create_unique_constraint('uq_subjects_code', 'subjects', ['code'])
-    except Exception:
-        pass
 
 
 def downgrade():
-    try:
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name='subjects' AND column_name='code'"
+    ))
+    if result.scalar() > 0:
         op.drop_constraint('uq_subjects_code', 'subjects', type_='unique')
         op.drop_column('subjects', 'code')
-    except Exception:
-        pass
     op.drop_table('provinces')

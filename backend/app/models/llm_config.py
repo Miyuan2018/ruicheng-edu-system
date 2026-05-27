@@ -1,6 +1,5 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, Text
-from sqlalchemy import Uuid as UUID
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -9,7 +8,7 @@ from app.db.base import Base
 class LlmConfig(Base):
     __tablename__ = "llm_configs"
 
-    id = Column(UUID, primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(100), nullable=False)
     provider = Column(String(50), nullable=False)       # ollama / vllm / openai
     endpoint = Column(String(500), nullable=False)

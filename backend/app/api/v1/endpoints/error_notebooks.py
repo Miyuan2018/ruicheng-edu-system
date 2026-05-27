@@ -12,7 +12,10 @@ from app.schemas.error_notebook import ErrorNotebookResponse
 from typing import List
 from app.core.security import get_current_user
 from app.services.mistake_service import generate_mistake_book
+from app.services.notification_service import NotificationService
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -31,17 +34,27 @@ async def generate_error_notebook(
         ).order_by(AnswerSubmission.submitted_at.desc()).limit(1)
     )
     submission = sub_result.scalar_one_or_none()
-    if submission and submission.status == "已生成":
+    if submission and submission.status == "GENERATED":
         raise HTTPException(status_code=400, detail="错题本已生成，请先修改试卷状态后再重新生成")
 
     book = await generate_mistake_book(current_user.id, db, exam_paper_id=exam_paper_id)
     if not book:
         raise HTTPException(status_code=404, detail="没有错题可生成错题本")
 
-    # Mark submission as 已生成
+    # Mark submission as GENERATED
     if submission:
-        submission.status = "已生成"
+        submission.status = "GENERATED"
         await db.commit()
+
+    # Send notification
+    try:
+        await NotificationService.create_error_notebook_ready_notification(
+            db,
+            recipient_id=current_user.id,
+            notebook_title=book.title or "错题本",
+        )
+    except Exception:
+        logger.exception("Notification creation failed")
 
     return book
 

@@ -81,16 +81,22 @@ async def get_current_user(
     # Verify user exists in appropriate table
     if user_type == "SYS_ADMIN":
         from app.models.sys_admin import SysAdmin
-        result = await db.execute(select(SysAdmin).where(SysAdmin.id == uuid.UUID(user_id)))
+        result = await db.execute(select(SysAdmin).where(SysAdmin.id == user_id))
         if not result.scalar_one_or_none(): raise credentials_exception
     elif user_type in ("TEACHER", "QUESTION_ADMIN"):
         from app.models.admin import Admin
-        result = await db.execute(select(Admin).where(Admin.id == uuid.UUID(user_id)))
+        result = await db.execute(select(Admin).where(Admin.id == user_id))
+        if not result.scalar_one_or_none(): raise credentials_exception
+    elif user_type == "PARENT":
+        from app.models.parent import Parent
+        result = await db.execute(select(Parent).where(Parent.id == user_id))
+        if not result.scalar_one_or_none(): raise credentials_exception
+    elif user_type == "STUDENT":
+        from app.models.student import Student
+        result = await db.execute(select(Student).where(Student.id == user_id))
         if not result.scalar_one_or_none(): raise credentials_exception
     else:
-        from app.models.student import Student
-        result = await db.execute(select(Student).where(Student.id == uuid.UUID(user_id)))
-        if not result.scalar_one_or_none(): raise credentials_exception
+        raise credentials_exception
 
     return CurrentUser(user_id, user_type)
 

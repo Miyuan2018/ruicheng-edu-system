@@ -72,7 +72,7 @@ async def create_node(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role not in ("QUESTION_ADMIN", "ADMIN"):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
     s_result = await db.execute(select(Syllabus).where(Syllabus.id == syllabus_id))
@@ -102,7 +102,7 @@ async def update_node(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role not in ("QUESTION_ADMIN", "ADMIN"):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
     result = await db.execute(select(KnowledgeNode).where(KnowledgeNode.id == node_id))
@@ -151,7 +151,7 @@ async def set_branch_active(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role not in ("QUESTION_ADMIN", "ADMIN"):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
     count = await _set_subtree_active(node_id, active, db)
@@ -183,7 +183,7 @@ async def delete_node(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role not in ("QUESTION_ADMIN", "ADMIN"):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
     count = await _set_subtree_active(node_id, False, db)
@@ -202,7 +202,7 @@ async def create_new_version(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role not in ("QUESTION_ADMIN", "ADMIN"):
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
     s_result = await db.execute(select(Syllabus).where(Syllabus.id == syllabus_id))
@@ -248,6 +248,75 @@ async def create_new_version(
     await db.commit()
     await db.refresh(new_version)
     return {"id": str(new_version.id), "version": new_version.version, "message": "新版本创建成功"}
+
+
+@router.put("/syllabi/{syllabus_id}/rollback")
+async def rollback_version(
+    syllabus_id: uuid.UUID,
+    target_version: int,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rollback syllabus to a specific historical version."""
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(403, detail="权限不足")
+
+    s_result = await db.execute(select(Syllabus).where(Syllabus.id == syllabus_id))
+    current = s_result.scalar_one_or_none()
+    if not current:
+        raise HTTPException(404, detail="考纲不存在")
+
+    # Find all versions in the chain
+    all_ids = set()
+    root = current
+    while root.parent_syllabus_id:
+        all_ids.add(str(root.parent_syllabus_id))
+        pr = await db.execute(select(Syllabus).where(Syllabus.id == root.parent_syllabus_id))
+        prev = pr.scalar_one_or_none()
+        if not prev:
+            break
+        root = prev
+    all_ids.add(str(root.id))
+    # Forward chain
+    nxt_id = str(root.id)
+    while True:
+        nr = await db.execute(select(Syllabus).where(Syllabus.parent_syllabus_id == nxt_id))
+        nxt = nr.scalar_one_or_none()
+        if not nxt:
+            break
+        all_ids.add(str(nxt.id))
+        nxt_id = str(nxt.id)
+
+    # Find target version
+    target_result = await db.execute(
+        select(Syllabus).where(
+            Syllabus.id.in_(list(all_ids)),
+            Syllabus.version == target_version,
+        )
+    )
+    target = target_result.scalar_one_or_none()
+    if not target:
+        raise HTTPException(404, detail=f"目标版本 {target_version} 不存在")
+
+    # Set all versions in chain to not current
+    await db.execute(
+        update(Syllabus)
+        .where(Syllabus.id.in_(list(all_ids)))
+        .values(is_current=False)
+    )
+
+    # Set target to current
+    target.is_current = True
+    target.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(target)
+
+    return {
+        "message": f"已回滚到版本 {target_version}",
+        "syllabus_id": str(target.id),
+        "version": target.version,
+        "is_current": target.is_current,
+    }
 
 
 @router.get("/syllabi/{syllabus_id}/versions")

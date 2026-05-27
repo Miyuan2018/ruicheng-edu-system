@@ -1,0 +1,252 @@
+/* -- Container -- */
+.professor {
+  position: relative;
+  width: 180px;
+  height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+/* -- Head -- */
+.profHead {
+  position: relative;
+  width: 80px;
+  height: 76px;
+  background: #2D2D44;
+  border-radius: 50%;
+  z-index: 2;
+  transition: transform 0.4s ease;
+}
+
+.profFace {
+  position: absolute;
+  top: 7px;
+  left: 10px;
+  width: 60px;
+  height: 54px;
+  background: #F5F0E8;
+  border-radius: 50%;
+}
+
+/* Ears */
+.profEar {
+  position: absolute;
+  width: 22px;
+  height: 20px;
+  background: #2D2D44;
+  border-radius: 50%;
+  top: 3px;
+}
+.profEarL { left: -9px; }
+.profEarR { right: -9px; }
+
+/* Patches */
+.profPatch {
+  position: absolute;
+  width: 20px;
+  height: 16px;
+  background: #2D2D44;
+  border-radius: 50%;
+  top: 25px;
+  z-index: 3;
+}
+.profPatchL { left: 14px; transform: rotate(-10deg); }
+.profPatchR { right: 14px; transform: rotate(10deg); }
+
+/* Eyes */
+.profEye {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #FAFAFA;
+  border-radius: 50%;
+  top: 29px;
+  z-index: 5;
+  transition: transform 0.12s;
+}
+.profEyeL { left: 19px; }
+.profEyeR { right: 19px; }
+.profEye::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #111;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+}
+.profEyeBlink { transform: scaleY(0.08); }
+.profEyeHalf { transform: scaleY(0.4); }
+.profEyeWide { transform: scaleY(1.2); }
+.profEyeClosed {
+  transform: scaleY(0);
+  border-radius: 0;
+}
+
+/* Glasses */
+.profGlass {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #C4956A;
+  border-radius: 50%;
+  top: 21px;
+  z-index: 6;
+}
+.profGlassL { left: 11px; }
+.profGlassR { right: 11px; }
+.profGlassBridge {
+  position: absolute;
+  top: 33px;
+  left: 37px;
+  width: 6px;
+  height: 2px;
+  background: #C4956A;
+  z-index: 6;
+}
+
+/* Brows */
+.profBrow {
+  position: absolute;
+  width: 19px;
+  height: 3px;
+  background: #2D2D44;
+  border-radius: 2px;
+  top: 16px;
+  z-index: 7;
+  transition: transform 0.35s ease, top 0.35s ease;
+}
+.profBrowL { left: 15px; }
+.profBrowR { right: 15px; }
+
+/* Brow states */
+.profBrowThinkL { transform: rotate(-13deg); top: 13px; }
+.profBrowThinkR { transform: rotate(9deg); top: 14px; }
+.profBrowRaiseL { transform: rotate(-7deg); top: 13px; }
+.profBrowRaiseR { transform: rotate(-7deg); top: 13px; }
+.profBrowRelaxL { transform: rotate(-5deg); top: 18px; }
+.profBrowRelaxR { transform: rotate(-5deg); top: 18px; }
+
+/* Nose */
+.profNose {
+  position: absolute;
+  width: 7px;
+  height: 5px;
+  background: #4A3728;
+  border-radius: 50%;
+  top: 40px;
+  left: 36px;
+  z-index: 5;
+}
+
+/* Mouth */
+.profMouth {
+  position: absolute;
+  top: 50px;
+  z-index: 5;
+  transition: all 0.3s;
+}
+.profMouthSmile {
+  left: 26px;
+  width: 28px;
+  height: 6px;
+  border-bottom: 2.5px solid #2D2D44;
+  border-radius: 0 0 14px 14px;
+}
+.profMouthO {
+  left: 34px;
+  width: 12px;
+  height: 10px;
+  border: 2.5px solid #2D2D44;
+  border-radius: 50%;
+}
+.profMouthWide {
+  left: 26px;
+  width: 28px;
+  height: 10px;
+  border-bottom: 2.5px solid #2D2D44;
+  border-radius: 0 0 16px 16px;
+}
+.profMouthBig {
+  left: 22px;
+  width: 36px;
+  height: 10px;
+  border-bottom: 3px solid #2D2D44;
+  border-radius: 0 0 20px 20px;
+}
+
+/* Blush */
+.profBlush {
+  position: absolute;
+  width: 9px;
+  height: 5px;
+  background: #E87A5D;
+  border-radius: 50%;
+  top: 45px;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+.profBlushL { left: 8px; }
+.profBlushR { right: 8px; }
+.profBlushOn { opacity: 0.4; }
+
+/* Torso */
+.profTorso {
+  width: 90px;
+  height: 80px;
+  background: #2D2D44;
+  border-radius: 26px 26px 18px 18px;
+  margin-top: -10px;
+  position: relative;
+}
+.profTorso::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 18px solid #C4956A;
+}
+
+/* Arms */
+.profArm {
+  position: absolute;
+  width: 16px;
+  height: 48px;
+  background: #2D2D44;
+  border-radius: 8px;
+  top: 95px;
+  transition: transform 0.5s ease;
+  transform-origin: top center;
+}
+.profArmL { left: 22px; }
+.profArmR { right: 22px; }
+
+/* Pointer */
+.profPointer {
+  position: absolute;
+  width: 3px;
+  height: 45px;
+  background: #6B4C32;
+  border-radius: 2px;
+  top: 110px;
+  right: 10px;
+  transform: rotate(40deg);
+  transform-origin: top center;
+  opacity: 0;
+}
+
+/* Mood label */
+.profMood {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #999;
+  font-family: system-ui, sans-serif;
+  min-height: 16px;
+}
