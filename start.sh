@@ -195,12 +195,10 @@ fi
 psql -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -c "CREATE DATABASE $DB_NAME" 2>/dev/null || true
 log "PostgreSQL 连接正常"
 
-# ---- 7. 数据库迁移 ----
-info "运行数据库迁移..."
+# ---- 7. 全量建表 ----
+info "初始化数据库表结构..."
 cd "$BACKEND_DIR"
-if ! $PYTHON -m alembic upgrade head; then
-    warn "Alembic 迁移失败，尝试直接建表..."
-    $PYTHON -c "
+$PYTHON -c "
 from app.db.base import Base
 from app.db.session import engine
 from app.models import *
@@ -210,58 +208,13 @@ async def init():
         await conn.run_sync(Base.metadata.create_all)
     print('done')
 asyncio.run(init())
-" || die "数据库初始化失败，请检查数据库连接配置"
-    log "数据库表已创建"
-else
-    log "数据库迁移完成"
-fi
+" || die "数据库建表失败，请检查 PostgreSQL 连接配置"
+log "数据库表结构已就绪"
 
-# ---- 8. 种子数据 ----
-info "检查参考数据..."
-$PYTHON -c "
-import asyncio
-from app.db.session import AsyncSessionLocal
-from app.seed_reference import seed_reference_data
-async def run():
-    async with AsyncSessionLocal() as db:
-        await seed_reference_data(db)
-asyncio.run(run())
-" 2>/dev/null || warn "参考数据种子可能已存在"
-
-info "检查系统管理员..."
-HAS_ADMIN=$($PYTHON -c "
-import asyncio
-from sqlalchemy import select, func
-from app.db.session import AsyncSessionLocal
-from app.models import SysAdmin
-async def check():
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(func.count()).select_from(SysAdmin).where(SysAdmin.username=='SYSAdmin'))
-        count = result.scalar()
-        print(count)
-asyncio.run(check())
-" 2>/dev/null || echo "0")
-
-if [ "${HAS_ADMIN:-0}" != "1" ]; then
-    warn "创建系统管理员..."
-    $PYTHON -c "
-from app.models import SysAdmin
-from app.db.session import AsyncSessionLocal
-from app.core.security import get_password_hash
-import asyncio, uuid
-async def seed():
-    async with AsyncSessionLocal() as db:
-        sid = uuid.uuid4()
-        hash_sys = get_password_hash('SYSPass')
-        db.add(SysAdmin(id=sid, username='SYSAdmin', password_hash=hash_sys, full_name='系统管理员', is_active=True))
-        await db.commit()
-        print('done')
-asyncio.run(seed())
-" || warn "系统管理员可能已存在"
-    log "系统管理员已创建"
-else
-    log "系统管理员已存在"
-fi
+# ---- 8. 导入 V3.5 演示数据 ----
+info "导入 V3.5 演示数据..."
+cd "$BACKEND_DIR"
+$PYTHON demo_data.py || warn "演示数据导入失败，可跳过手动执行: cd backend && python demo_data.py"
 
 # ---- 9. 检查前端依赖 ----
 info "检查前端依赖..."
