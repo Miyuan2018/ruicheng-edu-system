@@ -11,7 +11,7 @@ class Syllabus(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String(200), nullable=False)
-    grade_level = Column(String(20), nullable=True)
+    grade_level = Column(JSON, nullable=True)
     province = Column(String(50), nullable=True)
     subject = Column(String(50), nullable=True)
     content = Column(JSON, nullable=True)

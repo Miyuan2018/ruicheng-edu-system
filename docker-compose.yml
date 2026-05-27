@@ -1,9 +1,7 @@
-version: '3.8'
-
 # ============================================================
 #  睿承教育平台 V3.5 — Docker Compose 部署配置
 #  快速启动：  docker-compose up -d
-#  含演示数据：docker-compose up -d && docker-compose exec backend python demo_data.py
+#  含演示数据：docker-compose up -d && docker-compose exec backend python seed_v35.py --force
 #  停止：      docker-compose down
 # ============================================================
 
