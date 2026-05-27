@@ -9,6 +9,7 @@
 - [backend/alembic.ini](file://backend/alembic.ini)
 - [backend/alembic/versions/001_v22_initial.py](file://backend/alembic/versions/001_v22_initial.py)
 - [backend/alembic/versions/002_add_provinces_table.py](file://backend/alembic/versions/002_add_provinces_table.py)
+- [backend/alembic/versions/009_add_parent_encouragement.py](file://backend/alembic/versions/009_add_parent_encouragement.py)
 - [backend/app/models/__init__.py](file://backend/app/models/__init__.py)
 - [backend/app/models/school_class.py](file://backend/app/models/school_class.py)
 - [backend/app/models/student.py](file://backend/app/models/student.py)
@@ -17,18 +18,23 @@
 - [backend/app/models/error_notebook.py](file://backend/app/models/error_notebook.py)
 - [backend/app/models/admin.py](file://backend/app/models/admin.py)
 - [backend/app/models/sys_admin.py](file://backend/app/models/sys_admin.py)
+- [backend/app/models/reference.py](file://backend/app/models/reference.py)
+- [backend/app/models/parent.py](file://backend/app/models/parent.py)
+- [backend/app/models/answer_submission.py](file://backend/app/models/answer_submission.py)
 - [backend/app/main.py](file://backend/app/main.py)
 - [backend/app/seed_reference.py](file://backend/app/seed_reference.py)
 - [backend/app/seed_explanations.py](file://backend/app/seed_explanations.py)
+- [backend/app/api/v1/endpoints/reference.py](file://backend/app/api/v1/endpoints/reference.py)
 - [nDocs/database-design.md](file://nDocs/database-design.md)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 更新了数据库初始化流程部分，反映从复杂的Alembic迁移系统简化为直接使用SQLAlchemy Base.metadata.create_all()方法
-- 新增了数据库初始化与种子数据管理的简化流程说明
-- 更新了架构图以体现新的初始化机制
-- 移除了Alembic迁移相关的复杂配置说明
+- 更新了数据库类型一致性修复章节，反映UUID类型统一为String(36)的完整实现
+- 新增了Alembic迁移中UUID到VARCHAR(36)转换的详细说明
+- 更新了模型设计章节，强调所有主键使用String(36) VARCHAR类型
+- 增强了数据库兼容性保障部分，包含完整的UUID处理策略
+- 更新了参考数据模型章节，展示UUID类型转换的最终状态
 
 ## 目录
 1. [简介](#简介)
@@ -47,7 +53,8 @@
 - SQLAlchemy ORM 模型基类设计与命名规范
 - 数据库会话管理与连接池配置
 - 模型继承体系、关系映射与外键约束设计
-- **简化后的数据库初始化流程**（直接使用Base.metadata.create_all()替代复杂Alembic迁移系统）
+- **简化后的数据库初始化流程**（直接使用SQLAlchemy Base.metadata.create_all()替代复杂Alembic迁移系统）
+- **数据库类型一致性修复**（UUID主键统一转换为String(36) VARCHAR类型，解决PostgreSQL UUID类型不匹配问题）
 - 查询优化策略、事务处理与并发控制
 - ER 图与模型关系图，以及数据库设计最佳实践
 
@@ -57,6 +64,7 @@
 - **简化后的初始化流程**：backend/app/main.py中的startup事件处理
 - **种子数据管理**：backend/app/seed_reference.py、backend/app/seed_explanations.py
 - 模型定义：backend/app/models/*.py，以及 backend/app/models/__init__.py 导出聚合
+- API端点：backend/app/api/v1/endpoints/reference.py处理UUID序列化
 - 设计文档：nDocs/database-design.md 提供了完整的表结构、索引与关系说明
 
 ```mermaid
@@ -68,6 +76,7 @@ Config["配置中心<br/>backend/app/core/config.py"]
 Startup["启动事件处理<br/>backend/app/main.py"]
 SeedRef["参考数据种子<br/>backend/app/seed_reference.py"]
 SeedExp["解释数据种子<br/>backend/app/seed_explanations.py"]
+APIRef["参考数据API<br/>backend/app/api/v1/endpoints/reference.py"]
 end
 subgraph "模型定义"
 ModelsInit["模型导出聚合<br/>backend/app/models/__init__.py"]
@@ -78,6 +87,9 @@ PaperModel["试卷模型<br/>backend/app/models/exam_paper.py"]
 ErrorNBModel["错题本模型<br/>backend/app/models/error_notebook.py"]
 AdminModel["管理员模型<br/>backend/app/models/admin.py"]
 SysAdminModel["系统管理员模型<br/>backend/app/models/sys_admin.py"]
+RefModel["参考数据模型<br/>backend/app/models/reference.py"]
+ParentModel["家长模型<br/>backend/app/models/parent.py"]
+AnswerModel["答题提交模型<br/>backend/app/models/answer_submission.py"]
 end
 Config --> Session
 Base --> ClassModel
@@ -87,9 +99,13 @@ Base --> PaperModel
 Base --> ErrorNBModel
 Base --> AdminModel
 Base --> SysAdminModel
+Base --> RefModel
+Base --> ParentModel
+Base --> AnswerModel
 Session --> Startup
 Startup --> SeedRef
 Startup --> SeedExp
+APIRef --> RefModel
 ModelsInit --> ClassModel
 ModelsInit --> StudentModel
 ModelsInit --> QuestionModel
@@ -97,6 +113,9 @@ ModelsInit --> PaperModel
 ModelsInit --> ErrorNBModel
 ModelsInit --> AdminModel
 ModelsInit --> SysAdminModel
+ModelsInit --> RefModel
+ModelsInit --> ParentModel
+ModelsInit --> AnswerModel
 ```
 
 **图表来源**
@@ -106,6 +125,7 @@ ModelsInit --> SysAdminModel
 - [backend/app/main.py:37-65](file://backend/app/main.py#L37-L65)
 - [backend/app/seed_reference.py:1-72](file://backend/app/seed_reference.py#L1-L72)
 - [backend/app/seed_explanations.py:1-353](file://backend/app/seed_explanations.py#L1-L353)
+- [backend/app/api/v1/endpoints/reference.py:1-122](file://backend/app/api/v1/endpoints/reference.py#L1-L122)
 - [backend/app/models/__init__.py:1-34](file://backend/app/models/__init__.py#L1-L34)
 
 **章节来源**
@@ -115,6 +135,7 @@ ModelsInit --> SysAdminModel
 - [backend/app/main.py:37-65](file://backend/app/main.py#L37-L65)
 - [backend/app/seed_reference.py:1-72](file://backend/app/seed_reference.py#L1-L72)
 - [backend/app/seed_explanations.py:1-353](file://backend/app/seed_explanations.py#L1-L353)
+- [backend/app/api/v1/endpoints/reference.py:1-122](file://backend/app/api/v1/endpoints/reference.py#L1-L122)
 - [backend/app/models/__init__.py:1-34](file://backend/app/models/__init__.py#L1-L34)
 
 ## 核心组件
@@ -138,14 +159,21 @@ ModelsInit --> SysAdminModel
   - 使用 Base.metadata.create_all() 方法直接创建所有模型对应的表
   - 提供种子数据初始化机制，确保系统启动时具备必要的参考数据
 
+- **数据库类型一致性修复**
+  - **UUID主键统一修复**：所有模型的主键从原生UUID类型统一转换为String(36) VARCHAR类型
+  - **Alembic迁移实现**：通过版本化迁移确保数据库结构与模型定义完全一致
+  - **历史表转换**：对已存在的表（如parents表）进行UUID到VARCHAR(36)的转换
+  - **序列化兼容性**：确保与asyncpg驱动的完全兼容，避免UUID序列化问题
+
 **章节来源**
 - [backend/app/db/base.py:5-21](file://backend/app/db/base.py#L5-L21)
 - [backend/app/db/session.py:1-26](file://backend/app/db/session.py#L1-L26)
 - [backend/app/core/config.py:36-62](file://backend/app/core/config.py#L36-L62)
 - [backend/app/main.py:37-65](file://backend/app/main.py#L37-L65)
+- [backend/alembic/versions/009_add_parent_encouragement.py:18-25](file://backend/alembic/versions/009_add_parent_encouragement.py#L18-L25)
 
 ## 架构总览
-下图展示了数据库层的整体架构与交互关系，体现了简化的初始化流程：
+下图展示了数据库层的整体架构与交互关系，体现了简化的初始化流程和UUID类型一致性修复：
 
 ```mermaid
 graph TB
@@ -159,23 +187,34 @@ Engine --> PG
 subgraph "模型层"
 Base["ORM 基类<br/>Base"]
 Models["模型集合<br/>models/*"]
+RefModels["参考数据模型<br/>QuestionType, DifficultyLevel, 等"]
 end
 subgraph "种子数据"
 SeedRef["参考数据种子"]
 SeedExp["解释数据种子"]
 SeedEnc["鼓励模板种子"]
 end
+subgraph "UUID类型修复"
+UUIDFix["String(36) VARCHAR<br/>统一UUID类型"]
+Migration["Alembic迁移<br/>版本化修复"]
+HistoryFix["历史表转换<br/>parents表修复"]
+end
 Base --> Models
 Models --> DBSession
 Startup --> SeedRef
 Startup --> SeedExp
 Startup --> SeedEnc
+SeedRef --> UUIDFix
+APIRef["参考数据API"] --> UUIDFix
+RefModels --> UUIDFix
+Migration --> HistoryFix
 ```
 
 **图表来源**
 - [backend/app/db/session.py:6-15](file://backend/app/db/session.py#L6-L15)
 - [backend/app/db/base.py:17-21](file://backend/app/db/base.py#L17-L21)
 - [backend/app/main.py:37-65](file://backend/app/main.py#L37-L65)
+- [backend/alembic/versions/009_add_parent_encouragement.py:18-25](file://backend/alembic/versions/009_add_parent_encouragement.py#L18-L25)
 
 ## 详细组件分析
 
@@ -255,7 +294,7 @@ flowchart TD
 Start(["应用启动"]) --> CreateTables["Base.metadata.create_all()"]
 CreateTables --> CheckRef["检查参考数据"]
 CheckRef --> HasRef{"参考数据存在？"}
-HasRef --> |否| SeedRef["插入参考数据"]
+HasRef --> |否| SeedRef["插入参考数据<br/>str(uuid.uuid4())"]
 HasRef --> |是| CheckExp["检查解释数据"]
 SeedRef --> CheckExp
 CheckExp --> HasExp{"解释数据存在？"}
@@ -340,11 +379,52 @@ class ErrorNotebook {
 +created_at
 +updated_at
 }
+class QuestionType {
++id : String(36)
++code
++name
++color
++sort_order
++is_active
++created_at
+}
+class Parent {
++id : String(36)
++username
++password_hash
++full_name
++phone
++email
++student_ids
++is_active
++created_at
++updated_at
++last_login_at
+}
+class AnswerSubmission {
++id : String(36)
++student_id
++exam_paper_id
++submission_type
++ocr_upload_id
++status
++started_at
++submitted_at
++graded_at
++total_score
++percentage
++meta_data
++created_at
++updated_at
+}
 Base <|-- SchoolClass
 Base <|-- Student
 Base <|-- Question
 Base <|-- ExamPaper
 Base <|-- ErrorNotebook
+Base <|-- QuestionType
+Base <|-- Parent
+Base <|-- AnswerSubmission
 ```
 
 **图表来源**
@@ -354,6 +434,9 @@ Base <|-- ErrorNotebook
 - [backend/app/models/question.py:10-46](file://backend/app/models/question.py#L10-L46)
 - [backend/app/models/exam_paper.py:23-51](file://backend/app/models/exam_paper.py#L23-L51)
 - [backend/app/models/error_notebook.py:8-32](file://backend/app/models/error_notebook.py#L8-L32)
+- [backend/app/models/reference.py:8-14](file://backend/app/models/reference.py#L8-L14)
+- [backend/app/models/parent.py:9-23](file://backend/app/models/parent.py#L9-L23)
+- [backend/app/models/answer_submission.py:9-37](file://backend/app/models/answer_submission.py#L9-L37)
 
 **章节来源**
 - [backend/app/models/school_class.py:1-39](file://backend/app/models/school_class.py#L1-L39)
@@ -384,18 +467,21 @@ Base <|-- ErrorNotebook
 **章节来源**
 - [backend/app/models/__init__.py:1-34](file://backend/app/models/__init__.py#L1-L34)
 
-### 用户域模型（系统管理员、管理员、学生）
+### 用户域模型（系统管理员、管理员、学生、家长）
 - SysAdmin
   - 系统内置管理员账户，具备最高权限。
 - Admin
   - 教师或题库管理员，支持学科与年级维度的权限配置。
 - Student
   - 自主注册的学生用户，包含基础信息与活跃状态。
+- Parent
+  - 家长用户，与学生建立多对多关系，支持邀请码机制。
 
 **章节来源**
 - [backend/app/models/sys_admin.py:1-22](file://backend/app/models/sys_admin.py#L1-L22)
 - [backend/app/models/admin.py:1-27](file://backend/app/models/admin.py#L1-L27)
 - [backend/app/models/student.py:1-23](file://backend/app/models/student.py#L1-L23)
+- [backend/app/models/parent.py:1-23](file://backend/app/models/parent.py#L1-L23)
 
 ### 内容域模型（班级、题目、试卷、错题本）
 - SchoolClass
@@ -413,14 +499,45 @@ Base <|-- ErrorNotebook
 - [backend/app/models/exam_paper.py:1-51](file://backend/app/models/exam_paper.py#L1-L51)
 - [backend/app/models/error_notebook.py:1-32](file://backend/app/models/error_notebook.py#L1-L32)
 
+### 数据库类型一致性修复与UUID处理策略
+- **UUID类型统一修复**
+  - **模型定义修复**：所有模型的主键统一使用 `Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))`
+  - **历史表转换**：通过Alembic迁移将现有表的UUID列转换为String(36)，确保与模型定义一致
+  - **parents表特殊处理**：在009版本迁移中，将已存在的parents表ID列从UUID转换为VARCHAR(36)
+- **Alembic迁移实现**
+  - **版本化修复**：每个迁移版本都包含UUID到VARCHAR(36)的转换逻辑
+  - **向后兼容**：downgrade函数确保能够恢复到原始UUID类型
+  - **数据转换**：使用 `postgresql_using='id::text'` 和 `postgresql_using='id::uuid'` 进行类型转换
+- **序列化兼容性保障**
+  - **Python层处理**：在模型定义中使用 `str(uuid.uuid4())` 生成字符串格式的UUID
+  - **API层处理**：在序列化时确保ID字段为字符串格式
+  - **种子数据处理**：在数据插入时使用 `str(uuid.uuid4())` 而非原生UUID对象
+- **数据库一致性**
+  - **统一约束**：所有表的ID字段都使用VARCHAR(36)类型，便于跨系统兼容
+  - **索引优化**：String(36)类型的索引性能与UUID相当，但更易于跨系统传输
+  - **类型安全**：确保PostgreSQL与Python之间的类型转换完全一致
+
+**章节来源**
+- [backend/app/models/reference.py:8-76](file://backend/app/models/reference.py#L8-L76)
+- [backend/app/models/sys_admin.py:11](file://backend/app/models/sys_admin.py#L11)
+- [backend/app/models/admin.py:12](file://backend/app/models/admin.py#L12)
+- [backend/app/models/student.py:11](file://backend/app/models/student.py#L11)
+- [backend/app/models/parent.py:12](file://backend/app/models/parent.py#L12)
+- [backend/app/models/answer_submission.py:12](file://backend/app/models/answer_submission.py#L12)
+- [backend/app/seed_reference.py:68](file://backend/app/seed_reference.py#L68)
+- [backend/app/api/v1/endpoints/reference.py:29](file://backend/app/api/v1/endpoints/reference.py#L29)
+- [backend/alembic/versions/009_add_parent_encouragement.py:18-25](file://backend/alembic/versions/009_add_parent_encouragement.py#L18-L25)
+
 ## 依赖分析
 - 组件耦合
   - 模型层仅依赖 Base 与 SQLAlchemy 类型，保持低耦合。
   - 会话层依赖配置中心提供的 URL，实现运行时可配置。
   - **简化后的初始化流程**依赖 FastAPI startup 事件，实现自动化的数据库初始化。
+  - **UUID类型一致性修复**通过模型定义、Alembic迁移和API序列化三层保障。
 - 外部依赖
   - PostgreSQL 作为主数据库，**简化后的系统不再依赖Alembic迁移工具**。
   - Pydantic Settings 用于配置解析，种子数据模块提供幂等初始化。
+  - **asyncpg驱动**通过String(36)类型的UUID确保兼容性。
 
 ```mermaid
 graph LR
@@ -431,6 +548,9 @@ Session --> Models
 Startup --> Base
 Startup --> SeedModules["种子数据模块"]
 SeedModules --> Models
+APIRef["参考数据API"] --> UUIDFix["UUID类型修复"]
+RefModels["参考数据模型"] --> UUIDFix
+Migration["Alembic迁移"] --> UUIDFix
 ```
 
 **图表来源**
@@ -438,6 +558,7 @@ SeedModules --> Models
 - [backend/app/db/session.py:6-15](file://backend/app/db/session.py#L6-L15)
 - [backend/app/db/base.py:17-21](file://backend/app/db/base.py#L17-L21)
 - [backend/app/main.py:37-65](file://backend/app/main.py#L37-L65)
+- [backend/app/api/v1/endpoints/reference.py:29](file://backend/app/api/v1/endpoints/reference.py#L29)
 
 **章节来源**
 - [backend/app/core/config.py:1-98](file://backend/app/core/config.py#L1-L98)
@@ -453,6 +574,10 @@ SeedModules --> Models
 - **简化的初始化性能**
   - 直接使用 create_all() 方法创建表结构，避免了Alembic迁移的额外开销
   - 种子数据采用幂等机制，避免重复初始化造成的性能损耗
+- **UUID类型一致性性能优化**
+  - String(36)类型的UUID在PostgreSQL中与原生UUID具有相似的存储和索引性能
+  - 减少了Python与数据库之间的类型转换开销
+  - 简化了跨系统传输时的序列化复杂度
 - 索引与约束
   - 在高频查询字段上建立索引（如 subject、is_active、content_hash），配合 CheckConstraint 限制无效数据。
 
@@ -464,6 +589,7 @@ SeedModules --> Models
 - **种子数据问题**
   - 检查种子数据模块的日志输出，确认幂等初始化是否正常工作
   - 验证数据库中是否已存在相应的种子数据记录
+  - **UUID类型问题**：检查模型定义中的String(36)类型是否正确应用
 - **连接异常**
   - 核对 settings 中的数据库凭据与网络连通性
   - 确认 PostgreSQL 服务正常运行且允许来自容器/主机的连接
@@ -472,12 +598,19 @@ SeedModules --> Models
 - **数据一致性**
   - 由于使用幂等种子数据，通常不会出现数据不一致问题
   - 如需重置数据，可手动删除相应表的数据记录后重启应用
+- **UUID类型兼容性问题**
+  - **症状**：PostgreSQL报错或Python类型转换异常
+  - **解决方案**：确认所有模型的主键都使用String(36)类型
+  - **验证**：检查Alembic迁移是否正确执行，特别是parents表的UUID转换
+  - **检查点**：验证数据库表结构中的ID列为VARCHAR(36)，而非UUID
 
 **章节来源**
 - [backend/app/main.py:37-65](file://backend/app/main.py#L37-L65)
 - [backend/app/db/session.py:20-26](file://backend/app/db/session.py#L20-L26)
 - [backend/app/seed_reference.py:61-72](file://backend/app/seed_reference.py#L61-L72)
 - [backend/app/seed_explanations.py:320-353](file://backend/app/seed_explanations.py#L320-L353)
+- [backend/app/api/v1/endpoints/reference.py:29](file://backend/app/api/v1/endpoints/reference.py#L29)
+- [backend/alembic/versions/009_add_parent_encouragement.py:18-25](file://backend/alembic/versions/009_add_parent_encouragement.py#L18-L25)
 
 ## 结论
 本设计文档系统性地阐述了瑞珹教育管理系统的数据库 ORM 设计，包括：
@@ -486,14 +619,25 @@ SeedModules --> Models
 - 模型继承体系、关系映射与外键约束设计
 - **简化的数据库初始化流程**（使用Base.metadata.create_all()替代复杂Alembic迁移系统）
 - **幂等的种子数据管理机制**，确保系统启动时具备必要的参考数据
+- **数据库类型一致性修复**（UUID主键统一转换为String(36) VARCHAR类型，解决PostgreSQL UUID类型不匹配问题）
 - 查询优化、事务处理与并发控制建议
 - ER 图与模型关系图，以及数据库设计最佳实践
 
-通过上述设计，系统在可维护性、可扩展性与性能之间取得了良好平衡，**简化了部署流程并降低了运维复杂度**，为后续功能迭代提供了坚实基础。
+通过上述设计，系统在可维护性、可扩展性与性能之间取得了良好平衡，**简化了部署流程并降低了运维复杂度**，为后续功能迭代提供了坚实基础。**UUID类型一致性修复确保了与PostgreSQL驱动的稳定交互，避免了类型转换相关的潜在问题**，并通过Alembic迁移实现了平滑的历史数据转换。
 
 ## 附录
 - 数据库设计参考
   - nDocs/database-design.md 提供了完整的表结构、索引与关系说明，可作为 ER 图与模型关系图的权威依据。
+- **UUID处理最佳实践**
+  - 在模型定义中始终使用String(36)类型存储UUID
+  - 在Python代码中使用str(uuid.uuid4())生成字符串格式的UUID
+  - 在API响应中确保ID字段为字符串格式
+  - 通过Alembic迁移统一数据库中的UUID列类型
+  - 确保所有历史表都已完成UUID到VARCHAR(36)的转换
 
 **章节来源**
 - [nDocs/database-design.md:1-540](file://nDocs/database-design.md#L1-L540)
+- [backend/app/models/reference.py:8-76](file://backend/app/models/reference.py#L8-L76)
+- [backend/app/seed_reference.py:61-72](file://backend/app/seed_reference.py#L61-L72)
+- [backend/app/api/v1/endpoints/reference.py:29](file://backend/app/api/v1/endpoints/reference.py#L29)
+- [backend/alembic/versions/009_add_parent_encouragement.py:18-25](file://backend/alembic/versions/009_add_parent_encouragement.py#L18-L25)

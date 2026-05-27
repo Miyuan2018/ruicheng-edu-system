@@ -10,10 +10,16 @@
 - [backend/app/models/admin.py](file://backend/app/models/admin.py)
 - [backend/app/models/student.py](file://backend/app/models/student.py)
 - [backend/app/models/sys_admin.py](file://backend/app/models/sys_admin.py)
-- [frontend/src/pages/auth/LoginPage.tsx](file://frontend/src/pages/auth/LoginPage.tsx)
+- [frontend/src/pages/auth/AdminLoginPage.tsx](file://frontend/src/pages/auth/AdminLoginPage.tsx)
 - [frontend/src/store/auth.ts](file://frontend/src/store/auth.ts)
 - [frontend/src/api/client.ts](file://frontend/src/api/client.ts)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 改进管理员登录错误处理：增强前端错误消息解析和用户重定向逻辑
+- 优化错误消息准确性：支持多种错误响应格式的解析
+- 增强用户体验：提供更准确的错误提示和智能重定向
 
 ## 目录
 1. [简介](#简介)
@@ -53,6 +59,7 @@ subgraph "前端"
 F["Axios 客户端"]
 G["认证状态存储"]
 H["登录/注册页面"]
+I["错误消息解析<br/>getErrMsg函数"]
 end
 A --> B
 B --> C
@@ -61,12 +68,13 @@ B --> E
 F --> A
 G --> F
 H --> F
+I --> F
 ```
 
 **图表来源**
 - [backend/app/api/v1/api.py:1-26](file://backend/app/api/v1/api.py#L1-L26)
 - [backend/app/api/v1/endpoints/auth_v2.py:1-476](file://backend/app/api/v1/endpoints/auth_v2.py#L1-L476)
-- [frontend/src/api/client.ts:1-55](file://frontend/src/api/client.ts#L1-L55)
+- [frontend/src/api/client.ts:1-60](file://frontend/src/api/client.ts#L1-L60)
 
 **章节来源**
 - [backend/app/api/v1/api.py:1-26](file://backend/app/api/v1/api.py#L1-L26)
@@ -77,6 +85,7 @@ H --> F
 - 验证码服务：图形验证码生成与校验（内存存储）
 - 数据模型：系统管理员、教师/题库管理员、学生三类用户表
 - 前端Axios拦截器：自动附加Authorization头，处理401并尝试刷新令牌
+- **新增**：智能错误消息解析：getErrMsg函数支持多种错误响应格式的准确解析
 
 **章节来源**
 - [backend/app/api/v1/endpoints/auth_v2.py:1-476](file://backend/app/api/v1/endpoints/auth_v2.py#L1-L476)
@@ -85,10 +94,11 @@ H --> F
 - [backend/app/models/admin.py:1-27](file://backend/app/models/admin.py#L1-L27)
 - [backend/app/models/student.py:1-23](file://backend/app/models/student.py#L1-L23)
 - [backend/app/models/sys_admin.py:1-22](file://backend/app/models/sys_admin.py#L1-L22)
-- [frontend/src/api/client.ts:1-55](file://frontend/src/api/client.ts#L1-L55)
+- [frontend/src/api/client.ts:1-60](file://frontend/src/api/client.ts#L1-L60)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:10-21](file://frontend/src/pages/auth/AdminLoginPage.tsx#L10-L21)
 
 ## 架构总览
-认证流程采用“图形验证码 + 短信验证码”的双因子策略，管理员登录分为两步：先验证身份与密码（生成一次性验证令牌），再凭短信验证码与一次性验证令牌换取JWT；学生登录/注册仅需短信验证码（占位码）。
+认证流程采用"图形验证码 + 短信验证码"的双因子策略，管理员登录分为两步：先验证身份与密码（生成一次性验证令牌），再凭短信验证码与一次性验证令牌换取JWT；学生登录/注册仅需短信验证码（占位码）。
 
 ```mermaid
 sequenceDiagram
@@ -101,7 +111,7 @@ FE->>API : GET /auth/captcha
 API->>CAP : 生成图形验证码
 CAP-->>API : {key, svg}
 API-->>FE : 返回验证码信息
-FE->>API : POST /auth/student/login 或 /auth/admin/verify
+FE->>API : POST /auth/admin/verify
 API->>CAP : 校验图形验证码
 CAP-->>API : 校验结果
 API->>DB : 查询用户并校验状态
@@ -109,12 +119,14 @@ DB-->>API : 用户信息
 API->>SEC : 生成JWT访问/刷新令牌
 SEC-->>API : access_token, refresh_token
 API-->>FE : 返回令牌与用户信息
+Note over FE : 错误消息解析<br/>getErrMsg函数
 ```
 
 **图表来源**
-- [backend/app/api/v1/endpoints/auth_v2.py:75-237](file://backend/app/api/v1/endpoints/auth_v2.py#L75-L237)
+- [backend/app/api/v1/endpoints/auth_v2.py:92-184](file://backend/app/api/v1/endpoints/auth_v2.py#L92-L184)
 - [backend/app/services/captcha.py:12-40](file://backend/app/services/captcha.py#L12-L40)
 - [backend/app/core/security.py:24-47](file://backend/app/core/security.py#L24-L47)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:10-21](file://frontend/src/pages/auth/AdminLoginPage.tsx#L10-L21)
 
 ## 详细组件分析
 
@@ -131,7 +143,7 @@ API-->>FE : 返回令牌与用户信息
   - PUT /auth/profile/phone：更新手机号（需短信验证）
 
 **章节来源**
-- [backend/app/api/v1/endpoints/auth_v2.py:75-476](file://backend/app/api/v1/endpoints/auth_v2.py#L75-L476)
+- [backend/app/api/v1/endpoints/auth_v2.py:92-476](file://backend/app/api/v1/endpoints/auth_v2.py#L92-L476)
 - [backend/app/api/v1/api.py:8](file://backend/app/api/v1/api.py#L8)
 
 ### 图形验证码获取
@@ -187,7 +199,7 @@ API-->>FE : 返回令牌与用户信息
     - 401：verify_token无效或已过期
 
 **章节来源**
-- [backend/app/api/v1/endpoints/auth_v2.py:91-183](file://backend/app/api/v1/endpoints/auth_v2.py#L91-L183)
+- [backend/app/api/v1/endpoints/auth_v2.py:92-184](file://backend/app/api/v1/endpoints/auth_v2.py#L92-L184)
 - [backend/app/services/captcha.py:32-40](file://backend/app/services/captcha.py#L32-L40)
 
 ### 学生登录
@@ -260,6 +272,7 @@ API-->>FE : 返回令牌与用户信息
 - 刷新流程（前端拦截器）：
   - 当收到401未授权时，自动携带refresh_token调用刷新接口
   - 成功后更新本地存储的access_token与refresh_token，并重试原请求
+  - **新增**：智能重定向逻辑，根据当前路径判断重定向到管理员登录还是普通登录
 
 ```mermaid
 sequenceDiagram
@@ -274,17 +287,18 @@ API->>SEC : 验证并签发新令牌
 SEC-->>API : 新access_token, 新refresh_token
 API-->>AX : 返回新令牌
 AX->>FE : 写入localStorage并重试原请求
+Note over AX : 智能重定向逻辑<br/>根据路径判断登录类型
 ```
 
 **图表来源**
-- [frontend/src/api/client.ts:26-52](file://frontend/src/api/client.ts#L26-L52)
+- [frontend/src/api/client.ts:26-57](file://frontend/src/api/client.ts#L26-L57)
 - [backend/app/core/security.py:24-47](file://backend/app/core/security.py#L24-L47)
 - [backend/app/core/config.py:44-46](file://backend/app/core/config.py#L44-L46)
 
 **章节来源**
 - [backend/app/core/security.py:24-47](file://backend/app/core/security.py#L24-L47)
 - [backend/app/core/config.py:44-46](file://backend/app/core/config.py#L44-L46)
-- [frontend/src/api/client.ts:26-52](file://frontend/src/api/client.ts#L26-L52)
+- [frontend/src/api/client.ts:26-57](file://frontend/src/api/client.ts#L26-L57)
 
 ### 权限验证流程
 - 当前用户解析：
@@ -297,6 +311,33 @@ AX->>FE : 写入localStorage并重试原请求
 
 **章节来源**
 - [backend/app/core/security.py:64-103](file://backend/app/core/security.py#L64-L103)
+
+### 错误消息解析与用户体验增强
+**更新** 前端现在具有智能的错误消息解析功能，能够准确处理各种错误响应格式
+
+- **getErrMsg函数**：智能解析错误消息，支持多种响应格式
+  - 支持FastAPI HTTPException的{detail: "..."}格式
+  - 支持普通字符串错误消息
+  - 支持网络连接失败检测
+  - 支持请求超时检测
+  - 提供默认回退消息
+
+- **智能重定向逻辑**：
+  - 根据当前URL路径判断用户类型
+  - 管理端路径（/admin, /dashboard, /question-admin, /teacher）重定向到管理员登录
+  - 其他路径重定向到普通用户登录
+  - 提升用户体验，避免用户重定向到错误的登录页面
+
+- **增强的错误处理**：
+  - 管理员身份验证失败时显示具体的错误原因
+  - 登录失败时提供明确的错误提示
+  - 自动刷新令牌失败时进行智能重定向
+
+**章节来源**
+- [frontend/src/pages/auth/AdminLoginPage.tsx:10-21](file://frontend/src/pages/auth/AdminLoginPage.tsx#L10-L21)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:49-66](file://frontend/src/pages/auth/AdminLoginPage.tsx#L49-L66)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:73-97](file://frontend/src/pages/auth/AdminLoginPage.tsx#L73-L97)
+- [frontend/src/api/client.ts:46-51](file://frontend/src/api/client.ts#L46-L51)
 
 ### 请求与响应示例（以路径代替具体代码）
 - 获取验证码
@@ -343,35 +384,41 @@ AX->>FE : 写入localStorage并重试原请求
 - 前端拦截器对401的处理：
   - 自动尝试刷新令牌并重试原请求
   - 失败则清除本地令牌并跳转至登录页
+  - **新增**：智能路径判断，重定向到正确的登录页面
 
 **章节来源**
-- [backend/app/api/v1/endpoints/auth_v2.py:91-183](file://backend/app/api/v1/endpoints/auth_v2.py#L91-L183)
+- [backend/app/api/v1/endpoints/auth_v2.py:92-184](file://backend/app/api/v1/endpoints/auth_v2.py#L92-L184)
 - [backend/app/api/v1/endpoints/auth_v2.py:188-237](file://backend/app/api/v1/endpoints/auth_v2.py#L188-L237)
-- [frontend/src/api/client.ts:26-52](file://frontend/src/api/client.ts#L26-L52)
+- [frontend/src/api/client.ts:26-57](file://frontend/src/api/client.ts#L26-L57)
 
 ### 认证头设置
 - 前端Axios拦截器会在每个请求中自动添加Authorization头：
   - Authorization: Bearer <access_token>
 - 登录成功后，前端会将access_token与refresh_token写入localStorage，并在后续请求中自动附加
 - 刷新令牌成功后，前端会更新localStorage中的令牌并重试原请求
+- **新增**：智能重定向逻辑，根据当前路径判断重定向到管理员登录还是普通登录
 
 **章节来源**
 - [frontend/src/api/client.ts:9-15](file://frontend/src/api/client.ts#L9-L15)
 - [frontend/src/store/auth.ts:56-70](file://frontend/src/store/auth.ts#L56-L70)
+- [frontend/src/api/client.ts:46-51](file://frontend/src/api/client.ts#L46-L51)
 
 ### 不同用户角色的认证流程差异
 - 系统管理员（SYS_ADMIN）：
   - 登录：两步验证（先admin/verify，再admin/login）
   - 可创建/管理教师与题库管理员账户
+  - **新增**：智能错误消息解析，提供准确的错误提示
 - 教师（TEACHER）与题库管理员（QUESTION_ADMIN）：
   - 登录：两步验证（先admin/verify，再admin/login）
   - 无法创建/管理其他管理员
+  - **新增**：智能错误消息解析，提供准确的错误提示
 - 学生（STUDENT）：
   - 登录/注册：仅需短信验证码（占位码）
   - 无密码要求（初始password_hash为空）
+  - **新增**：智能错误消息解析，提供准确的错误提示
 
 **章节来源**
-- [backend/app/api/v1/endpoints/auth_v2.py:91-183](file://backend/app/api/v1/endpoints/auth_v2.py#L91-L183)
+- [backend/app/api/v1/endpoints/auth_v2.py:92-184](file://backend/app/api/v1/endpoints/auth_v2.py#L92-L184)
 - [backend/app/api/v1/endpoints/auth_v2.py:188-237](file://backend/app/api/v1/endpoints/auth_v2.py#L188-L237)
 - [backend/app/models/admin.py:19](file://backend/app/models/admin.py#L19)
 - [backend/app/models/sys_admin.py:1](file://backend/app/models/sys_admin.py#L1)
@@ -380,6 +427,7 @@ AX->>FE : 写入localStorage并重试原请求
 - 认证模块依赖安全工具与验证码服务
 - 安全工具依赖配置模块读取密钥与算法
 - 前端Axios拦截器依赖认证状态存储
+- **新增**：AdminLoginPage依赖智能错误消息解析函数
 
 ```mermaid
 graph LR
@@ -388,6 +436,8 @@ AUTH --> CAP["验证码服务<br/>captcha.py"]
 SEC --> CFG["配置模块<br/>config.py"]
 FE["前端Axios拦截器<br/>client.ts"] --> AUTH
 FE --> STORE["认证状态存储<br/>auth.ts"]
+ALP["管理员登录页面<br/>AdminLoginPage.tsx"] --> FE
+ALP --> ERR["错误消息解析<br/>getErrMsg函数"]
 ```
 
 **图表来源**
@@ -396,6 +446,7 @@ FE --> STORE["认证状态存储<br/>auth.ts"]
 - [backend/app/core/config.py:43-46](file://backend/app/core/config.py#L43-L46)
 - [frontend/src/api/client.ts:1-7](file://frontend/src/api/client.ts#L1-L7)
 - [frontend/src/store/auth.ts:1-8](file://frontend/src/store/auth.ts#L1-L8)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:10-21](file://frontend/src/pages/auth/AdminLoginPage.tsx#L10-L21)
 
 **章节来源**
 - [backend/app/api/v1/endpoints/auth_v2.py:13-19](file://backend/app/api/v1/endpoints/auth_v2.py#L13-L19)
@@ -403,18 +454,19 @@ FE --> STORE["认证状态存储<br/>auth.ts"]
 - [backend/app/core/config.py:43-46](file://backend/app/core/config.py#L43-L46)
 - [frontend/src/api/client.ts:1-7](file://frontend/src/api/client.ts#L1-L7)
 - [frontend/src/store/auth.ts:1-8](file://frontend/src/store/auth.ts#L1-L8)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:10-21](file://frontend/src/pages/auth/AdminLoginPage.tsx#L10-L21)
 
 ## 性能考虑
 - 验证码采用内存存储，适合开发环境；生产建议迁移到Redis以支持多实例共享
 - JWT令牌有效期较长（访问令牌约8天，刷新令牌30天），减少频繁刷新开销
 - 前端拦截器在401时自动刷新，避免用户感知到令牌过期
-
-[本节为通用指导，无需特定文件分析]
+- **新增**：智能错误消息解析函数经过优化，避免重复解析和不必要的计算
 
 ## 故障排除指南
 - 登录失败（401）：
   - 检查图形验证码与短信验证码是否正确
   - 确认用户是否存在且状态正常
+  - **新增**：查看智能错误消息解析提供的具体错误原因
 - 403 账号被停用：
   - 联系系统管理员恢复
 - 400 参数错误：
@@ -422,15 +474,18 @@ FE --> STORE["认证状态存储<br/>auth.ts"]
 - 401 未授权（前端）：
   - 检查Authorization头是否正确附加
   - 若出现循环刷新，确认refresh_token是否有效
+  - **新增**：检查智能重定向逻辑是否正确判断了登录类型
+- **新增**：错误消息不准确或显示模糊：
+  - 确认getErrMsg函数是否正确解析了后端响应
+  - 检查是否有自定义错误处理逻辑覆盖了默认行为
 
 **章节来源**
-- [backend/app/api/v1/endpoints/auth_v2.py:91-183](file://backend/app/api/v1/endpoints/auth_v2.py#L91-L183)
-- [frontend/src/api/client.ts:26-52](file://frontend/src/api/client.ts#L26-L52)
+- [backend/app/api/v1/endpoints/auth_v2.py:92-184](file://backend/app/api/v1/endpoints/auth_v2.py#L92-L184)
+- [frontend/src/api/client.ts:26-57](file://frontend/src/api/client.ts#L26-L57)
+- [frontend/src/pages/auth/AdminLoginPage.tsx:10-21](file://frontend/src/pages/auth/AdminLoginPage.tsx#L10-L21)
 
 ## 结论
-本认证体系通过图形验证码与短信验证码双重校验，结合JWT令牌与刷新机制，实现了安全、便捷的多角色认证流程。管理员登录采用两步验证提升安全性，学生登录简化为短信登录。前后端配合完善，具备良好的扩展性与可维护性。
-
-[本节为总结，无需特定文件分析]
+本认证体系通过图形验证码与短信验证码双重校验，结合JWT令牌与刷新机制，实现了安全、便捷的多角色认证流程。管理员登录采用两步验证提升安全性，学生登录简化为短信登录。**最新更新**增强了前端错误处理能力，通过智能错误消息解析和用户重定向逻辑，显著提升了用户体验和错误处理的准确性。前后端配合完善，具备良好的扩展性与可维护性。
 
 ## 附录
 
