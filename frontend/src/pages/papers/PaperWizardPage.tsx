@@ -109,35 +109,39 @@ export default function PaperWizardPage() {
     }
     if (currentStep === 1) {
       const units = paper?.units || [];
+      const TYPE_LABELS: Record<string, string> = {
+        SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题',
+      };
       if (units.length === 0) {
-        message.warning('请至少添加一个分组');
+        message.warning('请至少添加一个题型');
         return;
       }
       for (const unit of units) {
         const configs = unit.question_config || [];
         if (configs.length === 0) {
-          message.warning('分组"' + (unit.name || '未命名') + '"未配置题型');
+          message.warning('存在未配置的题型行，请补充或删除');
           return;
         }
         for (const cfg of configs) {
+          const label = TYPE_LABELS[cfg.question_type] || cfg.question_type;
           if ((cfg.count || 0) <= 0) {
-            message.warning('分组"' + (unit.name || '未命名') + '"中存在题数为0的题型配置');
+            message.warning(`「${label}」题数不能为 0，请填写题数`);
             return;
           }
           if ((cfg.score_per_question || 0) <= 0) {
-            message.warning('分组"' + (unit.name || '未命名') + '"中存在分值为0的题型配置');
+            message.warning(`「${label}」每题分值不能为 0，请填写分值`);
             return;
           }
         }
       }
-      // 校验分组总分与试卷总分一致
+      // 校验结构总分与试卷总分一致
       const computedTotal = units.reduce(
         (sum, u) => sum + (u.question_config || []).reduce((s, c) => s + (c.count || 0) * (c.score_per_question || 0), 0),
         0,
       );
       const targetTotal = paper?.total_score || 0;
       if (targetTotal > 0 && computedTotal !== targetTotal) {
-        message.warning(`分组总分 ${computedTotal} 与试卷总分 ${targetTotal} 不一致，请调整后再继续`);
+        message.warning(`题型总分 ${computedTotal} 与试卷总分 ${targetTotal} 不一致，请调整题数或分值`);
         return;
       }
     }

@@ -50,7 +50,7 @@ export default function StructureStep() {
 
   const handleAddRow = () => {
     addUnit({
-      name: 'auto',
+      name: '单选题',
       question_config: [{ question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 }],
     });
   };
