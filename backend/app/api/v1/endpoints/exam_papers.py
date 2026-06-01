@@ -32,7 +32,7 @@ from app.schemas.exam_paper import (
 )
 from app.services.notification_service import NotificationService
 from app.services.exam_paper_export import export_word, export_pdf
-from app.services.recommendation_engine import distribute_quotas, select_for_targets
+from app.services.recommendation_engine import distribute_quotas, score_question, select_for_targets
 
 router = APIRouter()
 
@@ -180,12 +180,10 @@ async def _auto_select_for_config(
         kp_question_ids = {row[0] for row in result.fetchall()}
 
         if kp_question_ids:
-            all_questions = []
-            for qid in kp_question_ids:
-                row = await db.execute(select(Question).where(Question.id == qid))
-                q = row.scalar_one_or_none()
-                if q:
-                    all_questions.append(q)
+            result = await db.execute(
+                select(Question).where(Question.id.in_(kp_question_ids))
+            )
+            all_questions = list(result.scalars().all())
         else:
             all_questions = []
 
@@ -1162,9 +1160,11 @@ async def auto_select_all(
 async def auto_generate_paper(
     paper_id: str,
     request: AutoGenerateRequest,
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """一键生成完整试卷推荐."""
+    _check_teacher_or_admin(current_user)
     # 1. Get paper
     paper_result = await db.execute(
         select(ExamPaper).where(ExamPaper.id == paper_id)
@@ -1213,6 +1213,77 @@ async def auto_generate_paper(
     )
 
     return {"questions": questions, "constraint_dashboard": dashboard}
+
+
+@router.post("/{paper_id}/questions/{question_id}/swap")
+async def swap_question(
+    paper_id: str,
+    question_id: str,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """换题：返回同题型、同难度的 top 3 备选题"""
+    _check_teacher_or_admin(current_user)
+
+    # Get current question
+    result = await db.execute(select(Question).where(Question.id == question_id))
+    current = result.scalar_one_or_none()
+    if not current:
+        raise HTTPException(404, detail="题目不存在")
+
+    # Get all used question IDs in this paper (exclude current one from consideration)
+    used_result = await db.execute(
+        select(ExamPaperUnitQuestion.question_id).join(
+            ExamPaperUnit, ExamPaperUnit.id == ExamPaperUnitQuestion.unit_id
+        ).where(ExamPaperUnit.exam_paper_id == paper_id)
+    )
+    used = {str(r[0]) for r in used_result.fetchall()}
+    used.discard(question_id)
+
+    # Query candidates: same type, same difficulty, active, approved, not already used
+    result = await db.execute(
+        select(Question).where(
+            Question.is_active == True,
+            Question.review_status == "APPROVED",
+            Question.question_type == current.question_type,
+            Question.difficulty == current.difficulty,
+        )
+    )
+    candidates = [q for q in result.scalars().all() if str(q.id) not in used]
+
+    if not candidates:
+        # Relax difficulty constraint
+        result = await db.execute(
+            select(Question).where(
+                Question.is_active == True,
+                Question.review_status == "APPROVED",
+                Question.question_type == current.question_type,
+            )
+        )
+        candidates = [q for q in result.scalars().all() if str(q.id) not in used]
+
+    if not candidates:
+        return {"alternatives": []}
+
+    # Score and rank by general quality (no knowledge point context needed for swap)
+    scored = []
+    for q in candidates:
+        s = score_question(q, set(), used)
+        scored.append((s, q))
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Return top 3
+    alternatives = []
+    for _, q in scored[:3]:
+        alternatives.append({
+            "question_id": str(q.id),
+            "title": (q.title or "")[:120],
+            "difficulty": q.difficulty or "",
+            "question_type": q.question_type or "",
+            "score": q.score or 0,
+        })
+
+    return {"alternatives": alternatives}
 
 
 # ═══════════════════════════════════════════════════════════════
