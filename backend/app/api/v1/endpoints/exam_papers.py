@@ -1231,6 +1231,11 @@ async def swap_question(
     if not current:
         raise HTTPException(404, detail="题目不存在")
 
+    # Verify paper exists
+    paper_check = await db.execute(select(ExamPaper).where(ExamPaper.id == paper_id))
+    if not paper_check.scalar_one_or_none():
+        raise HTTPException(404, detail="试卷不存在")
+
     # Get all used question IDs in this paper (exclude current one from consideration)
     used_result = await db.execute(
         select(ExamPaperUnitQuestion.question_id).join(
@@ -1238,7 +1243,6 @@ async def swap_question(
         ).where(ExamPaperUnit.exam_paper_id == paper_id)
     )
     used = {str(r[0]) for r in used_result.fetchall()}
-    used.discard(question_id)
 
     # Query candidates: same type, same difficulty, active, approved, not already used
     result = await db.execute(
