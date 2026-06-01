@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 from app.services.recommendation_engine import distribute_quotas, QuotaTarget, score_question, score_for_difficulty
 
@@ -49,7 +51,6 @@ def test_distribute_quotas_multiple_types():
 
 def test_score_question_full_match():
     """完全匹配得分最高"""
-    from unittest.mock import MagicMock
     q = MagicMock()
     q.kn_ids = ["kn1", "kn2", "kn3"]
     q.is_typical = True
@@ -66,7 +67,6 @@ def test_score_question_full_match():
 
 def test_score_question_no_match():
     """完全不匹配得分最低"""
-    from unittest.mock import MagicMock
     q = MagicMock()
     q.kn_ids = ["kn4"]
     q.is_typical = False
