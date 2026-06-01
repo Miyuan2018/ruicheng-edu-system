@@ -1,29 +1,11 @@
 # ============================================================
 #  睿承教育平台 V3.5 — Docker Compose 部署配置
+#  数据库与 aliyun_mgr 共用 aliyun-mgr-db 实例
 #  快速启动：  docker-compose up -d
-#  含演示数据：docker-compose up -d && docker-compose exec backend python seed_v35.py --force
 #  停止：      docker-compose down
 # ============================================================
 
 services:
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: ruicheng-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-edu_system}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   backend:
     build:
@@ -32,23 +14,22 @@ services:
     container_name: ruicheng-backend
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8001}:8001"
     volumes:
       - ./backend/sysconfig.json:/app/sysconfig.json:ro
     environment:
       SECRET_KEY: ${SECRET_KEY:-ruicheng-edu-secret-key-change-in-production}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_SERVER: postgres
+      DATABASE_PASSWORD: PG9sekDlQfqMxRhWvrPkqrnP1M28UBy
+      POSTGRES_SERVER: aliyun-mgr-db
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-edu_system}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-    depends_on:
-      postgres:
-        condition: service_healthy
+      POSTGRES_DB: edu_system
+      POSTGRES_USER: aliyun_mgr
+    networks:
+      - aliyun_mgr_default
     command: >
-      sh -c "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8001/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -61,10 +42,15 @@ services:
     container_name: ruicheng-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${FRONTEND_PORT:-3001}:3001"
+    environment:
+      BACKEND_HOST: backend
+      BACKEND_PORT: "8001"
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - aliyun_mgr_default
     command: npm run dev -- --host 0.0.0.0
 
   # 可选：异步任务队列（--profile async）
@@ -90,14 +76,19 @@ services:
       - backend
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_SERVER: postgres
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-edu_system}
+      DATABASE_PASSWORD: PG9sekDlQfqMxRhWvrPkqrnP1M28UBy
+      POSTGRES_SERVER: aliyun-mgr-db
+      POSTGRES_USER: aliyun_mgr
+      POSTGRES_DB: edu_system
+    networks:
+      - aliyun_mgr_default
     command: celery -A app.celery_app worker --loglevel=info --concurrency=2
     volumes:
       - ./backend/sysconfig.json:/app/sysconfig.json:ro
 
+networks:
+  aliyun_mgr_default:
+    external: true
+
 volumes:
-  postgres_data:
   redis_data:
