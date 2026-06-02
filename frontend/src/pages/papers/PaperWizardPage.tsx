@@ -6,10 +6,9 @@ import { usePaperEditorStore } from '../../store/paperEditor';
 import BasicInfoStep from './steps/BasicInfoStep';
 import StructureStep from './steps/StructureStep';
 import RecommendStep from './steps/RecommendStep';
-import PreviewStep from './steps/PreviewStep';
-import FinalizeStep from './steps/FinalizeStep';
+import PreviewFinalizeStep from './steps/PreviewFinalizeStep';
 
-const STEP_TITLES = ['基本信息', '试卷结构', '选题', '预览', '入库'];
+const STEP_TITLES = ['基本信息', '试卷结构', '选题', '预览入库'];
 
 export default function PaperWizardPage() {
   const navigate = useNavigate();
@@ -210,8 +209,7 @@ export default function PaperWizardPage() {
       case 0: return <BasicInfoStep />;
       case 1: return <StructureStep />;
       case 2: return <RecommendStep />;
-      case 3: return <PreviewStep />;
-      case 4: return <FinalizeStep />;
+      case 3: return <PreviewFinalizeStep />;
       default: return null;
     }
   };
@@ -290,7 +288,7 @@ export default function PaperWizardPage() {
               下一步
             </Button>
           ) : null}
-          {/* Step 4 (入库) handles its own submit button inside FinalizeStep */}
+          {/* 确认入库按钮在 PreviewFinalizeStep 内 */}
         </Space>
       </div>
     </div>
