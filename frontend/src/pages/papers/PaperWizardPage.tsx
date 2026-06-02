@@ -91,6 +91,10 @@ export default function PaperWizardPage() {
     }
   };
 
+  const TYPE_LABELS: Record<string, string> = {
+    SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题',
+  };
+
   const handleNext = async () => {
     // Validate current step before proceeding
     if (currentStep === 0) {
@@ -109,9 +113,6 @@ export default function PaperWizardPage() {
     }
     if (currentStep === 1) {
       const units = paper?.units || [];
-      const TYPE_LABELS: Record<string, string> = {
-        SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题',
-      };
       if (units.length === 0) {
         message.warning('请至少添加一个题型');
         return;
@@ -146,11 +147,36 @@ export default function PaperWizardPage() {
       }
     }
     if (currentStep === 2) {
-      // RecommendStep handles its own state — just check we have questions
       const units = paper?.units || [];
       const allQuestions = units.reduce((sum, u) => sum + (u.questions?.length || 0), 0);
       if (allQuestions === 0) {
         message.warning('请先生成题目推荐');
+        return;
+      }
+
+      // 校验题目数量/分数与结构一致
+      const errors: string[] = [];
+      units.forEach(u => {
+        (u.question_config || []).forEach(cfg => {
+          const label = TYPE_LABELS[cfg.question_type] || cfg.question_type;
+          const actual = (u.questions || []).filter(q => q.question_type === cfg.question_type);
+          const actualCount = actual.length;
+          const targetCount = cfg.count || 0;
+          const targetScore = cfg.score_per_question || 0;
+
+          if (actualCount !== targetCount) {
+            const diff = Math.abs(actualCount - targetCount);
+            errors.push(`「${label}」需 ${targetCount} 题，当前 ${actualCount} 题（${actualCount > targetCount ? '多' : '少'}${diff} 题）`);
+          }
+          const wrongScore = actual.find(q => q.score !== targetScore);
+          if (wrongScore) {
+            errors.push(`「${label}」卷面分应为 ${targetScore} 分/题，存在 ${wrongScore.score} 分的题目`);
+          }
+        });
+      });
+
+      if (errors.length > 0) {
+        message.warning(errors.join('\n'), 6);
         return;
       }
     }
