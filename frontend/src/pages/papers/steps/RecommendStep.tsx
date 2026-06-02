@@ -108,7 +108,9 @@ export default function RecommendStep() {
     const { questionId, unitId } = manualTarget;
     const unit = paper.units?.find(u => u.id === unitId);
     const oldQ = unit?.questions?.find(q => q.question_id === questionId);
-    const score = oldQ?.score || newQ.score || 5;
+    // 用配置的 score_per_question 而非题目默认分
+    const cfg = unit?.question_config?.find(c => c.question_type === manualTarget.questionType);
+    const score = cfg?.score_per_question || newQ.score || 5;
     replaceQuestion(unitId, questionId, {
       question_id: newQ.id,
       question_type: newQ.question_type,
@@ -146,11 +148,14 @@ export default function RecommendStep() {
       // 原地替换，保持题目顺序
       const unit = units.find(u => u.id === unitId);
       const oldQ = unit?.questions?.find(q => q.question_id === questionId);
+      // 用配置的 score_per_question 而非题目默认分
+      const cfg = unit?.question_config?.find(c => c.question_type === alt.question_type);
+      const swapScore = cfg?.score_per_question || alt.score || 5;
       replaceQuestion(unitId, questionId, {
         question_id: alt.question_id,
         question_type: alt.question_type,
         position: oldQ?.position || 0,
-        score: alt.score || 5,
+        score: swapScore,
         question: {
           id: alt.question_id,
           title: alt.title,
