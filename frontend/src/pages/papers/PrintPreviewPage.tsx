@@ -134,19 +134,13 @@ export default function PrintPreviewPage() {
             </h3>
             {qs.map((q) => {
               globalIndex++;
-              let answerData: { options?: { label: string; text?: string }[] } | null = null;
-              try { answerData = JSON.parse(q.correct_answer || '{}'); } catch {}
-              const options = answerData && answerData.options;
-              const isChoice = q.question_type === 'SINGLE_CHOICE' || q.question_type === 'MULTIPLE_CHOICE';
+              // 使用后端已规范化的 options，而非重新解析原始 correct_answer
+              const rawOptions: any[] | null = q.options || null;
+              const options = rawOptions;
 
-              // 裁剪题干中的行内选项
+              // 后端已规范化 options + 裁剪题干，直接使用
               let displayTitle = q.title || '';
-              if (options && options.length > 0) {
-                const optMatch = (displayTitle || '').match(/\s*A[.．、）\)]\s/);
-                if (optMatch && optMatch.index !== undefined && optMatch.index > 0) {
-                  displayTitle = displayTitle.substring(0, optMatch.index).replace(/[（(]\s*[）)]\s*$/, '').trim();
-                }
-              }
+              const isChoice = q.question_type === 'SINGLE_CHOICE' || q.question_type === 'MULTIPLE_CHOICE';
 
               return (
                 <div key={q.id} style={{ marginBottom: 8, pageBreakInside: 'avoid' as const }}>

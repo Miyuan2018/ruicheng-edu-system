@@ -79,22 +79,23 @@ const QUICK_PRESETS: Record<string, ExamPaperUnit[]> = {
   ],
 };
 
-/** 从 correct_answer JSON 中解析选项，统一转为 {label,text} 对象格式 */
-function parseOptions(correctAnswer: string): { label: string; text: string }[] {
-  try {
-    const parsed = JSON.parse(correctAnswer);
-    if (!parsed?.options) return [];
-    return (parsed.options as any[]).map((opt: any) => {
-      if (typeof opt === 'string') {
-        // 数据库格式: "A. 选项文本" → 拆分为 label + text
-        const match = opt.match(/^([A-D])[.．、）\)]\s*(.*)/);
-        if (match) return { label: match[1], text: match[2] };
-        return { label: '', text: opt };
-      }
+/** 规范化选项列表：字符串→对象，纯字母补 text */
+function normalizeOpts(rawOptions: any[] | null | undefined): { label: string; text: string }[] {
+  if (!rawOptions || !Array.isArray(rawOptions)) return [];
+  return rawOptions.map((opt: any) => {
+    if (typeof opt === 'string') {
+      // "A. 选项文本" → {label:"A", text:"选项文本"}
+      const m = opt.match(/^([A-H])[.．、）\)]\s*(.*)/);
+      if (m) return { label: m[1], text: m[2] };
+      // 纯字母 "A" → {label:"A", text:""}
+      if (/^[A-H]$/.test(opt)) return { label: opt, text: '' };
+      return { label: '', text: opt };
+    }
+    if (typeof opt === 'object') {
       return { label: opt.label || opt.id || '', text: opt.text || opt.content || '' };
-    });
-  } catch {}
-  return [];
+    }
+    return { label: '', text: String(opt) };
+  });
 }
 
 export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
@@ -130,7 +131,8 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
             question_type: q.question_type || '',
             difficulty: q.difficulty || '',
             subject: q.subject || paperData.subject || '',
-            options: parseOptions(q.correct_answer || ''),
+            // 后端 _normalize_options 已规范化选项（字符串→对象，纯字母补文本）
+            options: normalizeOpts(q.options),
             correct_answer: q.correct_answer || '',
             explanation: q.explanation || '',
           },
@@ -394,7 +396,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
               question_type: rec.question_type,
               difficulty: rec.difficulty,
               subject: paper.subject,
-              options: parseOptions(rec.correct_answer || ''),
+              options: normalizeOpts((() => { try { return JSON.parse(rec.correct_answer || '{}').options; } catch { return []; } })()),
               correct_answer: rec.correct_answer || '',
             },
             recommendation_tags: rec.recommendation_tags || [],
@@ -452,7 +454,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
                 question_type: rec.question_type,
                 difficulty: rec.difficulty,
                 subject: paper.subject,
-                options: parseOptions(rec.correct_answer || ''),
+                options: normalizeOpts((() => { try { return JSON.parse(rec.correct_answer || '{}').options; } catch { return []; } })()),
                 correct_answer: rec.correct_answer || '',
               },
               recommendation_tags: rec.recommendation_tags || [],
