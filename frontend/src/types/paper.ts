@@ -32,6 +32,9 @@ export interface ExamPaperUnitQuestion {
   score: number;
   // joined question data
   question?: QuestionBrief;
+  // V4.2: 推荐元数据（从后端 auto-generate/swap 响应写入）
+  recommendation_tags?: string[];
+  alternatives?: AlternativeQuestion[];
 }
 
 export interface QuestionBrief {
@@ -98,16 +101,6 @@ export interface DifficultyRatio {
   HARD: number;
 }
 
-export interface GenerateRecommendation {
-  question_id: string;
-  question_type: string;
-  difficulty: string;
-  score: number;
-  title: string;
-  recommendation_tags: string[];
-  alternatives: AlternativeQuestion[];
-}
-
 export interface AlternativeQuestion {
   question_id: string;
   title: string;
@@ -130,6 +123,5 @@ export interface ConstraintDashboard {
 }
 
 export interface GenerateReport {
-  questions: GenerateRecommendation[];
   constraint_dashboard: ConstraintDashboard;
 }
