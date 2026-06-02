@@ -1216,7 +1216,8 @@ async def auto_generate_paper(
     # 4. Distribute quotas and select questions
     targets = distribute_quotas(type_configs, ratio)
     questions, dashboard = await select_for_targets(
-        db, targets, set(request.knowledge_node_ids), paper.subject
+        db, targets, set(request.knowledge_node_ids), paper.subject,
+        pre_existing_ids=request.existing_question_ids,
     )
 
     return {"questions": questions, "constraint_dashboard": dashboard}

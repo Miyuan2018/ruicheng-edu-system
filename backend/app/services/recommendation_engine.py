@@ -131,9 +131,13 @@ async def select_for_targets(
     targets: list[QuotaTarget],
     knowledge_node_ids: set[str],
     subject: Optional[str] = None,
+    pre_existing_ids: Optional[list[str]] = None,
 ) -> tuple[list[dict], dict]:
-    """为所有目标选题，返回题目列表和约束仪表盘数据."""
-    used_ids: set[str] = set()
+    """为所有目标选题，返回题目列表和约束仪表盘数据.
+
+    pre_existing_ids: 已存在于试卷中的 question_id 列表，确保去重.
+    """
+    used_ids: set[str] = set(pre_existing_ids or [])
     questions: list[dict] = []
     shortfall: list[dict] = []  # 未满足的目标
     _kn_table_available = await _check_kn_table(db)

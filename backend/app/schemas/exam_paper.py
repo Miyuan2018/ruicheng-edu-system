@@ -114,6 +114,7 @@ class ExamPaperFullSave(BaseModel):
 class AutoGenerateRequest(BaseModel):
     difficulty_ratio: dict[str, float] = Field(default={"EASY": 0.3, "MEDIUM": 0.5, "HARD": 0.2})
     knowledge_node_ids: list[str] = Field(default=[])
+    existing_question_ids: list[str] = Field(default=[])
 
 
 class AlternativeQuestion(BaseModel):
