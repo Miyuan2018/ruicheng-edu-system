@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Drawer, Input, Select } from 'antd';
+import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Drawer, Input } from 'antd';
 import { SyncOutlined, SwapOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { paperApi } from '../../../api/papers';
@@ -13,9 +13,9 @@ const QTYPE_LABELS: Record<string, string> = {
 
 export default function RecommendStep() {
   const {
-    paper, generateReport, setGenerateReport,
+    paper, generateReport,
     addQuestionToUnit, removeQuestionFromUnit, clearAllQuestions, setDirty,
-    regenerateAll, fillGaps, replaceQuestion,
+    regenerateAll, fillGaps,
   } = usePaperEditorStore();
 
   const hasAutoAdjusted = useRef(false);
@@ -38,20 +38,28 @@ export default function RecommendStep() {
         })
       );
       if (hasGaps) {
+        setLoading(true);
         fillGaps(paper.id).then(() => {
           message.info('已自动补充缺口题目');
-        });
+        }).catch(() => {
+          message.error('自动补充缺口失败');
+        }).finally(() => setLoading(false));
       }
     } else {
       hasAutoAdjusted.current = true;
+      setLoading(true);
       regenerateAll(paper.id).then(() => {
         message.success('已自动生成题目');
-      });
+      }).catch(() => {
+        message.error('自动选题失败');
+      }).finally(() => setLoading(false));
     }
+    // Zustand actions 和 antd message 引用稳定，不需要加入依赖数组
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper?.id]);
 
   const [loading, setLoading] = useState(false);
+  // loading 状态用于按钮和自动触发的加载反馈
   const [swapLoading, setSwapLoading] = useState<Record<string, boolean>>({});
 
   // 手工选题抽屉
@@ -123,16 +131,6 @@ export default function RecommendStep() {
   };
 
   const units = paper?.units || [];
-
-  const handleGenerate = async () => {
-    if (!paper?.id) { message.warning('请先保存基本信息'); return; }
-    clearAllQuestions();
-    try {
-      await regenerateAll(paper.id);
-    } catch {
-      message.error('选题失败，请重试');
-    }
-  };
 
   const handleSwap = async (questionId: string, unitId: string) => {
     if (!paper?.id) return;
@@ -251,8 +249,9 @@ export default function RecommendStep() {
         </div>
         <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={() => {
           if (!paper?.id) { message.warning('请先保存基本信息'); return; }
+          setLoading(true);
           clearAllQuestions();
-          try { regenerateAll(paper.id); } catch { message.error('选题失败'); }
+          regenerateAll(paper.id).catch(() => message.error('选题失败')).finally(() => setLoading(false));
         }}>
           一键选题
         </Button>
@@ -292,9 +291,9 @@ export default function RecommendStep() {
                 >
                   <span style={{ color: '#999', fontSize: 12, minWidth: 24 }}>{qi + 1}.</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.title}</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.question?.title || ''}</div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      <Tag color={DIFF_COLORS[q.difficulty]} style={{ fontSize: 10 }}>{DIFF_LABELS[q.difficulty]}</Tag>
+                      <Tag color={DIFF_COLORS[q.question?.difficulty || '']} style={{ fontSize: 10 }}>{DIFF_LABELS[q.question?.difficulty || '']}</Tag>
                       <Tag style={{ fontSize: 10 }}>{q.score}分</Tag>
                       {isExcessType && <Tag color="error" style={{ fontSize: 10, marginRight: 4 }}>多余（共多{excessCount}题）</Tag>}
                       {(q.recommendation_tags || []).map((t, i) => (
