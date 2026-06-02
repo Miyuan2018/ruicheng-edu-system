@@ -45,6 +45,9 @@ interface PaperEditorState {
   autoSave: () => Promise<void>;
   saveAll: () => Promise<void>;
   setDirty: (dirty: boolean) => void;
+  setUnitQuestions: (uid: string, questions: ExamPaperUnitQuestion[]) => void;
+  regenerateAll: (paperId: string) => Promise<void>;
+  fillGaps: (paperId: string) => Promise<void>;
   reset: () => void;
   setGenerateReport: (report: GenerateReport | null) => void;
 }
@@ -285,6 +288,118 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     set({ paper: { ...paper, units: paper.units.map(u => ({ ...u, questions: [] })) }, dirty: true });
   },
 
+  setUnitQuestions: (uid: string, questions: ExamPaperUnitQuestion[]) => {
+    const { paper } = get();
+    if (!paper) return;
+    set({
+      paper: {
+        ...paper,
+        units: paper.units.map((u) =>
+          u.id === uid ? { ...u, questions } : u
+        ),
+      },
+      dirty: true,
+    });
+  },
+
+  regenerateAll: async (paperId: string) => {
+    set({ loading: true });
+    try {
+      const paper = get().paper;
+      if (!paper) return;
+      const resp = await paperApi.autoGenerate(paperId, {
+        difficulty_ratio: paper.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 },
+        knowledge_node_ids: paper.knowledge_node_ids || [],
+        existing_question_ids: [],
+      });
+      const data = resp.data;
+      get().clearAllQuestions();
+      (data.questions || []).forEach((rec: any) => {
+        const unit = paper.units.find(u =>
+          (u.question_config || []).some(c => c.question_type === rec.question_type)
+        );
+        if (unit?.id) {
+          get().addQuestionToUnit(unit.id, {
+            question_id: rec.question_id,
+            question_type: rec.question_type,
+            position: (unit.questions?.length || 0) + 1,
+            score: rec.score,
+            question: {
+              id: rec.question_id,
+              title: rec.title,
+              question_type: rec.question_type,
+              difficulty: rec.difficulty,
+              subject: paper.subject,
+            },
+            recommendation_tags: rec.recommendation_tags || [],
+            alternatives: rec.alternatives || [],
+          });
+        }
+      });
+      set({ generateReport: { constraint_dashboard: data.constraint_dashboard || {} } });
+      set({ dirty: true });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fillGaps: async (paperId: string) => {
+    const { paper } = get();
+    if (!paper) return;
+    const allExistingIds: string[] = [];
+    const gaps: { unitId: string; questionType: string; deficit: number }[] = [];
+    paper.units.forEach(u => {
+      (u.question_config || []).forEach(cfg => {
+        const existing = (u.questions || []).filter(q => q.question_type === cfg.question_type);
+        existing.forEach(q => allExistingIds.push(q.question_id));
+        if (cfg.count > existing.length) {
+          gaps.push({ unitId: u.id || '', questionType: cfg.question_type, deficit: cfg.count - existing.length });
+        }
+      });
+    });
+    if (gaps.length === 0) return;
+
+    set({ loading: true });
+    try {
+      const resp = await paperApi.autoGenerate(paperId, {
+        difficulty_ratio: paper.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 },
+        knowledge_node_ids: paper.knowledge_node_ids || [],
+        existing_question_ids: allExistingIds,
+      });
+      const data = resp.data;
+      const gapTypes = new Set(gaps.map(g => g.questionType));
+      const newQuestions = (data.questions || []).filter((rec: any) => gapTypes.has(rec.question_type));
+      gaps.forEach(gap => {
+        const typeQuestions = newQuestions.filter((q: any) => q.question_type === gap.questionType);
+        const toAdd = typeQuestions.slice(0, gap.deficit);
+        toAdd.forEach((rec: any) => {
+          const unit = paper.units.find(u => u.id === gap.unitId);
+          if (unit) {
+            get().addQuestionToUnit(gap.unitId, {
+              question_id: rec.question_id,
+              question_type: rec.question_type,
+              position: (unit.questions?.length || 0) + (toAdd.indexOf(rec) + 1),
+              score: rec.score,
+              question: {
+                id: rec.question_id,
+                title: rec.title,
+                question_type: rec.question_type,
+                difficulty: rec.difficulty,
+                subject: paper.subject,
+              },
+              recommendation_tags: rec.recommendation_tags || [],
+              alternatives: rec.alternatives || [],
+            });
+          }
+        });
+      });
+      set({ generateReport: { constraint_dashboard: data.constraint_dashboard || {} } });
+      set({ dirty: true });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
   // Type config
   addTypeConfig: (uid, config) => {
     const { paper } = get();
@@ -379,6 +494,6 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   },
 
   setDirty: (dirty) => set({ dirty }),
-  setGenerateReport: (report) => set({ generateReport: report }),
+  setGenerateReport: (report) => set({ generateReport: report ? { constraint_dashboard: report.constraint_dashboard } : null }),
   reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null }),
 }));
