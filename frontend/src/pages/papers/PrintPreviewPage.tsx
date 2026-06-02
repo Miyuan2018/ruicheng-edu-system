@@ -146,11 +146,13 @@ export default function PrintPreviewPage() {
                     {(q.title || '')}
                     <span style={{ marginLeft: 8, fontSize: 11, color: '#999' }}>（{q.score}分）</span>
                   </div>
-                  {isChoice && options && (
-                    <div style={{ marginLeft: 24, fontSize: 13 }}>
-                      {options.map((opt) => (
-                        <div key={opt.label}>{opt.label}. {opt.text || ''}</div>
-                      ))}
+                  {isChoice && options && options.length > 0 && (
+                    <div style={{ marginTop: 4, marginLeft: 24, fontSize: 13 }}>
+                      {options.map((opt: any, idx: number) => {
+                        const label = opt.label || opt.id || String.fromCharCode(65 + idx);
+                        const text = opt.text || opt.content || '';
+                        return <div key={label} style={{ marginBottom: 2 }}>{label + '. ' + text}</div>;
+                      })}
                     </div>
                   )}
 {/* 填空题空白线已在题干中用 ________ 表示 */}

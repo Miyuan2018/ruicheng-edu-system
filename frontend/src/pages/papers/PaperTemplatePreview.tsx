@@ -76,11 +76,8 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
     let optionRows = null;
     if (isChoice && options.length > 0) {
       optionRows = (
-        <div style={{ marginTop: 4, marginLeft: 20, fontSize: 13 }}>
+        <div style={{ marginTop: 4, marginLeft: 24, fontSize: 13 }}>
           {options.map((opt: any, idx: number) => {
-            if (typeof opt === 'string') {
-              return <div key={idx} style={{ marginBottom: 2 }}>{opt}</div>;
-            }
             const label = opt.label || opt.id || String.fromCharCode(65 + idx);
             const text = opt.text || opt.content || '';
             return <div key={label} style={{ marginBottom: 2 }}>{label + '. ' + text}</div>;
