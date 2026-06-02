@@ -45,7 +45,7 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
   // Render a question row
   const renderQuestion = (q: any, globalIndex: number, onReplace: ((q: any, id: string) => void) | undefined, contextId: string) => {
     const question = q.question || {};
-    const qTitle = question.title || q.title || '';
+    const rawTitle = question.title || q.title || '';
     const difficulty = question.difficulty || q.difficulty || '';
     const score = q.score || 0;
     const isChoice = q.question_type === 'SINGLE_CHOICE' || q.question_type === 'MULTIPLE_CHOICE';
@@ -62,6 +62,14 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
         options = parsed.options || [];
       }
     } catch { /* ignore */ }
+
+    let qTitle = rawTitle;
+    if (options.length > 0) {
+      const optMatch = rawTitle.match(/\s*A[.．、）\)]\s/);
+      if (optMatch && optMatch.index !== undefined && optMatch.index > 0) {
+        qTitle = rawTitle.substring(0, optMatch.index).replace(/[（(]\s*[）)]\s*$/, '').trim();
+      }
+    }
 
     let replaceBtn = null;
     if (!readonly && onReplace) {

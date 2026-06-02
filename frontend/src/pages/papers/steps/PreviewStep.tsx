@@ -73,7 +73,7 @@ export default function PreviewStep() {
   // Render a question item
   const renderQuestion = (q: any, index: number) => {
     const question = q.question || {};
-    const title = question.title || q.title || '';
+    let rawTitle = question.title || q.title || '';
     const difficulty = question.difficulty || q.difficulty || '';
     const score = q.score || 0;
 
@@ -89,6 +89,14 @@ export default function PreviewStep() {
       }
     } catch { /* ignore */ }
 
+    // 有独立选项时，裁剪题干中的行内选项文本
+    let title = rawTitle;
+    if (options.length > 0) {
+      const optMatch = rawTitle.match(/\s*A[.．、）\)]\s/);
+      if (optMatch && optMatch.index !== undefined && optMatch.index > 0) {
+        title = rawTitle.substring(0, optMatch.index).replace(/[（(]\s*[）)]\s*$/, '').trim();
+      }
+    }
     const isChoice = q.question_type === 'SINGLE_CHOICE' || q.question_type === 'MULTIPLE_CHOICE';
     const isSubjective = q.question_type === 'SUBJECTIVE';
 

@@ -139,11 +139,20 @@ export default function PrintPreviewPage() {
               const options = answerData && answerData.options;
               const isChoice = q.question_type === 'SINGLE_CHOICE' || q.question_type === 'MULTIPLE_CHOICE';
 
+              // 裁剪题干中的行内选项
+              let displayTitle = q.title || '';
+              if (options && options.length > 0) {
+                const optMatch = (displayTitle || '').match(/\s*A[.．、）\)]\s/);
+                if (optMatch && optMatch.index !== undefined && optMatch.index > 0) {
+                  displayTitle = displayTitle.substring(0, optMatch.index).replace(/[（(]\s*[）)]\s*$/, '').trim();
+                }
+              }
+
               return (
                 <div key={q.id} style={{ marginBottom: 8, pageBreakInside: 'avoid' as const }}>
                   <div style={{ lineHeight: 1.8 }}>
                     <strong>{globalIndex}. </strong>
-                    {(q.title || '')}
+                    {displayTitle}
                     <span style={{ marginLeft: 8, fontSize: 11, color: '#999' }}>（{q.score}分）</span>
                   </div>
                   {isChoice && options && options.length > 0 && (
