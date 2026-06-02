@@ -48,6 +48,7 @@ interface PaperEditorState {
   setUnitQuestions: (uid: string, questions: ExamPaperUnitQuestion[]) => void;
   regenerateAll: (paperId: string) => Promise<void>;
   fillGaps: (paperId: string) => Promise<void>;
+  syncScoresFromConfig: () => void;
   reset: () => void;
   setGenerateReport: (report: GenerateReport | null) => void;
 }
@@ -346,6 +347,23 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       },
       dirty: true,
     });
+  },
+
+  syncScoresFromConfig: () => {
+    const { paper } = get();
+    if (!paper) return;
+    const newUnits = paper.units.map(u => {
+      let questions = u.questions || [];
+      (u.question_config || []).forEach(cfg => {
+        if (cfg.score_per_question != null) {
+          questions = questions.map(q =>
+            q.question_type === cfg.question_type ? { ...q, score: cfg.score_per_question } : q
+          );
+        }
+      });
+      return { ...u, questions };
+    });
+    set({ paper: { ...paper, units: newUnits }, dirty: true });
   },
 
   regenerateAll: async (paperId: string) => {

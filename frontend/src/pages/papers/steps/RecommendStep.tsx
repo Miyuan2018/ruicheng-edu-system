@@ -15,7 +15,7 @@ export default function RecommendStep() {
   const {
     paper, generateReport,
     removeQuestionFromUnit, clearAllQuestions, setDirty,
-    regenerateAll, fillGaps, replaceQuestion,
+    regenerateAll, fillGaps, replaceQuestion, syncScoresFromConfig,
   } = usePaperEditorStore();
 
   const hasAutoAdjusted = useRef(false);
@@ -31,6 +31,8 @@ export default function RecommendStep() {
 
     if (hasExistingQuestions) {
       hasAutoAdjusted.current = true;
+      // 强制同步所有题目分数为 config 卷面分
+      syncScoresFromConfig();
       const hasGaps = units.some(u =>
         (u.question_config || []).some(cfg => {
           const existing = (u.questions || []).filter(q => q.question_type === cfg.question_type).length;
