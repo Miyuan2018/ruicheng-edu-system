@@ -14,8 +14,8 @@ const QTYPE_LABELS: Record<string, string> = {
 export default function RecommendStep() {
   const {
     paper, generateReport,
-    addQuestionToUnit, removeQuestionFromUnit, clearAllQuestions, setDirty,
-    regenerateAll, fillGaps,
+    removeQuestionFromUnit, clearAllQuestions, setDirty,
+    regenerateAll, fillGaps, replaceQuestion,
   } = usePaperEditorStore();
 
   const hasAutoAdjusted = useRef(false);
@@ -106,16 +106,13 @@ export default function RecommendStep() {
   const handleManualReplace = (newQ: any) => {
     if (!manualTarget || !paper) return;
     const { questionId, unitId } = manualTarget;
-    // 从 unit 中获取旧题信息
     const unit = paper.units?.find(u => u.id === unitId);
     const oldQ = unit?.questions?.find(q => q.question_id === questionId);
     const score = oldQ?.score || newQ.score || 5;
-    // 替换 unit 中的题目
-    removeQuestionFromUnit(unitId, questionId);
-    addQuestionToUnit(unitId, {
+    replaceQuestion(unitId, questionId, {
       question_id: newQ.id,
       question_type: newQ.question_type,
-      position: 0,
+      position: oldQ?.position || 0,
       score,
       question: {
         id: newQ.id, title: newQ.title,
@@ -146,12 +143,13 @@ export default function RecommendStep() {
         difficulty: a.difficulty || '',
         tags: a.tags || [],
       }));
-      // 更新 units 中的题目
-      removeQuestionFromUnit(unitId, questionId);
-      addQuestionToUnit(unitId, {
+      // 原地替换，保持题目顺序
+      const unit = units.find(u => u.id === unitId);
+      const oldQ = unit?.questions?.find(q => q.question_id === questionId);
+      replaceQuestion(unitId, questionId, {
         question_id: alt.question_id,
         question_type: alt.question_type,
-        position: 0,
+        position: oldQ?.position || 0,
         score: alt.score || 5,
         question: {
           id: alt.question_id,

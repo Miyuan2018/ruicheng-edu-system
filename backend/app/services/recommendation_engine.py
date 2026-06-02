@@ -1,4 +1,5 @@
 """智能推荐引擎 — 配额分解 + 加权选题 + 换题推荐"""
+import random
 from dataclasses import dataclass
 
 KNOWLEDGE_MATCH_WEIGHT = 40.0
@@ -173,7 +174,7 @@ async def select_for_targets(
                     kn_map[qid_str] = []
                 kn_map[qid_str].append(str(knid))
 
-        # Score and rank
+        # Score and rank, then pick randomly among top candidates for diversity
         scored = []
         for q in candidates:
             base = score_question(q, knowledge_node_ids, used_ids, kn_map=kn_map)
@@ -181,7 +182,9 @@ async def select_for_targets(
             scored.append((base + diff_bonus, q))
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        best_score, best = scored[0]
+        # 从 top N 候选中随机选择（N = min(len, max(5, len/3))），增加推荐多样性
+        top_n = max(1, min(len(scored), max(5, len(scored) // 3)))
+        best_score, best = random.choice(scored[:top_n])
         used_ids.add(str(best.id))
 
         tags = _build_tags(best, knowledge_node_ids, kn_map=kn_map)
