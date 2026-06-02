@@ -10,7 +10,7 @@ import random
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, cast, String, or_
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
@@ -1222,6 +1222,33 @@ async def auto_generate_paper(
     return {"questions": questions, "constraint_dashboard": dashboard}
 
 
+async def _query_swap_candidates(db, question_type, difficulty, used_ids, subject=None, grades=None, kn_ids=None):
+    """查询换题候选，支持可选约束"""
+    conditions = [Question.is_active == True, Question.review_status == "APPROVED", Question.question_type == question_type]
+    if difficulty:
+        conditions.append(Question.difficulty == difficulty)
+    if subject:
+        conditions.append(Question.subject == subject)
+    if grades:
+        grade_conditions = []
+        for g in grades:
+            grade_conditions.append(cast(Question.grade_level["grades"].astext, String).contains(g))
+        if grade_conditions:
+            conditions.append(or_(*grade_conditions))
+    if kn_ids:
+        try:
+            from app.models.knowledge_node import QuestionKnowledgeNode
+            kn_qids = await db.execute(select(QuestionKnowledgeNode.question_id).where(QuestionKnowledgeNode.knowledge_node_id.in_(kn_ids)))
+            kn_qid_set = {str(r[0]) for r in kn_qids.fetchall()}
+            if kn_qid_set:
+                conditions.append(Question.id.in_(kn_qid_set))
+        except Exception:
+            pass  # 表不存在时跳过知识点过滤
+
+    result = await db.execute(select(Question).where(*conditions))
+    return [q for q in result.scalars().all() if str(q.id) not in used_ids]
+
+
 @router.post("/{paper_id}/questions/{question_id}/swap")
 async def swap_question(
     paper_id: str,
@@ -1229,63 +1256,47 @@ async def swap_question(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """换题：返回同题型、同难度的 top 3 备选题"""
+    """换题：逐级放宽约束链，返回 top 3 备选题"""
     _check_teacher_or_admin(current_user)
 
-    # Get current question
     result = await db.execute(select(Question).where(Question.id == question_id))
     current = result.scalar_one_or_none()
     if not current:
         raise HTTPException(404, detail="题目不存在")
 
-    # Verify paper exists
     paper_check = await db.execute(select(ExamPaper).where(ExamPaper.id == paper_id))
-    if not paper_check.scalar_one_or_none():
+    paper = paper_check.scalar_one_or_none()
+    if not paper:
         raise HTTPException(404, detail="试卷不存在")
 
-    # Get all used question IDs in this paper (exclude current one from consideration)
+    # 获取已用题目ID
     used_result = await db.execute(
-        select(ExamPaperUnitQuestion.question_id).join(
-            ExamPaperUnit, ExamPaperUnit.id == ExamPaperUnitQuestion.unit_id
-        ).where(ExamPaperUnit.exam_paper_id == paper_id)
+        select(ExamPaperUnitQuestion.question_id).join(ExamPaperUnit).where(ExamPaperUnit.exam_paper_id == paper_id)
     )
     used = {str(r[0]) for r in used_result.fetchall()}
 
-    # Query candidates: same type, same difficulty, active, approved, not already used
-    result = await db.execute(
-        select(Question).where(
-            Question.is_active == True,
-            Question.review_status == "APPROVED",
-            Question.question_type == current.question_type,
-            Question.difficulty == current.difficulty,
-        )
-    )
-    candidates = [q for q in result.scalars().all() if str(q.id) not in used]
+    # 逐级放宽约束链
+    subject = paper.subject
+    grade_level = paper.grade_level
+    grades = grade_level.get("grades", []) if isinstance(grade_level, dict) else []
+    kn_ids = paper.knowledge_node_ids or []
 
+    candidates = []
+    # Level 1: 学科 + 年级 + 知识点
+    if not candidates and subject and grades and kn_ids:
+        candidates = await _query_swap_candidates(db, current.question_type, current.difficulty, used, subject=subject, grades=grades, kn_ids=kn_ids)
+    # Level 2: 学科 + 年级
+    if not candidates and subject and grades:
+        candidates = await _query_swap_candidates(db, current.question_type, current.difficulty, used, subject=subject, grades=grades)
+    # Level 3: 学科 + 题型 + 难度
     if not candidates:
-        # Relax difficulty constraint
-        result = await db.execute(
-            select(Question).where(
-                Question.is_active == True,
-                Question.review_status == "APPROVED",
-                Question.question_type == current.question_type,
-            )
-        )
-        candidates = [q for q in result.scalars().all() if str(q.id) not in used]
+        candidates = await _query_swap_candidates(db, current.question_type, current.difficulty, used, subject=subject)
 
     if not candidates:
         return {"alternatives": []}
 
-    # Score and rank by general quality (no knowledge point context needed for swap)
-    scored = []
-    for q in candidates:
-        s = score_question(q, set(), used)
-        scored.append((s, q))
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    # Return top 3
     alternatives = []
-    for _, q in scored[:3]:
+    for q in candidates[:3]:
         alternatives.append({
             "question_id": str(q.id),
             "title": (q.title or "")[:120],
@@ -1293,7 +1304,6 @@ async def swap_question(
             "question_type": q.question_type or "",
             "score": q.score or 0,
         })
-
     return {"alternatives": alternatives}
 
 
