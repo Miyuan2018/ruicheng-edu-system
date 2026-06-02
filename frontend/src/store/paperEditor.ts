@@ -558,8 +558,9 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     try {
       await paperApi.saveAll(paper.id, paper);
       set({ saving: false, dirty: false, lastSaved: new Date() });
-    } catch {
+    } catch (e) {
       set({ saving: false });
+      throw e;
     }
   },
 
