@@ -140,10 +140,33 @@ export default function QuestionAdminPage() {
       const { data } = await apiClient.post('/question-admin/scrape', null, { params: values });
       setTaskProgress(data);
       if (data.ok) {
-        message.success('抓取完成: ' + (data.count || 0) + '道试题已入库');
-        loadPendingQuestions();
-      } else { message.error(data.error || '抓取失败'); }
-    } catch { message.error('抓取失败'); }
+        if (data.async) {
+          message.success(data.message || '已提交异步抓取任务');
+        } else {
+          message.success('抓取完成: ' + (data.count || 0) + '道试题已入库');
+          loadPendingQuestions();
+        }
+      } else {
+        const errMsg = data.error || '抓取失败';
+        if (data.search_params) {
+          message.error(`未找到试题：${Object.entries(data.search_params).map(([k,v]) => `${k}=${v}`).join(', ')}`);
+        } else {
+          message.error(errMsg);
+        }
+      }
+    } catch (e: any) {
+      const body = e?.response?.data;
+      const detail = body?.detail || body?.message || '';
+      if (typeof detail === 'string' && detail.length > 0) {
+        message.error(detail);
+      } else if (e?.code === 'ERR_NETWORK') {
+        message.error('网络连接失败，请检查后端服务和网络');
+      } else if (e?.code === 'ECONNABORTED') {
+        message.error('抓取请求超时，请减少数量后重试');
+      } else {
+        message.error('抓取失败，请检查网络连接后重试');
+      }
+    }
     finally { setScraping(false); }
   };
 
@@ -541,26 +564,19 @@ function ReviewQuestionList({ onRefresh }: { onRefresh: () => void }) {
   const [typeFilter, setTypeFilter] = useState<any>(undefined);
   const [diffFilter, setDiffFilter] = useState<any>(undefined);
   const [gradeFilter, setGradeFilter] = useState<any>(undefined);
-  const [keywordFilter, setKeywordFilter] = useState('');
   const [selectedRowKeys, setSelectedRowKeys] = useState<any[]>([]);
   const { 'question-types': qtypes, 'difficulty-levels': diffs, 'question-sources': sources, 'grade-levels': grades } = useReferenceValues();
   const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
   const diffMap = useMemo(() => toLabelMap(diffs), [diffs]);
   const sourceMap = useMemo(() => toColorMap(sources), [sources]);
 
-  const loadPage = (pg: number, filters?: { search?: string; typeFilter?: any; diffFilter?: any; gradeFilter?: any; keywordFilter?: string }) => {
+  const loadPage = (pg: number) => {
     setLoading(true);
-    const s = filters?.search ?? search;
-    const tf = filters?.typeFilter !== undefined ? filters.typeFilter : typeFilter;
-    const df = filters?.diffFilter !== undefined ? filters.diffFilter : diffFilter;
-    const gf = filters?.gradeFilter !== undefined ? filters.gradeFilter : gradeFilter;
-    const kf = filters?.keywordFilter !== undefined ? filters.keywordFilter : keywordFilter;
     const params: any = { limit: 10, skip: (pg - 1) * 10 };
-    if (s) params.keyword = s;
-    if (tf) params.question_type = tf;
-    if (df) params.difficulty = df;
-    if (gf) params.grade = gf;
-    if (kf) params.keyword = kf;
+    if (search) params.keyword = search;
+    if (typeFilter) params.question_type = typeFilter;
+    if (diffFilter) params.difficulty = diffFilter;
+    if (gradeFilter) params.grade = gradeFilter;
     apiClient.get('/question-admin/pending', { params }).then(({ data }: any) => {
       const resp = data || {};
       setQuestions(resp.items || (Array.isArray(resp) ? resp : []));
@@ -568,8 +584,7 @@ function ReviewQuestionList({ onRefresh }: { onRefresh: () => void }) {
     }).catch(() => {}).finally(() => setLoading(false));
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadPage(page); }, [page]);
+  useEffect(() => { loadPage(page); }, [page, search, typeFilter, diffFilter, gradeFilter]); // eslint-disable-line
 
   const parseOptions = (v: any) => {
     if (!v) return null;
@@ -626,12 +641,10 @@ function ReviewQuestionList({ onRefresh }: { onRefresh: () => void }) {
   return (
     <Card size="small">
       <Row gutter={[8, 8]} align="middle" style={{ marginBottom: 12 }}>
-        <Col flex="auto"><Input size="small" placeholder="搜索题目" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} onPressEnter={() => loadPage(1, { search })} allowClear /></Col>
-        <Col><Select size="small" placeholder="题型" allowClear style={{ width: 90 }} value={typeFilter} onChange={setTypeFilter} options={toSelectOptions(qtypes)} /></Col>
-        <Col><Select size="small" placeholder="难度" allowClear style={{ width: 80 }} value={diffFilter} onChange={setDiffFilter} options={toSelectOptions(diffs)} /></Col>
-        <Col><Select size="small" placeholder="年级" allowClear style={{ width: 80 }} value={gradeFilter} onChange={setGradeFilter} options={toSelectOptions(grades)} /></Col>
-        <Col><Input size="small" placeholder="模糊查询知识点" value={keywordFilter} onChange={e => setKeywordFilter(e.target.value)} style={{ width: 160 }} onPressEnter={() => loadPage(1, { keywordFilter })} allowClear /></Col>
-        <Col><Button size="small" icon={<SearchOutlined />} onClick={() => loadPage(1, { search, typeFilter, diffFilter, gradeFilter, keywordFilter })}>查询</Button></Col>
+        <Col flex="auto"><Input size="small" placeholder="搜索题目/知识点" prefix={<SearchOutlined />} value={search} onChange={e => setSearch(e.target.value)} onPressEnter={() => loadPage(1)} allowClear /></Col>
+        <Col><Select size="small" placeholder="题型" allowClear style={{ width: 90 }} value={typeFilter} onChange={v => { setTypeFilter(v); setPage(1); }} options={toSelectOptions(qtypes)} /></Col>
+        <Col><Select size="small" placeholder="难度" allowClear style={{ width: 80 }} value={diffFilter} onChange={v => { setDiffFilter(v); setPage(1); }} options={toSelectOptions(diffs)} /></Col>
+        <Col><Select size="small" placeholder="年级" allowClear style={{ width: 80 }} value={gradeFilter} onChange={v => { setGradeFilter(v); setPage(1); }} options={toSelectOptions(grades)} /></Col>
         <Col><Popconfirm title={'确定通过 ' + selectedRowKeys.length + ' 道试题?'} onConfirm={handleBatchApprove} disabled={selectedRowKeys.length === 0}>
           <Button type="primary" size="small" disabled={selectedRowKeys.length === 0}>批量通过{selectedRowKeys.length > 0 ? '(' + selectedRowKeys.length + ')' : ''}</Button>
         </Popconfirm></Col>

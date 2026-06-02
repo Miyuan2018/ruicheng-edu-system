@@ -7,7 +7,9 @@ const { Title } = Typography;
 
 export default function BasicConfigPage() {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const [gradingLoading, setGradingLoading] = useState(false);
+  const [mistakeLoading, setMistakeLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   // ─── 学科管理 state ───
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -96,15 +98,20 @@ export default function BasicConfigPage() {
   };
 
   // ─── 应用参数 save ───
+  const setLoading = (section: string, v: boolean) => {
+    if (section === 'grading') setGradingLoading(v);
+    else if (section === 'mistake') setMistakeLoading(v);
+    else if (section === 'export') setExportLoading(v);
+  };
+
   const handleSave = async (section: string) => {
     const allValues = form.getFieldsValue();
-    setLoading(true);
+    setLoading(section, true);
     try {
       if (section === 'export') {
         await apiClient.put('/admin/llm/export-max', null, { params: { max_val: allValues.export_max } });
         message.success('导出上限已保存');
       } else {
-        // Only send relevant fields for this section
         const sectionFields: Record<string, string[]> = {
           grading: ['max_concurrent_grading', 'grading_model'],
           mistake: ['practice_question_count'],
@@ -116,7 +123,7 @@ export default function BasicConfigPage() {
         message.success('保存成功');
       }
     } catch { message.error('保存失败'); }
-    finally { setLoading(false); }
+    finally { setLoading(section, false); }
   };
 
   // Load export_max
@@ -176,7 +183,7 @@ export default function BasicConfigPage() {
     <div>
       {/* 判卷设置 */}
       <Card title="判卷设置" size="small" style={{ marginBottom: 16 }} extra={
-        <Button icon={<SaveOutlined />} onClick={() => handleSave('grading')} loading={loading}>保存</Button>
+        <Button icon={<SaveOutlined />} onClick={() => handleSave('grading')} loading={gradingLoading}>保存</Button>
       }>
         <Space size="large" wrap>
           <Form.Item name="max_concurrent_grading" label="最大并发判卷数">
@@ -194,7 +201,7 @@ export default function BasicConfigPage() {
 
       {/* 错题本设置 */}
       <Card title="错题本设置" size="small" style={{ marginBottom: 16 }} extra={
-        <Button icon={<SaveOutlined />} onClick={() => handleSave('mistake')} loading={loading}>保存</Button>
+        <Button icon={<SaveOutlined />} onClick={() => handleSave('mistake')} loading={mistakeLoading}>保存</Button>
       }>
         <Form.Item name="practice_question_count" label="每道错题配加强练习题数量" style={{ marginBottom: 0 }}>
           <InputNumber min={1} max={20} />
@@ -203,7 +210,7 @@ export default function BasicConfigPage() {
 
       {/* 试题导出上限 */}
       <Card title="试题导出上限" size="small" extra={
-        <Button icon={<SaveOutlined />} onClick={() => handleSave('export')} loading={loading}>保存</Button>
+        <Button icon={<SaveOutlined />} onClick={() => handleSave('export')} loading={exportLoading}>保存</Button>
       }>
         <Form.Item name="export_max" label="最大导出数量" style={{ marginBottom: 0 }}
           tooltip="设为0时禁用导出功能">

@@ -367,9 +367,17 @@ async def generate_explanation(
         explanation_section=explanation_section,
     )
 
+    result = None
     if provider == "deepseek":
-        return await _generate_explanation_deepseek(prompt, llm)
-    return await _generate_explanation_ollama(prompt, llm)
+        result = await _generate_explanation_deepseek(prompt, llm)
+    else:
+        result = await _generate_explanation_ollama(prompt, llm)
+    if result:
+        prov_cfg = llm.get(provider, {})
+        result["model_name"] = prov_cfg.get("model", "")
+        result["provider"] = provider
+        result["prompt"] = prompt
+    return result or {"ok": False, "error": "生成失败"}
 
 
 async def _generate_explanation_ollama(prompt: str, llm: dict) -> dict:

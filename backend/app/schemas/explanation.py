@@ -1,7 +1,10 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 
+
+def _coerce_uuid(v: object) -> str:
+    return str(v)
 
 class ExplanationStepResponse(BaseModel):
     id: str
@@ -12,6 +15,8 @@ class ExplanationStepResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    _coerce_id = field_validator("id", mode="before")(_coerce_uuid)
 
 
 class ExplanationStepCreate(BaseModel):
@@ -42,6 +47,9 @@ class ExplanationSessionSummary(BaseModel):
     class Config:
         from_attributes = True
 
+    _coerce_id = field_validator("id", mode="before")(_coerce_uuid)
+    _coerce_qid = field_validator("question_id", mode="before")(lambda v: str(v) if v is not None else None)
+
 
 class ExplanationSessionResponse(BaseModel):
     id: str
@@ -50,13 +58,16 @@ class ExplanationSessionResponse(BaseModel):
     topic: Optional[str] = None
     difficulty_label: Optional[str] = None
     problem_statement: Optional[str] = None
-    graph_config: Optional[GraphConfigModel] = None
+    graph_config: Optional[dict] = None
     steps: List[ExplanationStepResponse] = []
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+    _coerce_id = field_validator("id", mode="before")(_coerce_uuid)
+    _coerce_qid = field_validator("question_id", mode="before")(lambda v: str(v) if v is not None else None)
 
 
 class ExplanationSessionCreate(BaseModel):
@@ -65,5 +76,5 @@ class ExplanationSessionCreate(BaseModel):
     topic: Optional[str] = Field(None, max_length=100)
     difficulty_label: Optional[str] = Field(None, max_length=50)
     problem_statement: Optional[str] = None
-    graph_config: Optional[GraphConfigModel] = None
+    graph_config: Optional[dict] = None
     steps: List[ExplanationStepCreate] = []

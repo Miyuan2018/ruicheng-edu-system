@@ -15,6 +15,7 @@ interface ExplanationReviewModalProps {
   steps: GeneratedStep[];
   onSave: (steps: GeneratedStep[]) => void;
   saving?: boolean;
+  headerExtra?: React.ReactNode;
 }
 
 const EMOTION_OPTIONS = [
@@ -29,6 +30,7 @@ export default function ExplanationReviewModal({
   steps,
   onSave,
   saving,
+  headerExtra,
 }: ExplanationReviewModalProps) {
   const [editSteps, setEditSteps] = useState<GeneratedStep[]>([]);
   const [initialized, setInitialized] = useState(false);
@@ -106,6 +108,7 @@ export default function ExplanationReviewModal({
       ]}
       destroyOnClose
     >
+      {headerExtra}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 500, overflowY: 'auto', padding: '8px 0' }}>
         {editSteps.map((step, idx) => (
           <div

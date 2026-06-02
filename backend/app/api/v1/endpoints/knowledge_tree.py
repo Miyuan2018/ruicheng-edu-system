@@ -213,7 +213,7 @@ async def create_new_version(
     new_version = Syllabus(
         title=old.title, grade_level=old.grade_level,
         province=old.province, subject=old.subject,
-        content=old.content, knowledge_tree=old.knowledge_tree,
+        content=old.content,
         version=(old.version or 1) + 1, is_current=True,
         parent_syllabus_id=old.id,
         created_by=current_user.id,
@@ -222,18 +222,25 @@ async def create_new_version(
     db.add(new_version)
     await db.flush()
 
-    # Copy active nodes to new version
+    # Copy active nodes to new version with parent_id remapping
     result = await db.execute(
         select(KnowledgeNode).where(
             KnowledgeNode.syllabus_id == syllabus_id,
             KnowledgeNode.version == old.version,
             KnowledgeNode.is_active == True,
-        )
+        ).order_by(KnowledgeNode.parent_id.asc().nulls_first())
     )
-    for old_node in result.scalars().all():
+    old_nodes = result.scalars().all()
+
+    # Build old_id -> new_id mapping, then insert with remapped parent_ids
+    id_map: dict[str, str] = {}
+    for old_node in old_nodes:
+        new_id = uuid.uuid4()
+        id_map[str(old_node.id)] = str(new_id)
         new_node = KnowledgeNode(
+            id=new_id,
             syllabus_id=new_version.id,
-            parent_id=old_node.parent_id,
+            parent_id=None,  # will fix below
             name=old_node.name,
             node_type=old_node.node_type,
             sort_order=old_node.sort_order,
@@ -244,6 +251,20 @@ async def create_new_version(
             meta_data=old_node.meta_data,
         )
         db.add(new_node)
+
+    # Second pass: remap parent_id using the id map
+    for old_node in old_nodes:
+        if old_node.parent_id is not None:
+            old_pid = str(old_node.parent_id)
+            new_pid = id_map.get(old_pid)
+            if new_pid:
+                new_child_id = id_map[str(old_node.id)]
+                stmt = (
+                    update(KnowledgeNode)
+                    .where(KnowledgeNode.id == new_child_id)
+                    .values(parent_id=new_pid)
+                )
+                await db.execute(stmt)
 
     await db.commit()
     await db.refresh(new_version)

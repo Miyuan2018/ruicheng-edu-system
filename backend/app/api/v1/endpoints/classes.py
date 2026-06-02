@@ -131,8 +131,8 @@ async def list_available_students(
                 "SELECT cs.student_id FROM class_students cs WHERE cs.class_id = :cid)"
                 + (" AND (s.full_name LIKE :q OR s.username LIKE :q)" if search else "") +
                 " ORDER BY s.full_name LIMIT 100"),
-        {"cid": class_id.hex, "q": f"%{search}%" if search else None} if search
-        else {"cid": class_id.hex}
+        {"cid": str(class_id), "q": f"%{search}%" if search else None} if search
+        else {"cid": str(class_id)}
     )
     rows = result.fetchall()
     return [{"id": row[0], "username": row[1], "full_name": row[3],

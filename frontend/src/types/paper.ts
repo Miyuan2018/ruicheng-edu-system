@@ -61,6 +61,8 @@ export interface PaperDraft {
   subtitle?: string;
   instructions?: string;
   description?: string;
+  show_units: boolean;
+  per_unit_timer: boolean;
   units: ExamPaperUnit[];
   knowledge_node_ids: string[];
 }
@@ -113,10 +115,18 @@ export interface AlternativeQuestion {
   tags: string[];
 }
 
+export interface ShortfallItem {
+  question_type: string;
+  target_difficulty: string;
+  score: number;
+}
+
 export interface ConstraintDashboard {
   difficulty: Record<string, { target: number; actual: number; matched: boolean }>;
   knowledge_coverage: { matched: number; total: number };
+  requested_score: number;
   total_score: number;
+  shortfall: ShortfallItem[];
 }
 
 export interface GenerateReport {

@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Table, Button, Tag, Typography, Space, Input, Select, message, Popconfirm, Dropdown, Switch,
+  Table, Button, Tag, Typography, Space, Input, Select, message, Popconfirm, Dropdown, Switch, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, DeleteOutlined, SearchOutlined,
-  DownloadOutlined, PrinterOutlined, CameraOutlined, ReloadOutlined, SendOutlined,
+  DownloadOutlined, PrinterOutlined, CameraOutlined, ReloadOutlined, SendOutlined, EditOutlined, CopyOutlined,
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
-import PaperEditModal from './PaperEditModal';
 import PaperImportModal from './PaperImportModal';
 import PaperPreviewDrawer from './PaperPreviewDrawer';
 import { useReferenceValues, toLabelMap, toColorMap, toSelectOptions } from '../../hooks/useReferenceValues';
-import { getUserType, getAccessToken } from '../../store/auth';
+import { getUserType } from '../../store/auth';
 
 const { Title } = Typography;
 
@@ -20,19 +20,22 @@ interface PaperItem {
   title: string;
   subject?: string;
   grade_level?: { grades?: string[] };
+  unit_count?: number;
   question_count?: number;
   total_score?: number;
   duration_minutes?: number;
   status?: string;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
 }
 
 export default function PaperListPage() {
+  const navigate = useNavigate();
   const isStudent = getUserType() === 'STUDENT';
   const [papers, setPapers] = useState<PaperItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [editPaper, setEditPaper] = useState<PaperItem | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [searchTitle, setSearchTitle] = useState('');
@@ -42,13 +45,15 @@ export default function PaperListPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchSubject, setSearchSubject] = useState('');
   const [onlyMine, setOnlyMine] = useState(false);
-  const [subjectOptions, setSubjectOptions] = useState<{value:string,label:string}[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<{ value: string; label: string }[]>([]);
   const { 'paper-statuses': paperStatuses, 'grade-levels': grades } = useReferenceValues();
   const statusColors = toColorMap(paperStatuses);
   const statusLabels = toLabelMap(paperStatuses);
 
   useEffect(() => {
-    apiClient.get('/subjects/my').then(({data}) => setSubjectOptions(data.map((s:string)=>({value:s,label:s})))).catch(()=>{});
+    apiClient.get('/subjects/my').then(({ data }) => setSubjectOptions(
+      (Array.isArray(data) ? data : []).map((s: string) => ({ value: s, label: s }))
+    )).catch(() => {});
   }, []);
 
   const fetchPapers = useCallback(async () => {
@@ -88,8 +93,9 @@ export default function PaperListPage() {
 
   useEffect(() => { fetchPapers(); }, [fetchPapers]);
 
-  const handleNew = () => { setEditPaper(null); setModalOpen(true); };
+  const handleNew = () => navigate('/papers/new');
   const handlePreview = (id: string) => { setPreviewId(id); setPreviewOpen(true); };
+  const handleEdit = (id: string) => navigate('/papers/' + id + '/edit');
 
   const handleDelete = async (id: string) => {
     try {
@@ -104,36 +110,47 @@ export default function PaperListPage() {
   const handlePublish = async (id: string) => {
     try {
       const { data } = await apiClient.post('/exam-papers/' + id + '/publish', { class_ids: [] });
-      message.success(`发布成功！已通知 ${data.notified_count || 0} 名学生`);
+      message.success('发布成功！已通知 ' + (data.notified_count || 0) + ' 名学生');
       fetchPapers();
     } catch (err: any) {
       message.error(err?.response?.data?.detail || '发布失败');
     }
   };
 
-  const handleSuccess = () => { setModalOpen(false); fetchPapers(); };
-  const handleImportSuccess = () => { setImportOpen(false); fetchPapers(); };
+  const handleCopy = async (id: string) => {
+    try {
+      await apiClient.post('/exam-papers/' + id + '/copy');
+      message.success('复制成功');
+      fetchPapers();
+    } catch {
+      message.error('复制失败');
+    }
+  };
 
-  const handleExport = (paperId: string, format: string) => {
-    const url = '/api/v1/exam-papers/' + paperId + '/export/' + format;
-    const token = getAccessToken();
-    if (token) {
-      fetch(url, { headers: { Authorization: 'Bearer ' + token } })
-        .then((r) => {
-          if (!r.ok) { message.error('导出失败'); return; }
-          return r.blob();
-        })
-        .then((blob) => {
-          if (!blob) return;
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = blobUrl;
-          a.download = 'paper.' + format;
-          a.click();
-          URL.revokeObjectURL(blobUrl);
-          message.success('导出成功');
-        })
-        .catch(() => { message.error('导出失败'); });
+  const handleExport = async (paperId: string, format: string) => {
+    try {
+      const resp = await apiClient.get('/exam-papers/' + paperId + '/export/' + format, {
+        responseType: 'blob',
+      });
+      const blob = resp.data;
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = 'paper.' + format;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+      message.success('导出成功');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        message.error('试卷不存在或已被删除，无法导出');
+      } else if (status === 403) {
+        message.error('没有权限导出该试卷');
+      } else if (err?.code === 'ERR_NETWORK') {
+        message.error('网络连接失败，请检查后端服务');
+      } else {
+        message.error('导出失败，请稍后重试');
+      }
     }
   };
 
@@ -142,54 +159,94 @@ export default function PaperListPage() {
     if (!w) { message.info('请允许弹出窗口以预览打印'); }
   };
 
+  // Check if paper is a stale draft (30+ days without update)
+  const isStaleDraft = (record: PaperItem): boolean => {
+    if (record.status !== 'DRAFT') return false;
+    if (!record.updated_at) return false;
+    const updated = new Date(record.updated_at);
+    const now = new Date();
+    const diffDays = (now.getTime() - updated.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 30;
+  };
+
   const columns = [
     {
       title: '试卷名称',
       dataIndex: 'title',
       ellipsis: true,
-      render: (text: string, record: PaperItem) => (
-        <a onClick={() => handlePreview(record.id)}>{text}</a>
-      ),
+      render: (text: string, record: PaperItem) => {
+        const stale = isStaleDraft(record);
+        return (
+          <span style={{ color: stale ? '#bbb' : undefined }}>
+            <a onClick={() => handlePreview(record.id)} style={{ color: stale ? '#bbb' : undefined }}>{text}</a>
+            {stale && <Tag style={{ marginLeft: 4, fontSize: 10 }}>⏳过期草稿</Tag>}
+          </span>
+        );
+      },
     },
-    { title: '学科', dataIndex: 'subject', width: 80 },
+    { title: '学科', dataIndex: 'subject', width: 70 },
     {
       title: '年级',
       dataIndex: 'grade_level',
-      width: 100,
+      width: 90,
       render: (v: unknown) => {
         const g = (v as { grades?: string[] })?.grades || [];
         return g.length ? g.join(', ') : '-';
       },
     },
-    { title: '题数', dataIndex: 'question_count', width: 60, align: 'center' as const },
-    { title: '总分', dataIndex: 'total_score', width: 60, align: 'center' as const },
-    { title: '时长(分)', dataIndex: 'duration_minutes', width: 70, align: 'center' as const },
+    {
+      title: '单元',
+      dataIndex: 'unit_count',
+      width: 55,
+      align: 'center' as const,
+      render: (v: number) => v != null ? v : '-',
+    },
+    { title: '题数', dataIndex: 'question_count', width: 55, align: 'center' as const },
+    { title: '总分', dataIndex: 'total_score', width: 55, align: 'center' as const },
+    { title: '时长', dataIndex: 'duration_minutes', width: 55, align: 'center' as const, render: (v: number) => v ? v + '分' : '-' },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 80,
-      render: (s: string) => (
-        <Tag color={(statusColors[s] || {}).color || 'default'}>{statusLabels[s] || s}</Tag>
-      ),
+      width: 75,
+      render: (s: string, record: PaperItem) => {
+        const stale = isStaleDraft(record);
+        const color = stale ? '#bbb' : (statusColors[s] || {}).color || 'default';
+        return <Tag color={color}>{statusLabels[s] || s}</Tag>;
+      },
     },
     {
       title: '操作',
-      width: 280,
+      width: 320,
       render: (_: unknown, record: PaperItem) => {
+        const isDraft = record.status === 'DRAFT';
+        const isPublished = record.status === 'PUBLISHED';
+
         const exportItems = {
           items: [
             { key: 'word', label: '导出 Word (.docx)', icon: <DownloadOutlined />, onClick: () => handleExport(record.id, 'word') },
             { key: 'pdf', label: '导出 PDF', icon: <DownloadOutlined />, onClick: () => handleExport(record.id, 'pdf') },
           ],
         };
+
         return (
-          <Space>
+          <Space size="small" wrap>
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(record.id)}>预览</Button>
+            {isDraft && (
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record.id)}>继续编辑</Button>
+            )}
+            {isPublished && (
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record.id)}>编辑</Button>
+            )}
             <Dropdown menu={exportItems}>
               <Button type="link" size="small" icon={<DownloadOutlined />}>导出</Button>
             </Dropdown>
             <Button type="link" size="small" icon={<PrinterOutlined />} onClick={() => handlePrint(record.id)}>打印</Button>
-            {record.status !== 'PUBLISHED' && record.status !== 'ARCHIVED' && (
+            {isPublished && (
+              <Tooltip title="复制试卷">
+                <Button type="link" size="small" icon={<CopyOutlined />} onClick={() => handleCopy(record.id)}>复制</Button>
+              </Tooltip>
+            )}
+            {!isPublished && record.status !== 'ARCHIVED' && (
               <Popconfirm title="发布后将通知班级学生，确定发布？" onConfirm={() => handlePublish(record.id)}>
                 <Button type="link" size="small" icon={<SendOutlined />} style={{ color: '#1890ff' }}>发布</Button>
               </Popconfirm>
@@ -276,10 +333,8 @@ export default function PaperListPage() {
         <Button icon={<ReloadOutlined />} onClick={fetchPapers} size="small">刷新</Button>
       </div>
       <Table rowKey="id" loading={loading} dataSource={papers} columns={columns} size="middle" />
-      <PaperEditModal open={modalOpen} paper={editPaper} onClose={() => setModalOpen(false)} onSuccess={handleSuccess} />
-      <PaperImportModal open={importOpen} onClose={() => setImportOpen(false)} onSuccess={handleImportSuccess} />
+      <PaperImportModal open={importOpen} onClose={() => setImportOpen(false)} onSuccess={() => { setImportOpen(false); fetchPapers(); }} />
       <PaperPreviewDrawer open={previewOpen} paperId={previewId || ''} onClose={() => setPreviewOpen(false)} />
     </div>
   );
 }
-

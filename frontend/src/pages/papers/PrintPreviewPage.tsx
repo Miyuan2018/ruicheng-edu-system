@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Spin, Empty } from 'antd';
+import { Spin, Empty, Button, Result } from 'antd';
 import apiClient from '../../api/client';
 import { useReferenceValues, toLabelMap } from '../../hooks/useReferenceValues';
 
@@ -13,6 +13,13 @@ interface QuestionItem {
   correct_answer?: string;
 }
 
+function fmtGrade(gl: any): string {
+  if (!gl) return '';
+  if (typeof gl === 'string') return gl;
+  if (gl.grades && Array.isArray(gl.grades)) return gl.grades.join(', ');
+  return '';
+}
+
 export default function PrintPreviewPage() {
   const refs = useReferenceValues();
   const qtypes = refs['question-types'];
@@ -22,35 +29,63 @@ export default function PrintPreviewPage() {
   const [paper, setPaper] = useState<any>(null);
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!paperId) { setLoading(false); return; }
-    apiClient.get('/exam-papers/' + paperId + '/questions')
-      .then((resp) => { setQuestions(resp.data || []); })
-      .catch(() => { setQuestions([]); });
-    apiClient.get('/exam-papers/' + paperId)
-      .then((resp) => { setPaper(resp.data); })
-      .catch(() => { setPaper(null); })
-      .finally(() => { setLoading(false); });
+    if (!paperId) { setLoading(false); setError('未指定试卷ID'); return; }
+    setLoading(true);
+    apiClient.get('/exam-papers/' + paperId + '/preview')
+    .then((resp) => {
+      const data = resp.data;
+      setPaper(data.paper || null);
+      // Extract all questions from units into flat list with continuous numbering
+      const allQuestions: QuestionItem[] = [];
+      const units = data.units || [];
+      let idx = 0;
+      units.forEach((u: any) => {
+        (u.questions || []).forEach((q: any) => {
+          idx++;
+          allQuestions.push({
+            id: q.question_id || q.id,
+            title: q.title || q.question?.title || '',
+            question_type: q.question_type || q.question?.question_type || '',
+            score: q.score || 0,
+            correct_answer: q.correct_answer || q.question?.correct_answer || '',
+          });
+        });
+      });
+      setQuestions(allQuestions);
+      setError('');
+    }).catch((err) => {
+      const status = err?.response?.status;
+      if (status === 404) setError('试卷不存在或已被删除');
+      else if (status === 403) setError('没有权限查看该试卷');
+      else setError('加载试卷失败');
+      setPaper(null);
+      setQuestions([]);
+    }).finally(() => { setLoading(false); });
   }, [paperId]);
 
   // Auto-print when loaded
   useEffect(() => {
-    if (!loading && paper) {
+    if (!loading && paper && questions.length > 0) {
       setTimeout(() => { window.print(); }, 500);
     }
-  }, [loading, paper]);
+  }, [loading, paper, questions]);
 
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 60 }}>
-        <Spin size="large" />
+        <Spin size="large" tip="加载中..." />
       </div>
     );
   }
 
   if (!paper) {
-    return <Empty description="加载失败，请从试卷列表重新打开" />;
+    return (
+      <Result status="error" title="加载失败" subTitle={error}
+        extra={<Button onClick={() => window.close()}>关闭</Button>} />
+    );
   }
 
   // Group questions by type
@@ -62,16 +97,22 @@ export default function PrintPreviewPage() {
   });
 
   let globalIndex = 0;
+  const gradeText = fmtGrade(paper.grade_level);
+  const subParts: string[] = [];
+  if (paper.subject) subParts.push(paper.subject);
+  if (gradeText) subParts.push(gradeText);
+  subParts.push('总分: ' + (paper.total_score ?? 0) + '分');
+  if (paper.duration_minutes != null) subParts.push('时长: ' + paper.duration_minutes + '分钟');
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', fontFamily: 'SimSun, serif', fontSize: 14 }}>
+    <div style={{ maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', serif", fontSize: 14 }}>
       {/* Title */}
       <div style={{ textAlign: 'center', marginBottom: 4 }}>
         <h1 style={{ fontSize: 22, margin: 0, letterSpacing: 2 }}>{paper.title}</h1>
       </div>
       {paper.subtitle && <div style={{ textAlign: 'center', fontSize: 12, color: '#666' }}>{paper.subtitle}</div>}
       <div style={{ textAlign: 'center', fontSize: 11, color: '#666', marginBottom: 12 }}>
-        {(paper.subject || '') + ' | ' + (paper.grade_level || '') + ' | 总分: ' + (paper.total_score || 0) + '分 | 时长: ' + (paper.duration_minutes || 0) + '分钟'}
+        {subParts.join(' | ')}
       </div>
       {paper.description && <div style={{ fontSize: 11, color: '#999', marginBottom: 8 }}>{paper.description}</div>}
       {paper.instructions && (
@@ -112,9 +153,7 @@ export default function PrintPreviewPage() {
                       ))}
                     </div>
                   )}
-                  {q.question_type === 'FILL_BLANK' && (
-                    <div style={{ marginLeft: 24, borderBottom: '1px solid #333', width: 200, height: 22 }} />
-                  )}
+{/* 填空题空白线已在题干中用 ________ 表示 */}
                   {q.question_type === 'SUBJECTIVE' && (
                     <div style={{ marginLeft: 24, border: '1px dashed #ccc', minHeight: 60, borderRadius: 4, marginTop: 4 }} />
                   )}

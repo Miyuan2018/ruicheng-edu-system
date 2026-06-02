@@ -1,5 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -7,16 +8,16 @@ from app.db.base import Base
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    recipient_id = Column(String(36), nullable=False, index=True)
-    sender_id = Column(String(36), nullable=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    recipient_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    sender_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     notification_type = Column(String(30), nullable=False)
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)
     channel = Column(String(20), nullable=False)
     status = Column(String(20), nullable=False)
     related_entity_type = Column(String(30), nullable=True)
-    related_entity_id = Column(String(36), nullable=True, index=True)
+    related_entity_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
     read_at = Column(DateTime(timezone=True), nullable=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)

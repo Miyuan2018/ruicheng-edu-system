@@ -11,7 +11,7 @@ class ProviderConfigRequest(BaseModel):
     provider: str  # "ollama" or "deepseek"
     endpoint: str = ""
     model: str = ""
-    # api_key is intentionally excluded — read from DEEPSEEK_API_KEY env var only
+    api_key: str | None = None  # optional, stored in sysconfig.json if provided
 
 
 @router.get("/config")
@@ -44,6 +44,8 @@ async def update_llm_config(
         prov_cfg.setdefault("available_models", [])
     else:
         prov_cfg["model"] = req.model or prov_cfg.get("model", "deepseek-chat")
+        if req.api_key is not None and req.api_key != "***":
+            prov_cfg["api_key"] = req.api_key
 
     llm[prov] = prov_cfg
     llm["current"] = prov

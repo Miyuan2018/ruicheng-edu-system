@@ -482,8 +482,8 @@
 ### 4.1 整体架构 (V3.0)
 
 ```
-Browser (React 19 + Ant Design 6 + TypeScript, :3000)
-  │  Vite proxy /api → localhost:8000
+Browser (React 19 + Ant Design 6 + TypeScript, :3001)
+  │  Vite proxy /api → localhost:8001
   │
   ▼
 FastAPI app (app/main.py)
@@ -779,14 +779,14 @@ sysconfig.json (入 VCS, 仅非敏感配置):
 services:
   backend:
     build: ./backend
-    ports: ["8000:8000"]
+    ports: ["8001:8001"]
     env_file: ./backend/.env
     depends_on: [postgres]
     volumes: ["./backend/sysconfig.json:/app/sysconfig.json"]
 
   frontend:
     build: ./frontend
-    ports: ["3000:3000"]
+    ports: ["3001:3001"]
     depends_on: [backend]
 
   postgres:

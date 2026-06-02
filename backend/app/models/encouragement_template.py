@@ -1,6 +1,7 @@
 """Pre-defined encouragement message templates."""
 import uuid
 from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -8,7 +9,7 @@ from app.db.base import Base
 class EncouragementTemplate(Base):
     __tablename__ = "encouragement_templates"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     category = Column(String(30), nullable=False)
     title = Column(String(100), nullable=False)
     message_template = Column(Text, nullable=False)

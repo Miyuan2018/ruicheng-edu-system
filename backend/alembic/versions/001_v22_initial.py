@@ -14,7 +14,7 @@ def upgrade():
     # 参考数据表 (7 类)
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('question_types',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('color', sa.String(20), nullable=True),
@@ -25,7 +25,7 @@ def upgrade():
     )
 
     op.create_table('difficulty_levels',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('color', sa.String(20), nullable=True),
@@ -36,7 +36,7 @@ def upgrade():
     )
 
     op.create_table('grade_levels',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('sort_order', sa.Integer(), nullable=False, server_default=sa.text('0')),
@@ -46,7 +46,7 @@ def upgrade():
     )
 
     op.create_table('paper_statuses',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
@@ -55,7 +55,7 @@ def upgrade():
     )
 
     op.create_table('error_types',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=True, server_default=sa.text('true')),
@@ -64,7 +64,7 @@ def upgrade():
     )
 
     op.create_table('question_sources',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('color', sa.String(20), nullable=True),
@@ -74,7 +74,7 @@ def upgrade():
     )
 
     op.create_table('provinces',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('sort_order', sa.Integer(), nullable=False, server_default=sa.text('0')),
@@ -87,7 +87,7 @@ def upgrade():
     # 角色表
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('roles',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=False),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
@@ -100,7 +100,7 @@ def upgrade():
     # 用户表
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('sys_admins',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('username', sa.String(50), nullable=False),
         sa.Column('password_hash', sa.String(255), nullable=False),
         sa.Column('full_name', sa.String(100), nullable=False),
@@ -115,7 +115,7 @@ def upgrade():
     )
 
     op.create_table('admins',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('username', sa.String(50), nullable=False),
         sa.Column('password_hash', sa.String(255), nullable=False),
         sa.Column('full_name', sa.String(100), nullable=False),
@@ -125,7 +125,7 @@ def upgrade():
         sa.Column('admin_type', sa.Integer(), nullable=False, server_default=sa.text('0')),
         sa.Column('subjects', JSONB(), nullable=True),
         sa.Column('grade_level', JSONB(), nullable=True),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('sys_admins.id'), nullable=False),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('sys_admins.id'), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -134,7 +134,7 @@ def upgrade():
     )
 
     op.create_table('students',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('username', sa.String(50), nullable=False),
         sa.Column('password_hash', sa.String(255), nullable=False),
         sa.Column('full_name', sa.String(100), nullable=False),
@@ -154,7 +154,7 @@ def upgrade():
     )
 
     op.create_table('parents',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('username', sa.String(50), nullable=False),
         sa.Column('password_hash', sa.String(255), nullable=False),
         sa.Column('full_name', sa.String(100), nullable=False),
@@ -169,9 +169,9 @@ def upgrade():
     )
 
     op.create_table('parent_student_links',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('parent_id', sa.String(36), sa.ForeignKey('parents.id'), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('parent_id', sa.UUID(), sa.ForeignKey('parents.id'), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('relationship', sa.String(20), nullable=True),
         sa.Column('invite_code_used', sa.String(6), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
@@ -187,7 +187,7 @@ def upgrade():
     # 科目
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('subjects',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(30), nullable=True),
         sa.Column('name', sa.String(50), nullable=False),
         sa.Column('category', sa.String(30), nullable=True),
@@ -202,11 +202,11 @@ def upgrade():
     # 知识点
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('knowledge_points',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('code', sa.String(50), nullable=False),
         sa.Column('name', sa.String(100), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('parent_id', sa.String(36), sa.ForeignKey('knowledge_points.id'), nullable=True),
+        sa.Column('parent_id', sa.UUID(), sa.ForeignKey('knowledge_points.id'), nullable=True),
         sa.Column('subject', sa.String(50), nullable=False),
         sa.Column('grade_level', sa.String(20), nullable=True),
         sa.Column('difficulty_level', sa.String(10), nullable=True),
@@ -224,7 +224,7 @@ def upgrade():
     # 题目
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('questions',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('title', sa.String(500), nullable=False),
         sa.Column('question_type', sa.String(20), nullable=False),
         sa.Column('difficulty', sa.String(10), nullable=False),
@@ -236,10 +236,10 @@ def upgrade():
         sa.Column('meta_data', sa.JSON(), nullable=True),
         sa.Column('source', sa.String(20), nullable=False, server_default=sa.text("'MANUAL'")),
         sa.Column('review_status', sa.String(20), nullable=False, server_default=sa.text("'APPROVED'")),
-        sa.Column('reviewed_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=True),
+        sa.Column('reviewed_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=True),
         sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('source_task_id', sa.String(36), nullable=True),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('source_task_id', sa.UUID(), nullable=True),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('is_typical', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('content_hash', sa.String(64), nullable=True),
@@ -258,9 +258,9 @@ def upgrade():
 
     # 题目-知识点关联 (question_knowledge_points 已弃用，保留兼容)
     op.create_table('question_knowledge_points',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=False),
-        sa.Column('knowledge_point_id', sa.String(36), sa.ForeignKey('knowledge_points.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=False),
+        sa.Column('knowledge_point_id', sa.UUID(), sa.ForeignKey('knowledge_points.id'), nullable=False),
         sa.Column('weight', sa.Numeric(3, 2), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('question_id', 'knowledge_point_id')
@@ -270,7 +270,7 @@ def upgrade():
     # 课纲 & 知识点树
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('syllabi',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('grade_level', sa.JSON(), nullable=True),
         sa.Column('province', sa.String(50), nullable=True),
@@ -280,17 +280,17 @@ def upgrade():
         sa.Column('status', sa.String(20), nullable=True, server_default=sa.text("'DRAFT'")),
         sa.Column('version', sa.Integer(), nullable=True, server_default=sa.text('1')),
         sa.Column('is_current', sa.Boolean(), nullable=True, server_default=sa.text('true')),
-        sa.Column('parent_syllabus_id', sa.String(36), nullable=True),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('parent_syllabus_id', sa.UUID(), nullable=True),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
 
     op.create_table('knowledge_nodes',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('syllabus_id', sa.String(36), sa.ForeignKey('syllabi.id'), nullable=False),
-        sa.Column('parent_id', sa.String(36), sa.ForeignKey('knowledge_nodes.id'), nullable=True),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('syllabus_id', sa.UUID(), sa.ForeignKey('syllabi.id'), nullable=False),
+        sa.Column('parent_id', sa.UUID(), sa.ForeignKey('knowledge_nodes.id'), nullable=True),
         sa.Column('name', sa.String(100), nullable=False),
         sa.Column('node_type', sa.String(20), nullable=False, server_default=sa.text("'POINT'")),
         sa.Column('sort_order', sa.Integer(), nullable=True, server_default=sa.text('0')),
@@ -311,7 +311,7 @@ def upgrade():
     # 试卷
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('exam_papers',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('subject', sa.String(50), nullable=True),
@@ -321,7 +321,7 @@ def upgrade():
         sa.Column('duration_minutes', sa.Integer(), nullable=True),
         sa.Column('subtitle', sa.String(200), nullable=True),
         sa.Column('instructions', sa.Text(), nullable=True),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
@@ -334,9 +334,9 @@ def upgrade():
 
     # 试卷-题目关联
     op.create_table('exam_paper_questions',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('exam_paper_id', sa.String(36), sa.ForeignKey('exam_papers.id'), nullable=False),
-        sa.Column('question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('exam_paper_id', sa.UUID(), sa.ForeignKey('exam_papers.id'), nullable=False),
+        sa.Column('question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=False),
         sa.Column('position', sa.Integer(), nullable=False, server_default=sa.text('0')),
         sa.Column('score', sa.Integer(), nullable=False, server_default=sa.text('0')),
         sa.PrimaryKeyConstraint('id'),
@@ -350,10 +350,10 @@ def upgrade():
     # 班级
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('classes',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('name', sa.String(100), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('teacher_id', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('teacher_id', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('grade_level', sa.String(20), nullable=True),
         sa.Column('subject', sa.String(50), nullable=True),
         sa.Column('start_date', sa.Date(), nullable=True),
@@ -367,9 +367,9 @@ def upgrade():
     op.create_index('ix_classes_is_active', 'classes', ['is_active'])
 
     op.create_table('class_students',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('class_id', sa.String(36), sa.ForeignKey('classes.id'), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('class_id', sa.UUID(), sa.ForeignKey('classes.id'), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('joined_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
@@ -380,9 +380,9 @@ def upgrade():
     # 答题 & 评分
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('ocr_uploads',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
-        sa.Column('exam_paper_id', sa.String(36), sa.ForeignKey('exam_papers.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('exam_paper_id', sa.UUID(), sa.ForeignKey('exam_papers.id'), nullable=False),
         sa.Column('file_name', sa.String(255), nullable=False),
         sa.Column('file_path', sa.String(500), nullable=False),
         sa.Column('file_size', sa.Integer(), nullable=False),
@@ -405,11 +405,11 @@ def upgrade():
     op.create_index('ix_ocr_uploads_exam_paper_id', 'ocr_uploads', ['exam_paper_id'])
 
     op.create_table('answer_submissions',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
-        sa.Column('exam_paper_id', sa.String(36), sa.ForeignKey('exam_papers.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('exam_paper_id', sa.UUID(), sa.ForeignKey('exam_papers.id'), nullable=False),
         sa.Column('submission_type', sa.String(20), nullable=False),
-        sa.Column('ocr_upload_id', sa.String(36), sa.ForeignKey('ocr_uploads.id'), nullable=True),
+        sa.Column('ocr_upload_id', sa.UUID(), sa.ForeignKey('ocr_uploads.id'), nullable=True),
         sa.Column('status', sa.String(20), nullable=False),
         sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('submitted_at', sa.DateTime(timezone=True), nullable=False),
@@ -427,9 +427,9 @@ def upgrade():
     op.create_index('ix_answer_submissions_exam_paper_id', 'answer_submissions', ['exam_paper_id'])
 
     op.create_table('answer_details',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('answer_submission_id', sa.String(36), sa.ForeignKey('answer_submissions.id'), nullable=False),
-        sa.Column('question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('answer_submission_id', sa.UUID(), sa.ForeignKey('answer_submissions.id'), nullable=False),
+        sa.Column('question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=False),
         sa.Column('student_answer', sa.Text(), nullable=True),
         sa.Column('is_correct', sa.Boolean(), nullable=True),
         sa.Column('score_obtained', sa.Numeric(5, 2), nullable=True),
@@ -445,8 +445,8 @@ def upgrade():
     op.create_index('ix_answer_details_question_id', 'answer_details', ['question_id'])
 
     op.create_table('grading_records',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('answer_submission_id', sa.String(36), sa.ForeignKey('answer_submissions.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('answer_submission_id', sa.UUID(), sa.ForeignKey('answer_submissions.id'), nullable=False),
         sa.Column('model_used', sa.String(100), nullable=True),
         sa.Column('model_version', sa.String(50), nullable=True),
         sa.Column('status', sa.String(20), nullable=False),
@@ -467,11 +467,11 @@ def upgrade():
     # 错题本
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('error_notebooks',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('exam_paper_id', sa.String(36), sa.ForeignKey('exam_papers.id'), nullable=True),
+        sa.Column('exam_paper_id', sa.UUID(), sa.ForeignKey('exam_papers.id'), nullable=True),
         sa.Column('generated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('question_count', sa.Integer(), nullable=False),
         sa.Column('status', sa.String(20), nullable=False),
@@ -485,10 +485,10 @@ def upgrade():
     op.create_index('ix_error_notebooks_exam_paper_id', 'error_notebooks', ['exam_paper_id'])
 
     op.create_table('error_notebook_questions',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('error_notebook_id', sa.String(36), sa.ForeignKey('error_notebooks.id'), nullable=False),
-        sa.Column('original_question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=False),
-        sa.Column('practice_question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=True),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('error_notebook_id', sa.UUID(), sa.ForeignKey('error_notebooks.id'), nullable=False),
+        sa.Column('original_question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=False),
+        sa.Column('practice_question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=True),
         sa.Column('error_type', sa.String(50), nullable=True),
         sa.Column('explanation', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -504,8 +504,8 @@ def upgrade():
     # 自学任务
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('self_study_tasks',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('subject', sa.String(50), nullable=True),
@@ -526,16 +526,16 @@ def upgrade():
     # 通知
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('notifications',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('recipient_id', sa.String(36), nullable=False),
-        sa.Column('sender_id', sa.String(36), nullable=True),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('recipient_id', sa.UUID(), nullable=False),
+        sa.Column('sender_id', sa.UUID(), nullable=True),
         sa.Column('notification_type', sa.String(30), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('content', sa.Text(), nullable=False),
         sa.Column('channel', sa.String(20), nullable=False),
         sa.Column('status', sa.String(20), nullable=False),
         sa.Column('related_entity_type', sa.String(30), nullable=True),
-        sa.Column('related_entity_id', sa.String(36), nullable=True),
+        sa.Column('related_entity_id', sa.UUID(), nullable=True),
         sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
@@ -559,7 +559,7 @@ def upgrade():
     # LLM & 任务
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('llm_configs',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('name', sa.String(100), nullable=False),
         sa.Column('provider', sa.String(50), nullable=False),
         sa.Column('endpoint', sa.String(500), nullable=False),
@@ -572,7 +572,7 @@ def upgrade():
     )
 
     op.create_table('question_tasks',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('task_type', sa.String(20), nullable=False),
         sa.Column('status', sa.String(20), nullable=True, server_default=sa.text("'PENDING'")),
         sa.Column('progress', sa.Integer(), nullable=True, server_default=sa.text('0')),
@@ -584,7 +584,7 @@ def upgrade():
         sa.Column('model_used', sa.String(100), nullable=True),
         sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
@@ -593,7 +593,7 @@ def upgrade():
     # 知识图谱模型 (KnowledgePointModel & MlModel)
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('knowledge_point_models',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('source_url', sa.String(500), nullable=False),
         sa.Column('source_title', sa.String(200), nullable=True),
         sa.Column('content_hash', sa.String(64), nullable=False),
@@ -611,7 +611,7 @@ def upgrade():
     op.create_index('ix_knowledge_point_models_grade_level', 'knowledge_point_models', ['grade_level'])
 
     op.create_table('ml_models',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('name', sa.String(100), nullable=False),
         sa.Column('version', sa.String(50), nullable=False),
         sa.Column('model_type', sa.String(30), nullable=False),
@@ -622,7 +622,7 @@ def upgrade():
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('is_deprecated', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('performance_metrics', sa.JSON(), nullable=True),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('deployed_at', sa.DateTime(timezone=True), nullable=True),
@@ -637,15 +637,15 @@ def upgrade():
     # 讲解板
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('explanation_sessions',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=True),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=True),
         sa.Column('title', sa.String(500), nullable=False),
         sa.Column('topic', sa.String(100), nullable=True),
         sa.Column('difficulty_label', sa.String(50), nullable=True),
         sa.Column('problem_statement', sa.Text(), nullable=True),
         sa.Column('graph_config', JSONB(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
-        sa.Column('created_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=True),
+        sa.Column('created_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
@@ -654,8 +654,8 @@ def upgrade():
     op.create_index('ix_explanation_sessions_question_id', 'explanation_sessions', ['question_id', 'is_active'])
 
     op.create_table('explanation_steps',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('session_id', sa.String(36), sa.ForeignKey('explanation_sessions.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('session_id', sa.UUID(), sa.ForeignKey('explanation_sessions.id', ondelete='CASCADE'), nullable=False),
         sa.Column('step_order', sa.Integer(), nullable=False),
         sa.Column('text', sa.Text(), nullable=False),
         sa.Column('panda_emotion', sa.String(20), nullable=False, server_default=sa.text("'explaining'")),
@@ -671,10 +671,10 @@ def upgrade():
     # 题目推荐
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('question_recommendations',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('question_id', sa.String(36), sa.ForeignKey('questions.id'), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
-        sa.Column('recommended_by', sa.String(36), sa.ForeignKey('admins.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('question_id', sa.UUID(), sa.ForeignKey('questions.id'), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('recommended_by', sa.UUID(), sa.ForeignKey('admins.id'), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('question_id', 'student_id', name='uq_recommendation_question_student'),
@@ -686,7 +686,7 @@ def upgrade():
     # 家长模块
     # ═══════════════════════════════════════════════════════════════════════════
     op.create_table('encouragement_templates',
-        sa.Column('id', sa.String(36), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('category', sa.String(30), nullable=False),
         sa.Column('title', sa.String(100), nullable=False),
         sa.Column('message_template', sa.Text(), nullable=False),
@@ -701,8 +701,8 @@ def upgrade():
     )
 
     op.create_table('celebration_events',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('event_type', sa.String(30), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('description', sa.Text(), nullable=False),
@@ -720,14 +720,14 @@ def upgrade():
     op.create_index('ix_celebration_events_student_id', 'celebration_events', ['student_id'])
 
     op.create_table('encouragements',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('parent_id', sa.String(36), sa.ForeignKey('parents.id'), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('parent_id', sa.UUID(), sa.ForeignKey('parents.id'), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('encouragement_type', sa.String(20), nullable=False),
         sa.Column('title', sa.String(200), nullable=True),
         sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('template_id', sa.String(36), sa.ForeignKey('encouragement_templates.id'), nullable=True),
-        sa.Column('celebration_event_id', sa.String(36), sa.ForeignKey('celebration_events.id'), nullable=True),
+        sa.Column('template_id', sa.UUID(), sa.ForeignKey('encouragement_templates.id'), nullable=True),
+        sa.Column('celebration_event_id', sa.UUID(), sa.ForeignKey('celebration_events.id'), nullable=True),
         sa.Column('is_read', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('read_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -741,9 +741,9 @@ def upgrade():
     op.create_index('ix_encouragements_student_read', 'encouragements', ['student_id', 'is_read'])
 
     op.create_table('reward_goals',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('parent_id', sa.String(36), sa.ForeignKey('parents.id'), nullable=False),
-        sa.Column('student_id', sa.String(36), sa.ForeignKey('students.id'), nullable=False),
+        sa.Column('id', sa.UUID(), nullable=False),
+        sa.Column('parent_id', sa.UUID(), sa.ForeignKey('parents.id'), nullable=False),
+        sa.Column('student_id', sa.UUID(), sa.ForeignKey('students.id'), nullable=False),
         sa.Column('title', sa.String(200), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('reward_description', sa.String(500), nullable=False),

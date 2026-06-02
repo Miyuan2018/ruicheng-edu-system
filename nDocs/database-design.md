@@ -1,13 +1,13 @@
 # 数据库架构设计文档
 
-> 版本: V3.0 | 日期: 2026-05-25 | 数据库: PostgreSQL 16 | ORM: SQLAlchemy 2.0 (async)
+> 版本: V3.5 | 日期: 2026-05-28 | 数据库: PostgreSQL 16 | ORM: SQLAlchemy 2.0 (async) | PK: UUID
 
 ---
 
 ## 1. 概述
 
 系统使用 PostgreSQL 16 作为主数据库，通过 Alembic 管理迁移。
-所有模型使用 UUID 主键（原生 UUID 或 String(36)），时间戳使用 `DateTime(timezone=True)`。
+所有模型使用 PostgreSQL 原生 UUID 主键 (`UUID(as_uuid=True)`)，时间戳使用 `DateTime(timezone=True)`。
 
 当前共 **30 张表**，分为: 用户(4)、内容(6)、作答(4)、错题本(2)、任务(2)、系统(4)、参考数据(3)、家长鼓励(5)。
 
@@ -43,7 +43,9 @@
 | full_name | VARCHAR(100) | | |
 | phone | VARCHAR(20) | | |
 | email | VARCHAR(100) | | |
-| admin_type | INTEGER | | 0=教师, 1=题库管理员 |
+| **subjects** | **JSONB** | | 学科权限 `["数学","语文"]` 或 `["ALL"]` |
+| **grade_level** | **JSONB** | | 年级上限展开数组 `["G5","G6","G7"]` |
+| admin_type | INTEGER | | 0=教师, 1=题库管理员, 2=校长, 3=教务主任, 4=学管, 5=班主任 |
 | created_by | UUID | FK → sys_admins.id | |
 | is_active | BOOLEAN | DEFAULT true | |
 | created_at | DateTime(tz) | | |
@@ -683,6 +685,7 @@ sys_admins ──┐
 | 008 | 讲题板: explanation_sessions + explanation_steps |
 | 009 | 家长鼓励域: parent_student_links + encouragements + reward_goals + celebration_records + parents |
 | 010 | 题目推荐: question_recommendations |
+| 011 | **UUID 类型统一**: 全表主键/外键 String(36)→PostgreSQL UUID(16 bytes) |
 
 ---
 
@@ -700,3 +703,4 @@ sys_admins ──┐
 | 无家长鼓励 | 家长鼓励域 5 表 + students 邀请码 |
 | 无讲题板 | explanation_sessions + explanation_steps (互动讲解) |
 | 无推荐机制 | question_recommendations (教师为学生推荐题目) |
+| String(36) 主键 | PostgreSQL 原生 UUID (16 bytes, 二进制索引) |

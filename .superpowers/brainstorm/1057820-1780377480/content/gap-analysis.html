@@ -1,0 +1,81 @@
+<h2>V4 设计 vs 当前实现 — 差距分析</h2>
+<p class="subtitle">左列：V4 设计要求 | 右列：当前实际代码</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">V4 设计：BasicInfoStep</div>
+    <div class="mockup-body">
+      <div style="background:#fff;padding:16px;border-radius:8px;">
+        <div style="font-weight:700;font-size:15px;margin-bottom:12px;color:#1a1a1a;">基本信息</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div><div class="label">试卷标题</div><div class="mock-input">八年级数学期中测试</div></div>
+          <div><div class="label">学科</div><div class="mock-input">数学</div></div>
+          <div><div class="label">总分</div><div class="mock-input">100</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div><div class="label">适用范围</div><div class="mock-input">年级综合</div></div>
+          <div><div class="label">年级</div><div class="mock-input">八年级</div></div>
+          <div><div class="label">时长</div><div class="mock-input">60 分钟</div></div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <div class="label" style="margin-bottom:4px;">难度比值（自动选题时使用）</div>
+          <div style="display:flex;gap:8px;align-items:end;">
+            <div style="flex:1;text-align:center;"><div style="font-size:11px;color:#52c41a;margin-bottom:2px;">简单</div><div style="background:#f6ffed;border:1px solid #b7eb8f;border-radius:4px;padding:4px;font-size:18px;font-weight:700;color:#52c41a;">20%</div></div>
+            <div style="flex:1;text-align:center;"><div style="font-size:11px;color:#faad14;margin-bottom:2px;">中等</div><div style="background:#fffbe6;border:1px solid #ffe58f;border-radius:4px;padding:4px;font-size:18px;font-weight:700;color:#faad14;">50%</div></div>
+            <div style="flex:1;text-align:center;"><div style="font-size:11px;color:#ff4d4f;margin-bottom:2px;">困难</div><div style="background:#fff2f0;border:1px solid #ffccc7;border-radius:4px;padding:4px;font-size:18px;font-weight:700;color:#ff4d4f;">30%</div></div>
+          </div>
+        </div>
+        <div style="color:#52c41a;font-size:11px;">✓ 合计 100%</div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0;">
+          <div class="label" style="margin-bottom:4px;">副标题 / 注意事项（选填）</div>
+          <div class="placeholder" style="height:24px;margin-bottom:6px;">副标题...</div>
+          <div class="placeholder" style="height:48px;">注意事项...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header" style="background:#ff4d4f;">当前代码：BasicInfoStep</div>
+    <div class="mockup-body">
+      <div style="background:#fff;padding:16px;border-radius:8px;">
+        <div style="font-weight:700;font-size:15px;margin-bottom:12px;color:#1a1a1a;">基本信息</div>
+        <div style="border:1px solid #ffccc7;border-radius:4px;padding:8px;margin-bottom:10px;">
+          <div style="font-size:10px;color:#ff4d4f;margin-bottom:4px;">问题1：难度占半行，InputNumber挤在一起</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+            <div class="mock-input" style="font-size:10px;text-align:center;">EASY 20</div>
+            <div class="mock-input" style="font-size:10px;text-align:center;">MED 50</div>
+            <div class="mock-input" style="font-size:10px;text-align:center;">HARD 30</div>
+          </div>
+        </div>
+        <div style="border:1px solid #ffccc7;border-radius:4px;padding:8px;margin-bottom:10px;">
+          <div style="font-size:10px;color:#ff4d4f;margin-bottom:4px;">问题2：知识点选择器占整行，喧宾夺主</div>
+          <div class="placeholder" style="height:20px;margin-bottom:4px;">考纲选择...</div>
+          <div class="placeholder" style="height:32px;">知识点多选...</div>
+        </div>
+        <div style="border:1px solid #ffccc7;border-radius:4px;padding:8px;margin-bottom:10px;">
+          <div style="font-size:10px;color:#ff4d4f;margin-bottom:4px;">问题3：副标题/描述/注意事项散落，无层次</div>
+          <div class="placeholder" style="height:18px;margin-bottom:4px;">副标题...</div>
+          <div class="placeholder" style="height:18px;margin-bottom:4px;">描述...</div>
+          <div class="placeholder" style="height:36px;">注意事项...</div>
+        </div>
+        <div style="border:1px solid #ffccc7;border-radius:4px;padding:8px;">
+          <div style="font-size:10px;color:#ff4d4f;margin-bottom:4px;">问题4：V4 新增字段 show_units / per_unit_timer 无从体现</div>
+          <div style="font-size:11px;color:#999;">— 已移至 StructureStep</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:24px;">
+  <h3>核心差距</h3>
+  <table style="width:100%;font-size:13px;border-collapse:collapse;">
+    <tr style="border-bottom:2px solid #e8e8e8;text-align:left;"><th style="padding:8px;">方面</th><th style="padding:8px;">V4 设计</th><th style="padding:8px;">当前代码</th></tr>
+    <tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px;">难度比值</td><td style="padding:8px;">大色块卡片，直观醒目</td><td style="padding:8px;color:#ff4d4f;">三小输入框挤在一行</td></tr>
+    <tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px;">布局</td><td style="padding:8px;">先标题/学科/总分 → 适用范围/年级/时长 → 难度 → 选填</td><td style="padding:8px;color:#ff4d4f;">两行之后就是知识点，混乱</td></tr>
+    <tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px;">知识点</td><td style="padding:8px;">折叠到"高级"区内</td><td style="padding:8px;color:#ff4d4f;">展开占一整行</td></tr>
+    <tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px;">选填项</td><td style="padding:8px;">副标题+注意事项放在底部轻量区</td><td style="padding:8px;color:#ff4d4f;">副标题/描述/注意事项各占一行</td></tr>
+    <tr><td style="padding:8px;">V4 字段</td><td style="padding:8px;color:#1890ff;">show_units + per_unit_timer 在 StructureStep</td><td style="padding:8px;color:#52c41a;">✓ 已实现</td></tr>
+  </table>
+</div>

@@ -60,19 +60,30 @@ r = c.get("/api/v1/questions", headers={"Authorization": f"Bearer {t_tok}"})
 check("List questions", r.status_code == 200 and len(r.json()) > 0)
 
 # ======= 3. Paper + Submission + Grade =======
-print("=== 3. Paper -> Submit -> Grade ===")
+print("=== 3. Paper -> Unit -> Submit -> Grade ===")
 r = c.post("/api/v1/exam-papers", headers={"Authorization": f"Bearer {t_tok}"}, json={
     "title": "Smoke试卷", "subject": "数学", "total_score": 15})
 check("Create paper", r.status_code == 200)
 pid = json_id(r)
 
-c.post(f"/api/v1/exam-papers/{pid}/questions", headers={"Authorization": f"Bearer {t_tok}"},
-       json={"question_id": q1, "question_order": 1, "question_score": 15})
-c.put(f"/api/v1/exam-papers/{pid}", headers={"Authorization": f"Bearer {t_tok}"},
-      json={"status": "PUBLISHED"})
+# Create unit with question inline
+r = c.post(f"/api/v1/exam-papers/{pid}/units", headers={"Authorization": f"Bearer {t_tok}"}, json={
+    "name": "基础单元", "position": 1,
+    "questions": [{
+        "question_id": q1, "question_type": "SINGLE_CHOICE", "position": 1, "score": 15
+    }]
+})
+check("Create unit", r.status_code == 200)
+uid = json_id(r)
 
-r = c.post("/api/v1/answers", headers={"Authorization": f"Bearer {s_tok}"}, json={
-    "exam_paper_id": pid, "submission_type": "ONLINE",
+# Publish paper
+r = c.post(f"/api/v1/exam-papers/{pid}/publish", headers={"Authorization": f"Bearer {t_tok}"},
+           json={"class_ids": []})
+check("Publish paper", r.status_code == 200)
+
+# Submit per-unit
+r = c.post(f"/api/v1/answers/exam-papers/{pid}/units/{uid}/submit",
+           headers={"Authorization": f"Bearer {s_tok}"}, json={
     "answers": [{"question_id": q1, "student_answer": "B"}]})
 check("Submit answer", r.status_code == 200)
 d = r.json()
@@ -100,9 +111,9 @@ r = c.post("/api/v1/question-admin/syllabi", params={
 check("Create syllabus", r.status_code == 200)
 ssid = json_id(r)
 
-r = c.post(f"/api/v1/question-admin/syllabi/{ssid}/extract-knowledge",
+r = c.get(f"/api/v1/knowledge-tree/syllabi/{ssid}/tree",
            headers={"Authorization": f"Bearer {qa_tok}"})
-check("Extract knowledge", r.status_code == 200 and "knowledge_tree" in r.json())
+check("Get knowledge tree", r.status_code == 200 and "tree" in r.json())
 
 r = c.post("/api/v1/question-admin/generate", params={
     "knowledge_point": "勾股定理", "difficulty": "MEDIUM", "count": 3},

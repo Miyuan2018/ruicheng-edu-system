@@ -1,12 +1,12 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Table, Button, Space, Tag, Input, Select, message,
   Typography, Popconfirm, Switch, Tooltip, Modal, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  ExportOutlined, ImportOutlined, CheckOutlined, CloseOutlined,
-  PlayCircleOutlined, StarOutlined,
+  ExportOutlined, ImportOutlined,
+  PlayCircleOutlined, StarOutlined, BulbOutlined, BulbFilled,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import apiClient from '../../api/client';
@@ -15,6 +15,7 @@ import { getUserType } from '../../store/auth';
 import QuestionEditModal from './QuestionEditModal';
 import BatchImportModal from './BatchImportModal';
 import ExplanationDrawer from '../../components/topic-board/ExplanationDrawer';
+import ExplanationReviewModal from '../../components/topic-board/ExplanationReviewModal';
 
 const { Title } = Typography;
 
@@ -28,6 +29,7 @@ interface QuestionItem {
   score: number;
   created_at: string;
   is_active: boolean;
+  is_typical?: boolean;
 }
 
 export default function QuestionListPage() {
@@ -48,7 +50,7 @@ export default function QuestionListPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuestionItem | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [subjectOptions, setSubjectOptions] = useState<{value:string,label:string}[]>([]);
   const [exportMax, setExportMax] = useState(200);
   const [explanationMap, setExplanationMap] = useState<Record<string, boolean>>({});
@@ -63,6 +65,14 @@ export default function QuestionListPage() {
   const [recommendStudentIds, setRecommendStudentIds] = useState<string[]>([]);
   const [recommendExisting, setRecommendExisting] = useState<{student_id:string,student_name:string}[]>([]);
   const [recommendSaving, setRecommendSaving] = useState(false);
+  // 标记典型题
+  const [typicalTarget, setTypicalTarget] = useState<QuestionItem | null>(null);
+  const [typicalSteps, setTypicalSteps] = useState<any[]>([]);
+  const [typicalGenerating, setTypicalGenerating] = useState(false);
+  const [typicalSaving, setTypicalSaving] = useState(false);
+  const [typicalReviewOpen, setTypicalReviewOpen] = useState(false);
+  const [typicalModel, setTypicalModel] = useState('');
+  const [typicalPrompt, setTypicalPrompt] = useState('');
   const userType = getUserType();
   const canReview = userType === 'QUESTION_ADMIN' || userType === 'SYS_ADMIN' || userType === 'TEACHER';
   const { 'question-types': qtypes, 'difficulty-levels': diffs, 'grade-levels': grades } = useReferenceValues();
@@ -125,26 +135,6 @@ export default function QuestionListPage() {
   const handleEdit = (record: QuestionItem) => {
     setEditingQuestion(record);
     setEditModalOpen(true);
-  };
-
-  const handleBatchApprove = async () => {
-    if (!selectedRowKeys.length) return;
-    try {
-      await apiClient.post('/question-admin/batch-approve', selectedRowKeys);
-      message.success(`已批量审核通过 ${selectedRowKeys.length} 道试题`);
-      setSelectedRowKeys([]);
-      fetchQuestions();
-    } catch { message.error('批量审核失败'); }
-  };
-
-  const handleBatchReject = async () => {
-    if (!selectedRowKeys.length) return;
-    try {
-      await apiClient.post('/question-admin/batch-reject', selectedRowKeys);
-      message.success(`已批量驳回 ${selectedRowKeys.length} 道试题`);
-      setSelectedRowKeys([]);
-      fetchQuestions();
-    } catch { message.error('批量驳回失败'); }
   };
 
   const handleBatchDelete = async () => {
@@ -230,6 +220,78 @@ export default function QuestionListPage() {
     setRecommendSaving(false);
   };
 
+  // ─── 标记典型题 ───
+  const markReqRef = useRef(0);
+  const handleMarkTypical = async (record: QuestionItem) => {
+    const reqId = ++markReqRef.current;
+    setTypicalTarget(record);
+    setTypicalSteps([]);
+    setTypicalModel('');
+    setTypicalPrompt('');
+    setTypicalGenerating(true);
+    setTypicalReviewOpen(true);
+    try {
+      const resp = await apiClient.post('/questions/generate-explanation', { question_id: record.id });
+      if (reqId !== markReqRef.current) return; // stale response, ignore
+      const data = resp.data;
+      if (data && data.steps) {
+        setTypicalSteps(data.steps);
+        setTypicalModel((data.provider || '') + ' / ' + (data.model || ''));
+        setTypicalPrompt(data.prompt || '');
+      } else {
+        message.warning('LLM 未返回讲解步骤，请手动添加');
+        setTypicalSteps([]);
+      }
+    } catch (e: any) {
+      if (reqId !== markReqRef.current) return; // stale error, ignore
+      const body = e?.response?.data;
+      const detail = body?.detail || body?.message || '';
+      if (typeof detail === 'string' && detail.length > 0) {
+        message.error(detail);
+      } else if (e?.code === 'ERR_NETWORK') {
+        message.error('网络连接失败，请检查后端服务');
+      } else {
+        message.error('生成讲解失败，请手动添加步骤');
+      }
+      setTypicalSteps([]);
+    }
+    setTypicalGenerating(false);
+  };
+
+  const handleTypicalSave = async (steps: any[]) => {
+    if (!typicalTarget) return;
+    setTypicalSaving(true);
+    try {
+      await apiClient.post(`/questions/${typicalTarget.id}/save-typical`, {
+        steps: steps.map((s: any, i: number) => ({
+          step_order: i + 1,
+          text: s.text,
+          panda_emotion: s.panda_emotion || 'explaining',
+          board_line: s.board_line || null,
+        })),
+      });
+      message.success('已标记为典型题并保存讲解');
+      // 立即更新本地状态，不等 has-explanations 异步返回
+      if (typicalTarget?.id) {
+        setExplanationMap(prev => ({ ...prev, [typicalTarget.id]: true }));
+      }
+      setTypicalReviewOpen(false);
+      setTypicalTarget(null);
+      fetchQuestions();
+    } catch (e: any) {
+      const body = e?.response?.data;
+      const detail = body?.detail || body?.message || '';
+      if (typeof detail === 'string' && detail.length > 0) {
+        message.error(detail);
+      } else if (e?.code === 'ERR_NETWORK') {
+        message.error('网络连接失败，请检查后端服务');
+      } else {
+        message.error('保存失败，请稍后重试');
+      }
+    }
+    setTypicalSaving(false);
+  };
+
   const columns: ColumnsType<QuestionItem> = [
     { title: '题目', dataIndex: 'title', width: 300, ellipsis: true,
       render: (t: string, r: QuestionItem) => (
@@ -276,21 +338,38 @@ export default function QuestionListPage() {
     },
     {
       title: '讲解', key: 'explanation', width: 60, align: 'center' as const,
-      render: (_: unknown, record: QuestionItem) => explanationMap[record.id] ? (
-        <Tooltip title="查看讲解">
-          <Button
-            type="link" size="small"
-            icon={<PlayCircleOutlined style={{ color: '#667eea', fontSize: 16 }} />}
-            onClick={() => { setDrawerQuestionId(record.id); setDrawerOpen(true); }}
-          />
-        </Tooltip>
-      ) : <span style={{ color: '#ccc' }}>-</span>,
+      render: (_: unknown, record: QuestionItem) => {
+        const hasExp = explanationMap[record.id];
+        return (
+          <Tooltip title={hasExp ? '查看讲题板' : '暂无讲解，请先标记为典型题生成讲解'}>
+            <Button
+              type="link" size="small"
+              icon={<PlayCircleOutlined style={{ color: hasExp ? '#667eea' : '#d9d9d9', fontSize: 16 }} />}
+              onClick={() => {
+                if (hasExp) {
+                  setDrawerQuestionId(record.id);
+                  setDrawerOpen(true);
+                } else {
+                  message.info('该题暂无讲解，请标记为典型题后生成');
+                }
+              }}
+            />
+          </Tooltip>
+        );
+      },
     },
     {
       title: '操作', key: 'actions', width: canReview ? 150 : 120, fixed: 'right',
       render: (_: unknown, record: QuestionItem) => (
         <Space>
-          {canReview && (
+          {userType === 'QUESTION_ADMIN' || userType === 'SYS_ADMIN' ? (
+            <Tooltip title={record.is_typical ? '已标记为典型题，点击重新生成讲解' : '标记为典型题'}>
+              <Button type="link" size="small"
+                icon={record.is_typical ? <BulbFilled style={{ color: '#faad14' }} /> : <BulbOutlined />}
+                onClick={() => handleMarkTypical(record)} />
+            </Tooltip>
+          ) : null}
+          {(userType === 'TEACHER' || userType === 'SYS_ADMIN') && (
             <Tooltip title="推荐给学生">
               <Button type="link" size="small" icon={<StarOutlined />} onClick={() => openRecommendModal(record)} />
             </Tooltip>
@@ -310,16 +389,6 @@ export default function QuestionListPage() {
         <Title level={4} style={{ margin: 0 }}>试题管理</Title>
         <Space>
           <Button icon={<ImportOutlined />} onClick={() => setImportModalOpen(true)}>导入</Button>
-          {selectedRowKeys.length > 0 && (
-            <Button icon={<ExportOutlined />} onClick={() => handleExport(selectedRowKeys)}
-              disabled={exportMax === 0}>
-              导出选中({selectedRowKeys.length})
-            </Button>
-          )}
-          <Button icon={<ExportOutlined />} onClick={() => handleExport()}
-            disabled={exportMax === 0}>
-            导出全部{exportMax === 0 ? '(已禁用)' : ''}
-          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新建</Button>
         </Space>
       </div>
@@ -383,11 +452,15 @@ export default function QuestionListPage() {
       {selectedRowKeys.length > 0 && (
         <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 13 }}>已选择 {selectedRowKeys.length} 项</span>
-          {canReview && (
-            <>
-              <Button type="primary" size="small" icon={<CheckOutlined />} onClick={handleBatchApprove}>批量通过</Button>
-              <Button danger size="small" icon={<CloseOutlined />} onClick={handleBatchReject}>批量驳回</Button>
-            </>
+          <Button icon={<ExportOutlined />} size="small"
+            disabled={exportMax === 0}
+            onClick={() => handleExport(selectedRowKeys)}>导出选中</Button>
+          {(userType === 'QUESTION_ADMIN' || userType === 'SYS_ADMIN') && (
+            <Button icon={<BulbOutlined />} size="small"
+              onClick={() => {
+                const firstSelected = questions.filter(q => selectedRowKeys.includes(q.id));
+                if (firstSelected.length > 0) handleMarkTypical(firstSelected[0]);
+              }}>标记典型</Button>
           )}
           <Popconfirm title="确定批量删除选中试题？" onConfirm={handleBatchDelete}>
             <Button danger size="small" icon={<DeleteOutlined />}>批量删除</Button>
@@ -400,7 +473,7 @@ export default function QuestionListPage() {
         dataSource={questions}
         loading={loading}
         size="middle"
-        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as string[]) }}
+        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys) }}
         pagination={{
           current: page, pageSize, total,
           showSizeChanger: true, showTotal: (t) => `共 ${t} 题`,
@@ -488,6 +561,29 @@ export default function QuestionListPage() {
         {!recommendSelectedClass && (
           <div style={{ textAlign: 'center', color: '#999', padding: 24 }}>请先选择班级</div>
         )}
+      </Modal>
+
+      {/* 标记典型题 — 讲解审核弹窗 */}
+      <ExplanationReviewModal
+        open={typicalReviewOpen && !typicalGenerating}
+        saving={typicalSaving}
+        steps={typicalSteps}
+        onSave={handleTypicalSave}
+        onClose={() => { setTypicalReviewOpen(false); setTypicalTarget(null); }}
+        headerExtra={(typicalModel || typicalPrompt) ? (
+          <div style={{ fontSize: 12, color: '#666', marginBottom: 12, padding: '8px 12px', background: '#fafafa', borderRadius: 4 }}>
+            {typicalModel && <div><strong>模型：</strong>{typicalModel}</div>}
+            {typicalPrompt && (
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: 'pointer', color: '#1890ff' }}>查看提示词</summary>
+                <pre style={{ marginTop: 4, whiteSpace: 'pre-wrap', fontSize: 11, maxHeight: 200, overflow: 'auto' }}>{typicalPrompt}</pre>
+              </details>
+            )}
+          </div>
+        ) : undefined}
+      />
+      <Modal open={typicalReviewOpen && typicalGenerating} footer={null} closable={false} width={400}>
+        <div style={{ textAlign: 'center', padding: 40 }}>正在调用大模型生成讲解步骤...</div>
       </Modal>
     </div>
   );

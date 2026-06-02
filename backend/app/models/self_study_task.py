@@ -1,5 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Integer, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -7,8 +8,8 @@ from app.db.base import Base
 class SelfStudyTask(Base):
     __tablename__ = "self_study_tasks"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    student_id = Column(String(36), ForeignKey("students.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False, index=True)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     subject = Column(String(50), nullable=True)

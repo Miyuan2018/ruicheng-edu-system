@@ -49,7 +49,8 @@ async def list_syllabi(
     syllabi = result.scalars().all()
     return [{"id": str(s.id), "title": s.title, "grade_level": s.grade_level,
              "province": s.province, "subject": s.subject, "status": s.status,
-             "knowledge_tree": s.knowledge_tree} for s in syllabi]
+             "version": s.version, "is_current": s.is_current,
+             "created_at": str(s.created_at)} for s in syllabi]
 
 
 @router.get("/syllabi/{syllabus_id}")
@@ -59,68 +60,8 @@ async def get_syllabus(syllabus_id: uuid.UUID, db: AsyncSession = Depends(get_db
     if not s:
         raise HTTPException(404, detail="考纲不存在")
     return {"id": str(s.id), "title": s.title, "content": s.content,
-            "knowledge_tree": s.knowledge_tree, "status": s.status}
-
-
-@router.put("/syllabi/{syllabus_id}")
-async def update_syllabus(
-    syllabus_id: uuid.UUID, knowledge_tree: dict = None, content: dict = None,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
-        raise HTTPException(403, detail="仅题库管理员可操作")
-    result = await db.execute(select(Syllabus).where(Syllabus.id == syllabus_id))
-    s = result.scalar_one_or_none()
-    if not s:
-        raise HTTPException(404, detail="考纲不存在")
-    if knowledge_tree:
-        s.knowledge_tree = knowledge_tree
-    if content:
-        s.content = content
-    await db.commit()
-    return {"message": "更新成功"}
-
-
-@router.post("/syllabi/{syllabus_id}/extract-knowledge")
-async def extract_knowledge(
-    syllabus_id: uuid.UUID,
-    model_config_id: str = None,
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
-        raise HTTPException(403, detail="仅题库管理员可操作")
-    result = await db.execute(select(Syllabus).where(Syllabus.id == syllabus_id))
-    s = result.scalar_one_or_none()
-    if not s:
-        raise HTTPException(404, detail="考纲不存在")
-
-    # Mock LLM knowledge extraction - in production calls the selected model
-    content_text = json.dumps(s.content or {}, ensure_ascii=False)
-    knowledge_tree = _mock_extract_knowledge(s.subject or "数学", s.grade_level or "八年级")
-
-    s.knowledge_tree = knowledge_tree
-    await db.commit()
-    return {"knowledge_tree": knowledge_tree, "message": "知识点提取完成"}
-
-
-def _mock_extract_knowledge(subject: str, grade: str) -> dict:
-    """Mock knowledge tree generation. Replace with real LLM call."""
-    return {
-        "name": f"{grade}{subject}考纲",
-        "children": [
-            {"name": "数与代数", "children": [
-                {"name": "实数"}, {"name": "代数式"}, {"name": "方程与不等式"}
-            ]},
-            {"name": "图形与几何", "children": [
-                {"name": "三角形"}, {"name": "四边形"}, {"name": "圆"}
-            ]},
-            {"name": "统计与概率", "children": [
-                {"name": "数据收集"}, {"name": "概率初步"}
-            ]},
-        ]
-    }
+            "grade_level": s.grade_level, "subject": s.subject,
+            "status": s.status, "version": s.version, "is_current": s.is_current}
 
 
 # ─── LLM Configs ────────────────────────────────────────────
@@ -503,7 +444,13 @@ async def start_scrape(
             count=count,
         )
     except Exception as e:
-        return {"ok": False, "error": f"抓取异常: {str(e)}"}
+        import httpx, logging
+        if isinstance(e, httpx.ConnectError):
+            return {"ok": False, "error": "网络搜索不可用：无法连接搜索引擎，请检查网络"}
+        elif isinstance(e, httpx.TimeoutException):
+            return {"ok": False, "error": "网络搜索超时：搜索引擎响应过慢，请减少抓取数量后重试"}
+        logging.getLogger(__name__).exception("scrape error")
+        return {"ok": False, "error": f"抓取异常: {type(e).__name__}: {str(e)}"}
 
     # Auto-save to DB
     uid = current_user.id

@@ -1,6 +1,7 @@
 """Celebration events triggered by student achievements."""
 import uuid
 from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -8,8 +9,8 @@ from app.db.base import Base
 class CelebrationEvent(Base):
     __tablename__ = "celebration_events"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    student_id = Column(String(36), ForeignKey("students.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False, index=True)
     event_type = Column(String(30), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)

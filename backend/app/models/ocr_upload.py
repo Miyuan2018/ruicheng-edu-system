@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Numeric
 from sqlalchemy.types import JSON
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -8,9 +9,9 @@ from app.db.base import Base
 class OcrUpload(Base):
     __tablename__ = "ocr_uploads"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    student_id = Column(String(36), ForeignKey("students.id"), nullable=False, index=True)
-    exam_paper_id = Column(String(36), ForeignKey("exam_papers.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False, index=True)
+    exam_paper_id = Column(UUID(as_uuid=True), ForeignKey("exam_papers.id"), nullable=False, index=True)
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_size = Column(Integer, nullable=False)

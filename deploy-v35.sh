@@ -8,6 +8,9 @@
 #    ./deploy-v35.sh -y           非交互，全部自动确认
 #    ./deploy-v35.sh -d           重建数据库 + 重新导入演示数据
 #    ./deploy-v35.sh -s           仅启动服务（跳过环境初始化）
+#    ./deploy-v35.sh -b 9000      指定后端端口 (默认 8001)
+#    ./deploy-v35.sh -f 4000      指定前端端口 (默认 3001)
+#    ./deploy-v35.sh -b 9000 -f 4000  同时指定前后端端口
 #    ./deploy-v35.sh --docker     使用 Docker Compose 部署
 #    ./deploy-v35.sh -h           显示帮助
 #
@@ -34,6 +37,8 @@ OPT_AUTO_YES=false; OPT_REBUILD_DB=false; OPT_SKIP_SETUP=false; OPT_DOCKER=false
 BACKEND_PID=""; FRONTEND_PID=""
 PYTHON=""; PIP=""          # 由 setup_python 设置
 DB_HOST=""; DB_PORT=""; DB_NAME=""; DB_USER=""; DB_PASS=""
+BACKEND_PORT=8001          # 默认后端端口（可由 -b 参数或 sysconfig.json 覆盖）
+FRONTEND_PORT=3001         # 默认前端端口（可由 -f 参数或 sysconfig.json 覆盖）
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 工具函数
@@ -76,7 +81,7 @@ port_free() {
 # 参数解析
 # ═══════════════════════════════════════════════════════════════════════════════
 usage() {
-    sed -n '2,16p' "$0"
+    sed -n '2,18p' "$0"
     exit 0
 }
 while [[ $# -gt 0 ]]; do
@@ -85,6 +90,18 @@ while [[ $# -gt 0 ]]; do
         -d) OPT_REBUILD_DB=true ;;
         -s) OPT_SKIP_SETUP=true ;;
         --docker) OPT_DOCKER=true ;;
+        -b|--backend-port)
+            shift
+            [[ $# -eq 0 || "$1" =~ ^- ]] && die "-b/--backend-port 需要端口号参数"
+            [[ "$1" =~ ^[0-9]+$ ]] || die "后端端口号必须为数字: $1"
+            BACKEND_PORT="$1"
+            ;;
+        -f|--frontend-port)
+            shift
+            [[ $# -eq 0 || "$1" =~ ^- ]] && die "-f/--frontend-port 需要端口号参数"
+            [[ "$1" =~ ^[0-9]+$ ]] || die "前端端口号必须为数字: $1"
+            FRONTEND_PORT="$1"
+            ;;
         -h|--help) usage ;;
         *) echo -e "${RED}未知选项: $1${NC}"; usage ;;
     esac
@@ -111,6 +128,7 @@ main() {
         step "2/7  Python 环境"; setup_python
         step "3/7  配置文件";   setup_config
         _read_db_config            # 统一解析 DB 配置到全局变量
+        _read_port_config          # 读取端口配置（CLI 参数优先于 sysconfig.json）
         step "4/7  数据库";      setup_database
         step "5/7  演示数据";    setup_demo_data
         step "6/7  前端依赖";    setup_frontend
@@ -119,9 +137,11 @@ main() {
         # -s 模式下仍需确保 PYTHON/PIP 可用
         PYTHON="$CONDA_ENV_DIR/bin/python"; PIP="$CONDA_ENV_DIR/bin/pip"
         _read_db_config
+        _read_port_config
     fi
 
     step "7/7  启动服务"
+    export BACKEND_PORT FRONTEND_PORT
     start_backend
     start_frontend
     print_summary
@@ -253,12 +273,26 @@ EOF
   "grading": {"max_concurrent_grading":1,"grading_model":"rule"},
   "ocr": {"engine":"paddleocr","max_concurrent_ocr":5,"confidence_threshold":0.8},
   "mistake_book": {"practice_question_count":5},
+  "web": {"backend_port":8001,"frontend_port":3001},
   "export_max": 200,
   "system": {"log_level":"INFO","backup_enabled":false}
 }
 JSONEOF
         log "sysconfig.json 已创建"
     }
+}
+
+# ── 从 sysconfig.json 读取端口配置（CLI 参数优先） ──────────────────────────
+_read_port_config() {
+    local f="$BACKEND_DIR/sysconfig.json"
+    if [ -f "$f" ] && command -v "$PYTHON" &>/dev/null; then
+        local bp; bp=$("$PYTHON" -c "import json;print(json.load(open('$f')).get('web',{}).get('backend_port',''))" 2>/dev/null || echo "")
+        local fp; fp=$("$PYTHON" -c "import json;print(json.load(open('$f')).get('web',{}).get('frontend_port',''))" 2>/dev/null || echo "")
+        # CLI 参数未指定时，使用配置文件中的值
+        [ -n "$bp" ] && [ "$BACKEND_PORT" = "8001" ] && BACKEND_PORT="$bp"
+        [ -n "$fp" ] && [ "$FRONTEND_PORT" = "3001" ] && FRONTEND_PORT="$fp"
+    fi
+    info "服务端口: 后端 ${BACKEND_PORT}  /  前端 ${FRONTEND_PORT}"
 }
 
 # ── 统一解析 DB 配置 (写入全局变量) ───────────────────────────────────────────
@@ -443,11 +477,11 @@ setup_frontend() {
 # ═══════════════════════════════════════════════════════════════════════════════
 start_backend() {
     # 清理占用端口
-    port_free 8000 || { warn "端口 8000 被占用，清理中..."; fuser -k 8000/tcp 2>/dev/null || true; sleep 1; }
+    port_free "$BACKEND_PORT" || { warn "端口 $BACKEND_PORT 被占用，清理中..."; fuser -k "$BACKEND_PORT/tcp" 2>/dev/null || true; sleep 1; }
 
     cd "$BACKEND_DIR"
-    info "启动后端 (8000)..."
-    "$PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+    info "启动后端 (${BACKEND_PORT})..."
+    "$PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" &
     BACKEND_PID=$!
     sleep 2
 
@@ -455,7 +489,7 @@ start_backend() {
 
     info "等待后端就绪..."
     for i in $(seq 1 30); do
-        curl -sf http://localhost:8000/health >/dev/null 2>&1 && { log "后端就绪 → http://localhost:8000"; log "API 文档 → http://localhost:8000/docs"; return 0; }
+        curl -sf "http://localhost:${BACKEND_PORT}/health" >/dev/null 2>&1 && { log "后端就绪 → http://localhost:${BACKEND_PORT}"; log "API 文档 → http://localhost:${BACKEND_PORT}/docs"; return 0; }
         sleep 1
     done
     kill "$BACKEND_PID" 2>/dev/null || true
@@ -463,11 +497,11 @@ start_backend() {
 }
 
 start_frontend() {
-    port_free 3000 || { warn "端口 3000 被占用，清理中..."; fuser -k 3000/tcp 2>/dev/null || true; sleep 1; }
+    port_free "$FRONTEND_PORT" || { warn "端口 $FRONTEND_PORT 被占用，清理中..."; fuser -k "$FRONTEND_PORT/tcp" 2>/dev/null || true; sleep 1; }
 
     cd "$FRONTEND_DIR"
-    info "启动前端 (3000)..."
-    npm run dev -- --host 0.0.0.0 &
+    info "启动前端 (${FRONTEND_PORT})..."
+    npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT" &
     FRONTEND_PID=$!
     sleep 3
 
@@ -475,10 +509,10 @@ start_frontend() {
 
     info "等待前端编译..."
     for i in $(seq 1 30); do
-        curl -sf http://localhost:3000 >/dev/null 2>&1 && { log "前端就绪 → http://localhost:3000"; return 0; }
+        curl -sf "http://localhost:${FRONTEND_PORT}" >/dev/null 2>&1 && { log "前端就绪 → http://localhost:${FRONTEND_PORT}"; return 0; }
         sleep 2
     done
-    warn "前端编译较慢，稍后访问 http://localhost:3000"
+    warn "前端编译较慢，稍后访问 http://localhost:${FRONTEND_PORT}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -497,15 +531,21 @@ deploy_docker() {
             die "请先释放端口 5432 或设置 POSTGRES_PORT 环境变量"
         fi
     fi
-    ! port_free 8000 && { warn "端口 8000 被占用"; export BACKEND_PORT=8001; }
-    ! port_free 3000 && { warn "端口 3000 被占用"; export FRONTEND_PORT=3001; }
+    if ! port_free "$BACKEND_PORT"; then
+        warn "端口 $BACKEND_PORT 被占用，使用 $((BACKEND_PORT + 1))"
+        export BACKEND_PORT=$((BACKEND_PORT + 1))
+    fi
+    if ! port_free "$FRONTEND_PORT"; then
+        warn "端口 $FRONTEND_PORT 被占用，使用 $((FRONTEND_PORT + 1))"
+        export FRONTEND_PORT=$((FRONTEND_PORT + 1))
+    fi
 
     step "Docker Compose 部署"
     docker compose up -d --build 2>&1 | tee -a "$LOG_FILE" || die "启动失败"
 
     info "等待服务就绪..."
     sleep 10
-    curl -sf http://localhost:8000/health >/dev/null 2>&1 && log "后端就绪" || warn "后端可能还在启动"
+    curl -sf "http://localhost:${BACKEND_PORT}/health" >/dev/null 2>&1 && log "后端就绪" || warn "后端可能还在启动"
 
     if confirm "导入 V3.5 演示数据?"; then
         docker compose exec -T backend python seed_v35.py --force 2>&1 | tee -a "$LOG_FILE" || warn "导入失败"
@@ -513,8 +553,8 @@ deploy_docker() {
 
     echo ""
     echo -e "${GREEN}  Docker 部署完成！${NC}"
-    echo -e "  前端: ${BLUE}http://localhost:3000${NC}"
-    echo -e "  API:  ${BLUE}http://localhost:8000/docs${NC}"
+    echo -e "  前端: ${BLUE}http://localhost:${FRONTEND_PORT}${NC}"
+    echo -e "  API:  ${BLUE}http://localhost:${BACKEND_PORT}/docs${NC}"
     echo ""
 }
 
@@ -528,10 +568,10 @@ print_summary() {
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "  ${BOLD}地址${NC}"
-    echo -e "  学生端:  ${BLUE}http://localhost:3000/login${NC}"
-    echo -e "  管理端:  ${BLUE}http://localhost:3000/admin/login${NC}"
-    echo -e "  家长端:  ${BLUE}http://localhost:3000/parent/login${NC}"
-    echo -e "  API:     ${BLUE}http://localhost:8000/docs${NC}"
+    echo -e "  学生端:  ${BLUE}http://localhost:${FRONTEND_PORT}/login${NC}"
+    echo -e "  管理端:  ${BLUE}http://localhost:${FRONTEND_PORT}/admin/login${NC}"
+    echo -e "  家长端:  ${BLUE}http://localhost:${FRONTEND_PORT}/parent/login${NC}"
+    echo -e "  API:     ${BLUE}http://localhost:${BACKEND_PORT}/docs${NC}"
     echo ""
 
     cat << 'EOF'

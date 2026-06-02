@@ -54,7 +54,6 @@ const menuItems = {
       { key: '/syllabus', label: <span>考纲管理 <Tag color="orange" style={{ fontSize: 10, marginLeft: 4, lineHeight: 1 }}>未完成</Tag></span> },
       { key: '/question-admin', label: '智能出题' },
       { key: '/questions', label: '题库浏览' },
-      { key: '/teacher/recommendations', label: '推荐管理' },
     ]},
     { key: '/papers', icon: <FileTextOutlined />, label: '试卷管理' },
   ],

@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import JSON
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -10,7 +10,7 @@ from app.db.base import Base
 class Question(Base):
     __tablename__ = "questions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(500), nullable=False)
     question_type = Column(String(20), nullable=False)
     difficulty = Column(String(10), nullable=False)
@@ -22,18 +22,17 @@ class Question(Base):
     meta_data = Column(JSON, nullable=True)
     source = Column(String(20), nullable=False, default="MANUAL")
     review_status = Column(String(20), nullable=False, default="APPROVED")
-    reviewed_by = Column(String(36), ForeignKey("admins.id"), nullable=True)
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("admins.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
-    source_task_id = Column(String(36), nullable=True)
-    created_by = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
+    source_task_id = Column(UUID(as_uuid=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("admins.id"), nullable=False, index=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     is_typical = Column(Boolean, nullable=False, default=False, index=True)
     content_hash = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
-    # Relationships
-    exam_papers = relationship("ExamPaper", secondary="exam_paper_questions", back_populates="questions")
+    # Relationships (V3.5.1: exam_papers backref removed, use ExamPaperUnitQuestion instead)
 
     # Table constraints
     __table_args__ = (

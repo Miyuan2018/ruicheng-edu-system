@@ -1,5 +1,4 @@
 """V2.2 Auth: admin login (captcha+SMS) + student login/register."""
-import uuid
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import JSONResponse
@@ -256,15 +255,17 @@ async def create_admin(
     if result.scalar_one_or_none():
         raise HTTPException(400, detail="用户名已存在")
 
-    import json
+    import json as _j
     parsed_subjects = None
     if subjects:
-        try: parsed_subjects = json.loads(subjects) if isinstance(subjects, str) else subjects
-        except: pass
+        try: parsed_subjects = _j.loads(subjects) if isinstance(subjects, str) else subjects
+        except _j.JSONDecodeError:
+            raise HTTPException(400, detail="学科数据格式错误，请重新选择")
     parsed_grades = None
     if grade_level:
-        try: parsed_grades = json.loads(grade_level) if isinstance(grade_level, str) else grade_level
-        except: pass
+        try: parsed_grades = _j.loads(grade_level) if isinstance(grade_level, str) else grade_level
+        except _j.JSONDecodeError:
+            raise HTTPException(400, detail="年级数据格式错误，请重新选择")
 
     admin = Admin(
         username=username,
@@ -279,7 +280,11 @@ async def create_admin(
         created_by=current_user.id,
     )
     db.add(admin)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(500, detail="创建失败，请稍后重试")
     await db.refresh(admin)
     return {"id": str(admin.id), "username": admin.username, "admin_type": admin.admin_type}
 
@@ -317,7 +322,7 @@ async def list_admins(
 
 @router.delete("/admin/{admin_id}")
 async def delete_admin(
-    admin_id: uuid.UUID,
+    admin_id: str,
     current_user = Depends(require_role("SYS_ADMIN")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -332,7 +337,7 @@ async def delete_admin(
 
 @router.put("/admin/{admin_id}")
 async def update_admin(
-    admin_id: uuid.UUID,
+    admin_id: str,
     full_name: str = None, email: str = None, phone: str = None,
     qualification: str = None, admin_type: int = None,
     subjects: str = None, grade_level: str = None,
@@ -340,6 +345,7 @@ async def update_admin(
     current_user=Depends(require_role("SYS_ADMIN")),
     db: AsyncSession = Depends(get_db),
 ):
+    import json as _j
     r = await db.execute(select(Admin).where(Admin.id == admin_id))
     admin = r.scalar_one_or_none()
     if not admin: raise HTTPException(404, detail="管理员不存在")
@@ -352,17 +358,25 @@ async def update_admin(
     if is_active is not None: admin.is_active = is_active
     if password: admin.password_hash = get_password_hash(password)
     if subjects is not None:
-        import json as _j
-        admin.subjects = _j.loads(subjects) if isinstance(subjects, str) else subjects
+        try:
+            admin.subjects = _j.loads(subjects) if isinstance(subjects, str) else subjects
+        except _j.JSONDecodeError:
+            raise HTTPException(400, detail="学科数据格式错误")
     if grade_level is not None:
-        import json as _j
-        admin.grade_level = _j.loads(grade_level) if isinstance(grade_level, str) else grade_level
-    await db.commit()
+        try:
+            admin.grade_level = _j.loads(grade_level) if isinstance(grade_level, str) else grade_level
+        except _j.JSONDecodeError:
+            raise HTTPException(400, detail="年级数据格式错误")
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise HTTPException(500, detail="保存失败，请稍后重试")
     return {"message": "已更新"}
 
 
 @router.put("/admin/{admin_id}/subjects")
-async def update_admin_subjects(admin_id: uuid.UUID, subjects: str = "[]", current_user=Depends(require_role("SYS_ADMIN")), db: AsyncSession = Depends(get_db)):
+async def update_admin_subjects(admin_id: str, subjects: str = "[]", current_user=Depends(require_role("SYS_ADMIN")), db: AsyncSession = Depends(get_db)):
     """Update admin's subject assignments. subjects is JSON array string."""
     import json as _j
     r = await db.execute(select(Admin).where(Admin.id == admin_id))

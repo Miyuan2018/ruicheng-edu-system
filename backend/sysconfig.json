@@ -3,13 +3,14 @@
     "server": "localhost",
     "port": "5432",
     "database": "edu_system",
-    "user": "postgres"
+    "user": "postgres",
+    "password": "postgres"
   },
   "llm": {
     "current": "deepseek",
     "ollama": {
       "endpoint": "http://127.0.0.1:11434/v1",
-      "model": "nemotron-3-super:120b",
+      "model": "gemma4:e4b",
       "available_models": [
         "llama3.3:latest",
         "gpt-oss:120b",
@@ -25,12 +26,18 @@
     "deepseek": {
       "endpoint": "https://api.deepseek.com/anthropic/v1/messages",
       "model": "deepseek-v4-pro[1m]",
-      "available_models": ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-pro[1m]", "deepseek-v4-flash"]
+      "available_models": [
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "deepseek-v4-pro[1m]",
+        "deepseek-v4-flash"
+      ],
+      "api_key": "sk-986ac46fbc73490b969b617f6b6d3904"
     }
   },
   "grading": {
-    "max_concurrent_grading": 3,
-    "grading_model": "hybrid"
+    "max_concurrent_grading": 10,
+    "grading_model": "rule"
   },
   "ocr": {
     "ocr_engine": "tesseract",
@@ -38,9 +45,13 @@
     "ocr_confidence_threshold": 0.7
   },
   "mistake_book": {
-    "practice_question_count": 1
+    "practice_question_count": 5
   },
-  "export_max": 203,
+  "export_max": 200,
+  "web": {
+    "backend_port": 8001,
+    "frontend_port": 3001
+  },
   "system": {
     "log_level": "DEBUG",
     "backup_enabled": true

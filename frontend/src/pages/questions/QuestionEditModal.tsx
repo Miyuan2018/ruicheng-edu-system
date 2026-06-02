@@ -111,6 +111,12 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
     if (!question) return;
     setSavingExplanation(true);
     try {
+      const stepsPayload = steps.map((s: any, i: number) => ({
+        step_order: i + 1,
+        text: s.text,
+        panda_emotion: s.panda_emotion || 'explaining',
+        board_line: s.board_line || null,
+      }));
       await apiClient.post('/topic-board', {
         title: question.title,
         question_id: question.id,
@@ -119,14 +125,11 @@ export default function QuestionEditModal({ open, question, onClose, onSuccess }
         problem_statement: question.title,
         graph_config: null,
         is_active: true,
-        steps: steps.map((s: any, i: number) => ({
-          step_order: i + 1,
-          text: s.text,
-          panda_emotion: s.panda_emotion || 'explaining',
-          board_line: s.board_line || null,
-        })),
+        steps: stepsPayload,
       });
-      message.success('讲解已保存');
+      // 同步标记为典型题
+      await apiClient.put(`/questions/${question.id}/typical`, { is_typical: true });
+      message.success('讲解已保存，已标记为典型题');
       setReviewModalOpen(false);
       setGeneratedSteps([]);
     } catch {

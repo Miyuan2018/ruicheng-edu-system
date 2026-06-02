@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Table, Button, Input, Select, Typography, Space, Tag, message, Popconfirm, Modal, Radio, Card, Progress, Descriptions, Tooltip,
+  Table, Button, Input, Select, Typography, Space, Tag, message, Popconfirm, Modal, Tooltip,
 } from 'antd';
 import {
   SearchOutlined, FileTextOutlined, EyeOutlined, DeleteOutlined, CameraOutlined, EditOutlined, PrinterOutlined, BookOutlined, PlayCircleOutlined,
@@ -21,13 +22,8 @@ interface PaperItem {
   submission_status?: string;
 }
 
-interface QuestionItem {
-  id: string;
-  title: string;
-  correct_answer?: string;
-}
-
 export default function MyPapersPage() {
+  const navigate = useNavigate();
   const [papers, setPapers] = useState<PaperItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTitle, setSearchTitle] = useState('');
@@ -39,13 +35,6 @@ export default function MyPapersPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [scanOpen, setScanOpen] = useState(false);
   const [scanPaperId, setScanPaperId] = useState('');
-
-  // Answering flow
-  const [answeringPaper, setAnsweringPaper] = useState<PaperItem | null>(null);
-  const [questions, setQuestions] = useState<QuestionItem[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [answerResult, setAnswerResult] = useState<any>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const refs = useReferenceValues();
   const paperStatuses = refs['paper-statuses'];
@@ -108,96 +97,6 @@ export default function MyPapersPage() {
         .catch((e: any) => { message.error(e.response?.data?.detail || '状态修改失败'); }),
     });
   };
-
-  // ── Online Answering ──
-  const startAnswering = (paper: PaperItem) => {
-    setAnsweringPaper(paper);
-    setAnswers({});
-    setAnswerResult(null);
-    apiClient.get('/exam-papers/' + paper.id + '/questions').then((resp) => {
-      setQuestions(Array.isArray(resp.data) ? resp.data : []);
-    }).catch(() => { message.error('加载试题失败'); });
-  };
-
-  const handleAnswerChange = (qid: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [qid]: value }));
-  };
-
-  const submitAnswers = () => {
-    if (!answeringPaper) return;
-    setSubmitting(true);
-    const body = {
-      exam_paper_id: answeringPaper.id,
-      submission_type: 'ONLINE',
-      answers: questions.map((q) => ({ question_id: q.id, student_answer: answers[q.id] || '' })),
-    };
-    apiClient.post('/answers', body).then((resp) => {
-      setAnswerResult(resp.data || resp);
-      message.success('提交成功');
-    }).catch((err: any) => {
-      let detail = '提交失败';
-      if (err?.response?.data) detail = err.response.data.detail || JSON.stringify(err.response.data);
-      message.error(detail);
-    }).finally(() => { setSubmitting(false); });
-  };
-
-  // Answering view
-  if (answeringPaper) {
-    return (
-      <div>
-        <div style={{ marginBottom: 16 }}>
-          <Button size="small" onClick={() => setAnsweringPaper(null)}>← 返回试卷列表</Button>
-          <Text strong style={{ marginLeft: 16, fontSize: 16 }}>{answeringPaper.title}</Text>
-        </div>
-        {answerResult ? (
-          <Card title="答题结果" size="small">
-            <Descriptions column={2} size="small">
-              <Descriptions.Item label="总分">{answerResult.total_score + '/' + (answerResult.max_score || '?')}</Descriptions.Item>
-              <Descriptions.Item label="正确率">
-                <Progress percent={answerResult.percentage || 0} size="small" strokeColor={(answerResult.percentage || 0) >= 60 ? '#52c41a' : '#ff4d4f'} />
-              </Descriptions.Item>
-            </Descriptions>
-            <Button size="small" type="primary" style={{ marginTop: 12 }} onClick={() => { setAnsweringPaper(null); loadPapers(); }}>完成</Button>
-          </Card>
-        ) : (
-          <Card
-            title="在线答题"
-            size="small"
-            extra={<Button size="small" type="primary" loading={submitting} onClick={submitAnswers} disabled={questions.length === 0}>提交答案</Button>}
-          >
-            {questions.length === 0 ? (
-              <Text type="secondary">加载试题中...</Text>
-            ) : (
-              questions.map((q, idx) => {
-                let options: { label: string; text?: string }[] = [];
-                try { const ca = JSON.parse(q.correct_answer || '{}'); options = ca.options || []; } catch {}
-                return (
-                  <Card key={q.id} size="small" style={{ marginBottom: 8 }}>
-                    <Text strong>{idx + 1}. {q.title}</Text>
-                    {options.length > 0 ? (
-                      <div style={{ marginTop: 8 }}>
-                        <Radio.Group onChange={(e) => handleAnswerChange(q.id, e.target.value)} value={answers[q.id]}>
-                          <Space direction="vertical">
-                            {options.map((o) => (
-                              <Radio key={o.label} value={o.label}>{o.label}. {o.text || o.label}</Radio>
-                            ))}
-                          </Space>
-                        </Radio.Group>
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 8 }}>
-                        <Input placeholder="请输入答案" size="small" style={{ width: 300 }} onChange={(e) => handleAnswerChange(q.id, e.target.value)} />
-                      </div>
-                    )}
-                  </Card>
-                );
-              })
-            )}
-          </Card>
-        )}
-      </div>
-    );
-  }
 
   // Paper list view
   return (
@@ -311,7 +210,7 @@ export default function MyPapersPage() {
                     <Button type="link" size="small" icon={<EditOutlined />} disabled={!isGenerated} onClick={() => handleStatusChange(record)} />
                   </Tooltip>
                   <Tooltip title="打印"><Button type="link" size="small" icon={<PrinterOutlined />} onClick={() => handlePrint(record.id)} /></Tooltip>
-                  <Tooltip title="在线答题"><Button type="link" size="small" icon={<PlayCircleOutlined />} style={{ color: '#1890ff' }} onClick={() => startAnswering(record)} /></Tooltip>
+                  <Tooltip title="在线答题"><Button type="link" size="small" icon={<PlayCircleOutlined />} style={{ color: '#1890ff' }} onClick={() => navigate('/answer/' + record.id)} /></Tooltip>
                   <Tooltip title="拍照/扫描录入"><Button type="link" size="small" icon={<CameraOutlined />} onClick={() => { setScanPaperId(record.id); setScanOpen(true); }} /></Tooltip>
                   <Tooltip title={isGenerated ? '已生成错题本，如需重新生成请先修改试卷状态' : '生成错题'}>
                     <Button type="link" size="small" icon={<BookOutlined />} style={{ color: isGenerated ? '#ccc' : '#52c41a' }} disabled={isGenerated} onClick={() => generateMistakeBook(record.id)} />

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, and_
 from sqlalchemy.orm import selectinload
@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.models.answer_submission import AnswerSubmission
 from app.models.answer_detail import AnswerDetail
 from app.models.question import Question
-from app.models.exam_paper import ExamPaper
+from app.models.exam_paper import ExamPaper, ExamPaperUnit, ExamPaperUnitQuestion
 from app.schemas.answer import AnswerSubmissionCreate, AnswerSubmissionResponse, AnswerDetailCreate, AnswerDetailResponse
 from typing import List, Optional
 from app.core.security import get_current_user
@@ -40,14 +40,21 @@ async def _grade_submission(submission_id: uuid.UUID, db: AsyncSession):
     )
     details = detail_result.scalars().all()
 
-    # Build question score map from exam_paper_questions (per-paper score takes priority)
-    from app.models.exam_paper import exam_paper_questions
+    # Build question score map from exam_paper_unit_questions (V3.5.1)
+    from app.models.exam_paper import ExamPaperUnit, ExamPaperUnitQuestion
     score_map = {}
-    epq_result = await db.execute(
-        select(exam_paper_questions.c.question_id, exam_paper_questions.c.score)
-        .where(exam_paper_questions.c.exam_paper_id == submission.exam_paper_id)
+    score_query = (
+        select(ExamPaperUnitQuestion.question_id, ExamPaperUnitQuestion.score)
+        .select_from(ExamPaperUnitQuestion)
+        .join(ExamPaperUnit, ExamPaperUnitQuestion.unit_id == ExamPaperUnit.id)
+        .where(ExamPaperUnit.exam_paper_id == submission.exam_paper_id)
     )
-    for row in epq_result.all():
+    if submission.unit_id:
+        score_query = score_query.where(
+            ExamPaperUnitQuestion.unit_id == submission.unit_id
+        )
+    epuq_result = await db.execute(score_query)
+    for row in epuq_result.all():
         score_map[str(row[0])] = float(row[1])
 
     total_score = 0.0
@@ -428,5 +435,253 @@ async def delete_answer(
     return None
 
 
-# OCR answer upload endpoints would go here
-# For brevity, I'm skipping them for now but they would follow a similar pattern
+# ═══════════════════════════════════════════════════════════════
+#  V3.5.1: Unit-based submission
+# ═══════════════════════════════════════════════════════════════
+
+
+@router.post("/exam-papers/{paper_id}/units/{unit_id}/submit")
+async def submit_unit_answers(
+    paper_id: uuid.UUID,
+    unit_id: uuid.UUID,
+    data: dict = Body(...),
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit answers for a single unit within a paper.
+
+    Body::
+
+        {
+            "answers": [
+                {"question_id": "uuid", "student_answer": "A"},
+                ...
+            ]
+        }
+    """
+    if current_user.user_type != "STUDENT":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅学生可提交答案")
+
+    # Verify paper exists
+    paper_result = await db.execute(
+        select(ExamPaper).where(ExamPaper.id == paper_id)
+    )
+    if not paper_result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="试卷不存在")
+
+    # Verify unit exists and belongs to paper
+    unit_result = await db.execute(
+        select(ExamPaperUnit).where(
+            ExamPaperUnit.id == unit_id,
+            ExamPaperUnit.exam_paper_id == paper_id,
+        )
+    )
+    if not unit_result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="单元不存在")
+
+    answers_data = data.get("answers", [])
+    if not answers_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="请提供至少一道题的答案"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Check if there is an existing submission for this unit
+    existing_result = await db.execute(
+        select(AnswerSubmission).where(
+            AnswerSubmission.student_id == current_user.id,
+            AnswerSubmission.exam_paper_id == paper_id,
+            AnswerSubmission.unit_id == unit_id,
+        )
+        .order_by(AnswerSubmission.submitted_at.desc())
+        .limit(1)
+    )
+    existing_sub = existing_result.scalar_one_or_none()
+
+    if existing_sub and existing_sub.status in ("GENERATED",):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="该单元错题本已生成，无法重新提交",
+        )
+
+    if existing_sub:
+        # Re-submit: delete old details and reuse the submission
+        answer_submission = existing_sub
+        await db.execute(
+            delete(AnswerDetail).where(
+                AnswerDetail.answer_submission_id == answer_submission.id
+            )
+        )
+        answer_submission.status = "GRADED"
+        answer_submission.submitted_at = now
+    else:
+        # Fresh submission
+        answer_submission = AnswerSubmission(
+            exam_paper_id=paper_id,
+            unit_id=unit_id,
+            student_id=current_user.id,
+            submission_type="ONLINE",
+            status="GRADED",
+            submitted_at=now,
+        )
+        db.add(answer_submission)
+        await db.flush()
+
+    # Add answer details
+    for ad_item in answers_data:
+        raw_qid = ad_item.get("question_id")
+        if not raw_qid:
+            continue
+        qid_uuid = uuid.UUID(str(raw_qid))
+        qr = await db.execute(
+            select(Question).where(Question.id == qid_uuid)
+        )
+        if not qr.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"题目不存在: {raw_qid}",
+            )
+        detail = AnswerDetail(
+            answer_submission_id=answer_submission.id,
+            question_id=qid_uuid,
+            student_answer=ad_item.get("student_answer", ""),
+        )
+        db.add(detail)
+
+    await db.commit()
+
+    # Auto-grade
+    paper_title = None
+    try:
+        async with db.begin():
+            await _grade_submission(answer_submission.id, db)
+        paper_result = await db.execute(
+            select(ExamPaper).where(ExamPaper.id == paper_id)
+        )
+        p = paper_result.scalar_one_or_none()
+        paper_title = p.title if p else "未知试卷"
+    except Exception:
+        logger.exception("Grading failed")
+
+    # Notification
+    if paper_title:
+        try:
+            await db.refresh(answer_submission)
+            await NotificationService.create_grading_complete_notification(
+                db,
+                recipient_id=current_user.id,
+                exam_paper_title=paper_title,
+                score=float(answer_submission.total_score or 0),
+                max_score=float(p.total_score or 0) if p else 0,
+            )
+        except Exception:
+            logger.exception("Notification creation failed")
+
+    # Mistake book
+    try:
+        await db.refresh(answer_submission)
+        pct = answer_submission.percentage
+        if pct is not None and float(pct) < 100:
+            await generate_mistake_book(
+                current_user.id, db, exam_paper_id=paper_id
+            )
+    except Exception:
+        logger.exception("Mistake book generation failed")
+
+    # Post-grading interactions
+    try:
+        await db.refresh(answer_submission)
+        pct = float(answer_submission.percentage or 0)
+        from app.services.interaction_service import process_post_grading_interactions
+
+        await process_post_grading_interactions(
+            db, current_user.id, str(paper_id), pct,
+        )
+    except Exception:
+        logger.exception("Post-grading interactions failed")
+
+    await db.refresh(answer_submission)
+    return {
+        "id": str(answer_submission.id),
+        "exam_paper_id": str(answer_submission.exam_paper_id),
+        "unit_id": str(answer_submission.unit_id),
+        "student_id": str(answer_submission.student_id),
+        "status": answer_submission.status,
+        "total_score": float(answer_submission.total_score)
+        if answer_submission.total_score is not None
+        else None,
+        "percentage": float(answer_submission.percentage)
+        if answer_submission.percentage is not None
+        else None,
+        "submitted_at": answer_submission.submitted_at,
+    }
+
+
+@router.get("/exam-papers/{paper_id}/submission-status")
+async def get_submission_status(
+    paper_id: uuid.UUID,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get per-unit submission status for the current student."""
+    if current_user.user_type != "STUDENT":
+        raise HTTPException(status_code=403, detail="仅学生可查看")
+
+    # Get all submissions for this paper by this student
+    sub_result = await db.execute(
+        select(AnswerSubmission).where(
+            AnswerSubmission.student_id == current_user.id,
+            AnswerSubmission.exam_paper_id == paper_id,
+        )
+    )
+    submissions = sub_result.scalars().all()
+
+    # Map submissions by unit_id
+    unit_submissions: dict[str, dict] = {}
+    for sub in submissions:
+        uid = str(sub.unit_id) if sub.unit_id else "__full_paper__"
+        if uid not in unit_submissions:
+            unit_submissions[uid] = {
+                "submitted": True,
+                "status": sub.status,
+                "total_score": float(sub.total_score)
+                if sub.total_score is not None
+                else None,
+                "percentage": float(sub.percentage)
+                if sub.percentage is not None
+                else None,
+                "submitted_at": sub.submitted_at,
+            }
+
+    # Get all units for this paper
+    units_result = await db.execute(
+        select(ExamPaperUnit)
+        .where(ExamPaperUnit.exam_paper_id == paper_id)
+        .order_by(ExamPaperUnit.position)
+    )
+    units = units_result.scalars().all()
+
+    unit_statuses = []
+    for unit in units:
+        uid = str(unit.id)
+        sub_info = unit_submissions.get(uid, {})
+        unit_statuses.append(
+            {
+                "unit_id": uid,
+                "unit_name": unit.name,
+                "position": unit.position,
+                "total_score": unit.total_score or 0,
+                "submitted": sub_info.get("submitted", False),
+                "status": sub_info.get("status"),
+                "score": sub_info.get("total_score"),
+                "percentage": sub_info.get("percentage"),
+                "submitted_at": sub_info.get("submitted_at"),
+            }
+        )
+
+    return {
+        "paper_id": str(paper_id),
+        "units": unit_statuses,
+        "has_full_paper_submission": "__full_paper__" in unit_submissions,
+    }

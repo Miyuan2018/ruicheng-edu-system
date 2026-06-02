@@ -77,18 +77,19 @@ def load_config() -> dict:
         with open(CONFIG_PATH, "r") as f:
             cfg = json.load(f)
 
-    # Inject secrets from environment variables (never stored in JSON)
+    # Inject secrets from environment variables (env var takes priority)
+    env_key = _get_deepseek_api_key()
     ds = cfg.get("llm", {}).get("deepseek", {})
-    ds["api_key"] = _get_deepseek_api_key()
+    if env_key:
+        ds["api_key"] = env_key
+    elif "api_key" not in ds:
+        ds["api_key"] = ""
     # Database password is handled by config.py via DATABASE_PASSWORD env var
 
     return cfg
 
 
-_SENSITIVE_KEYS = {
-    ("llm", "deepseek", "api_key"),
-    ("database", "password"),
-}
+_SENSITIVE_KEYS: set = set()
 
 
 def _strip_secrets(config: dict) -> dict:

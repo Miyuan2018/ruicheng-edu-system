@@ -8,7 +8,10 @@ import ProfilePage from './pages/auth/ProfilePage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import QuestionListPage from './pages/questions/QuestionListPage';
 import PaperListPage from './pages/papers/PaperListPage';
+import PaperWizardPage from './pages/papers/PaperWizardPage';
 import MyPapersPage from './pages/papers/MyPapersPage';
+import StudentAnswerPage from './pages/papers/StudentAnswerPage';
+import StudentCompletionPage from './pages/papers/StudentCompletionPage';
 import TypicalQuestionsPage from './pages/TypicalQuestionsPage';
 import MistakeBookPage from './pages/mistake-book/MistakeBookPage';
 import SelfStudyPage from './pages/self-study/SelfStudyPage';
@@ -20,6 +23,7 @@ import ParentCelebrationsPage from './pages/parent/ParentCelebrationsPage';
 import TeacherClassesPage from './pages/teacher/TeacherClassesPage';
 import PaperStatsPage from './pages/teacher/PaperStatsPage';
 import QuestionStatsPage from './pages/teacher/QuestionStatsPage';
+import RecommendationPage from './pages/teacher/RecommendationPage';
 
 import AdminConfigPage from './pages/admin/AdminConfigPage';
 import BasicConfigPage from './pages/admin/BasicConfigPage';
@@ -61,6 +65,8 @@ export default function AppRouter() {
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="questions" element={<QuestionListPage />} />
               <Route path="papers" element={<PapersPage />} />
+              <Route path="papers/new" element={<PaperWizardPage />} />
+              <Route path="papers/:id/edit" element={<PaperWizardPage />} />
               <Route path="my-papers" element={<MyPapersPage />} />
               <Route path="typical-questions" element={<TypicalQuestionsPage />} />
               <Route path="mistake-book" element={<MistakeBookPage />} />
@@ -69,6 +75,7 @@ export default function AppRouter() {
               <Route path="teacher/classes" element={<TeacherClassesPage />} />
               <Route path="teacher/stats/paper" element={<PaperStatsPage />} />
               <Route path="teacher/stats/question" element={<QuestionStatsPage />} />
+              <Route path="teacher/recommendations" element={<RecommendationPage />} />
 
               <Route path="admin/basic-config" element={<BasicConfigPage />} />
               <Route path="admin/config" element={<AdminConfigPage />} />
@@ -81,6 +88,8 @@ export default function AppRouter() {
               <Route path="parent/celebrations" element={<ParentCelebrationsPage />} />
             </Route>
             <Route path="/print-preview" element={<PrintPreviewPage />} />
+            <Route path="/answer/:paperId" element={<ProtectedRoute><StudentAnswerPage /></ProtectedRoute>} />
+            <Route path="/answer/:paperId/complete" element={<ProtectedRoute><StudentCompletionPage /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>

@@ -36,10 +36,12 @@ def distribute_quotas(
         total = cfg["count"]
         quotas: dict[str, int] = {}
         for diff in DIFFICULTIES:
-            quotas[diff] = int(total * difficulty_ratio.get(diff, DEFAULT_RATIO))
+            quotas[diff] = round(total * difficulty_ratio.get(diff, DEFAULT_RATIO))
         remainder = total - sum(quotas.values())
         if remainder > 0:
             quotas["MEDIUM"] += remainder
+        elif remainder < 0:
+            quotas["MEDIUM"] -= abs(remainder)
         for diff in DIFFICULTIES:
             for _ in range(quotas[diff]):
                 targets.append(QuotaTarget(
@@ -54,10 +56,11 @@ def score_question(
     question,
     paper_knowledge_node_ids: set[str],
     used_ids: set[str],
+    kn_map: dict[str, list[str]] | None = None,
 ) -> float:
     """计算题目对当前需求的匹配得分 (0-90)"""
     s = 0.0
-    q_kn_ids = set(getattr(question, 'kn_ids', []) or [])
+    q_kn_ids = set(kn_map.get(str(question.id), []) if kn_map else (getattr(question, 'kn_ids', []) or []))
     if paper_knowledge_node_ids and q_kn_ids:
         matched = len(q_kn_ids & paper_knowledge_node_ids)
         s += KNOWLEDGE_MATCH_WEIGHT * (matched / len(paper_knowledge_node_ids))
@@ -85,9 +88,42 @@ def score_for_difficulty(question, target_difficulty: str) -> float:
 
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from app.models.question import Question
 from app.models.knowledge_node import QuestionKnowledgeNode, KnowledgeNode
+
+
+async def _check_kn_table(db: AsyncSession) -> bool:
+    """检查 question_knowledge_nodes 表是否存在."""
+    try:
+        result = await db.execute(
+            text("SELECT EXISTS(SELECT 1 FROM pg_tables WHERE tablename = 'question_knowledge_nodes')")
+        )
+        return result.scalar()
+    except Exception:
+        return False
+
+
+async def _query_candidates(
+    db: AsyncSession,
+    target: QuotaTarget,
+    subject: Optional[str],
+    used_ids: set[str],
+    relax_difficulty: bool = False,
+) -> list:
+    """查询符合目标条件的候选题目."""
+    conditions = [
+        Question.is_active == True,
+        Question.review_status == "APPROVED",
+        Question.question_type == target.question_type,
+    ]
+    if not relax_difficulty:
+        conditions.append(Question.difficulty == target.target_difficulty)
+    if subject:
+        conditions.append(Question.subject == subject)
+
+    result = await db.execute(select(Question).where(*conditions))
+    return [q for q in result.scalars().all() if str(q.id) not in used_ids]
 
 
 async def select_for_targets(
@@ -99,37 +135,44 @@ async def select_for_targets(
     """为所有目标选题，返回题目列表和约束仪表盘数据."""
     used_ids: set[str] = set()
     questions: list[dict] = []
+    shortfall: list[dict] = []  # 未满足的目标
+    _kn_table_available = await _check_kn_table(db)
 
     for target in targets:
-        conditions = [
-            Question.is_active == True,
-            Question.review_status == "APPROVED",
-            Question.question_type == target.question_type,
-            Question.difficulty == target.target_difficulty,
-        ]
-        if subject:
-            conditions.append(Question.subject == subject)
+        # 尝试精确匹配难度
+        candidates = await _query_candidates(db, target, subject, used_ids)
 
-        result = await db.execute(select(Question).where(*conditions))
-        candidates = [q for q in result.scalars().all() if str(q.id) not in used_ids]
+        # 精确难度无结果 → 放宽难度约束
+        if not candidates:
+            candidates = await _query_candidates(db, target, subject, used_ids, relax_difficulty=True)
 
         if not candidates:
+            shortfall.append({
+                "question_type": target.question_type,
+                "target_difficulty": target.target_difficulty,
+                "score": target.score,
+            })
             continue
 
-        # Load knowledge node IDs for each candidate
-        for q in candidates:
+        # Load knowledge node IDs for all candidates in a single batch query
+        kn_map: dict[str, list[str]] = {}
+        if _kn_table_available:
+            all_qids = [q.id for q in candidates]
             kn_rows = await db.execute(
-                select(KnowledgeNode.id).join(
-                    QuestionKnowledgeNode,
-                    QuestionKnowledgeNode.knowledge_node_id == KnowledgeNode.id,
-                ).where(QuestionKnowledgeNode.question_id == q.id)
+                select(QuestionKnowledgeNode.question_id, KnowledgeNode.id)
+                .join(KnowledgeNode, KnowledgeNode.id == QuestionKnowledgeNode.knowledge_node_id)
+                .where(QuestionKnowledgeNode.question_id.in_(all_qids))
             )
-            q.kn_ids = [str(r[0]) for r in kn_rows.fetchall()]
+            for qid, knid in kn_rows.fetchall():
+                qid_str = str(qid)
+                if qid_str not in kn_map:
+                    kn_map[qid_str] = []
+                kn_map[qid_str].append(str(knid))
 
         # Score and rank
         scored = []
         for q in candidates:
-            base = score_question(q, knowledge_node_ids, used_ids)
+            base = score_question(q, knowledge_node_ids, used_ids, kn_map=kn_map)
             diff_bonus = score_for_difficulty(q, target.target_difficulty)
             scored.append((base + diff_bonus, q))
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -137,8 +180,8 @@ async def select_for_targets(
         best_score, best = scored[0]
         used_ids.add(str(best.id))
 
-        tags = _build_tags(best, knowledge_node_ids)
-        alts = _build_alternatives(scored[1:4], knowledge_node_ids)
+        tags = _build_tags(best, knowledge_node_ids, kn_map=kn_map)
+        alts = _build_alternatives(scored[1:4], knowledge_node_ids, kn_map=kn_map)
 
         questions.append({
             "question_id": str(best.id),
@@ -151,13 +194,13 @@ async def select_for_targets(
             "_kn_ids": getattr(best, 'kn_ids', []) or [],
         })
 
-    dashboard = _build_dashboard(questions, targets, knowledge_node_ids)
+    dashboard = _build_dashboard(questions, targets, knowledge_node_ids, shortfall)
     return questions, dashboard
 
 
-def _build_tags(question, kn_set: set[str]) -> list[str]:
+def _build_tags(question, kn_set: set[str], kn_map: dict[str, list[str]] | None = None) -> list[str]:
     tags = []
-    q_kn = set(getattr(question, 'kn_ids', []) or [])
+    q_kn = set(kn_map.get(str(question.id), []) if kn_map else (getattr(question, 'kn_ids', []) or []))
     if q_kn & kn_set:
         tags.append("知识点匹配 ✓")
     if getattr(question, 'is_typical', False):
@@ -166,11 +209,11 @@ def _build_tags(question, kn_set: set[str]) -> list[str]:
     return tags
 
 
-def _build_alternatives(scored: list, kn_set: set[str]) -> list[dict]:
+def _build_alternatives(scored: list, kn_set: set[str], kn_map: dict[str, list[str]] | None = None) -> list[dict]:
     alts = []
     for _, alt_q in scored:
         alt_tags = []
-        q_kn = set(getattr(alt_q, 'kn_ids', []) or [])
+        q_kn = set(kn_map.get(str(alt_q.id), []) if kn_map else (getattr(alt_q, 'kn_ids', []) or []))
         if q_kn & kn_set:
             alt_tags.append("知识点匹配")
         if getattr(alt_q, 'is_typical', False):
@@ -188,6 +231,7 @@ def _build_dashboard(
     questions: list[dict],
     targets: list[QuotaTarget],
     kn_set: set[str],
+    shortfall: list[dict] | None = None,
 ) -> dict:
     diff_actual = {"EASY": 0, "MEDIUM": 0, "HARD": 0}
     for q in questions:
@@ -195,10 +239,14 @@ def _build_dashboard(
         if d in diff_actual:
             diff_actual[d] += 1
 
+    requested_score = sum(t.score for t in targets)
+    actual_score = sum(q.get("score", 0) for q in questions)
     dashboard = {
         "difficulty": {},
         "knowledge_coverage": {"matched": 0, "total": len(kn_set)},
-        "total_score": sum(q.get("score", 0) for q in questions),
+        "requested_score": requested_score,
+        "total_score": actual_score,
+        "shortfall": shortfall or [],
     }
     for diff in DIFFICULTIES:
         target_count = sum(1 for t in targets if t.target_difficulty == diff)

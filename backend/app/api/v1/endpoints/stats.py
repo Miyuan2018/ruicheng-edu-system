@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from app.db.session import get_db
 from app.models.answer_submission import AnswerSubmission
 from app.models.answer_detail import AnswerDetail
-from app.models.exam_paper import ExamPaper, exam_paper_questions
+from app.models.exam_paper import ExamPaper
 from app.models.question import Question
 from app.core.security import get_current_user
 
@@ -50,14 +50,15 @@ async def paper_question_stats(
     if not paper:
         raise HTTPException(404, detail="试卷不存在")
 
-    # Get all questions in this paper with positions
+    # Get all questions in this paper with positions (V3.5.1: via units)
     from sqlalchemy import text as sa_text
     qresult = await db.execute(
         sa_text("SELECT q.id, q.title, q.question_type, q.difficulty, q.correct_answer, "
-                "q.score, epq.position FROM questions q "
-                "JOIN exam_paper_questions epq ON q.id = epq.question_id "
-                "WHERE epq.exam_paper_id = :pid ORDER BY epq.position"),
-        {"pid": paper_id.hex}
+                "q.score, epuq.position FROM questions q "
+                "JOIN exam_paper_unit_questions epuq ON q.id = epuq.question_id "
+                "JOIN exam_paper_units epu ON epuq.unit_id = epu.id "
+                "WHERE epu.exam_paper_id = :pid ORDER BY epuq.position"),
+        {"pid": str(paper_id)}
     )
     questions = qresult.fetchall()
 
@@ -182,7 +183,7 @@ async def question_overall_stats(
         params["qtype"] = question_type
 
     # Build sub_id list for IN clause
-    id_list = ",".join(f"'{s.hex}'" for s in sub_ids)
+    id_list = ",".join(f"'{str(s)}'" for s in sub_ids)
     sql = f"""
         SELECT q.id, q.title, q.question_type, q.difficulty, q.correct_answer, q.score,
                COUNT(ad.id) as attempted,

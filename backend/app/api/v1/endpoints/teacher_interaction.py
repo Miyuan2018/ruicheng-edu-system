@@ -1,5 +1,4 @@
 """Teacher interaction endpoints — student feedback + class announcements to parents."""
-import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select

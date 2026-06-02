@@ -103,6 +103,9 @@ class ExamPaperFullSave(BaseModel):
     subtitle: Optional[str] = None
     instructions: Optional[str] = None
     description: Optional[str] = None
+    show_units: bool = True
+    per_unit_timer: bool = False
+    difficulty_ratio: Optional[dict] = None
     units: list[ExamPaperUnitCreate] = []
 
 

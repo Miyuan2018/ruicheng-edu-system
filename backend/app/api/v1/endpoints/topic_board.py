@@ -50,7 +50,7 @@ async def get_session_by_question(
         select(ExplanationSession)
         .options(selectinload(ExplanationSession.steps))
         .where(
-            ExplanationSession.question_id == str(question_id),
+            ExplanationSession.question_id == question_id,
             ExplanationSession.is_active == True,
         )
     )

@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, Numeric, UniqueConstraint
 from sqlalchemy.types import JSON
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -9,9 +10,9 @@ from app.db.base import Base
 class AnswerDetail(Base):
     __tablename__ = "answer_details"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    answer_submission_id = Column(String(36), ForeignKey("answer_submissions.id"), nullable=False, index=True)
-    question_id = Column(String(36), ForeignKey("questions.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    answer_submission_id = Column(UUID(as_uuid=True), ForeignKey("answer_submissions.id"), nullable=False, index=True)
+    question_id = Column(UUID(as_uuid=True), ForeignKey("questions.id"), nullable=False, index=True)
     student_answer = Column(Text, nullable=True)
     is_correct = Column(Boolean, nullable=True)
     score_obtained = Column(Numeric(precision=5, scale=2), nullable=True)

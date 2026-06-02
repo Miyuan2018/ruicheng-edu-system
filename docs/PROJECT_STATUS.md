@@ -17,9 +17,9 @@
 
 | 服务 | 地址 | 状态 |
 |------|------|------|
-| 后端 API | http://localhost:8000 | ✅ |
-| 前端 SPA | http://localhost:3000 | ✅ |
-| API 文档 | http://localhost:8000/docs | ✅ |
+| 后端 API | http://localhost:8001 | ✅ |
+| 前端 SPA | http://localhost:3001 | ✅ |
+| API 文档 | http://localhost:8001/docs | ✅ |
 | 一键启动 | `./start.sh` | ✅ |
 
 ## 3. 数据现状

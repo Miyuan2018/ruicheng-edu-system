@@ -22,7 +22,7 @@ class PaginationParams:
 
 class GradeLevel(BaseModel):
     """试卷或题目的适用范围结构。"""
-    scope: Literal["comprehensive", "grade_comprehensive", "chapter", "knowledge_point"]
+    scope: Literal["comprehensive", "grade_comprehensive", "chapter", "knowledge_point", "grade"]
     grades: List[str] = Field(..., min_length=1, description="年级编码数组，如 ['G7','G8']")
     chapter: Optional[str] = Field(None, max_length=100, description="章节名称")
     knowledge_points: Optional[List[str]] = Field(None, description="知识点列表")

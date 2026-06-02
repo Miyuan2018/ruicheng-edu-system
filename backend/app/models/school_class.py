@@ -1,5 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Date, Table as SATable
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -7,10 +8,10 @@ from app.db.base import Base
 class SchoolClass(Base):
     __tablename__ = "classes"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    teacher_id = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("admins.id"), nullable=False, index=True)
     grade_level = Column(String(20), nullable=True)
     subject = Column(String(50), nullable=True)
     start_date = Column(Date, nullable=True)
@@ -32,8 +33,8 @@ class SchoolClass(Base):
 class_students = SATable(
     'class_students',
     Base.metadata,
-    Column('id', String(36), primary_key=True, default=lambda: str(uuid.uuid4())),
-    Column('class_id', String(36), ForeignKey('classes.id'), nullable=False, index=True),
-    Column('student_id', String(36), ForeignKey('students.id'), nullable=False, index=True),
+    Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+    Column('class_id', UUID(as_uuid=True), ForeignKey('classes.id'), nullable=False, index=True),
+    Column('student_id', UUID(as_uuid=True), ForeignKey('students.id'), nullable=False, index=True),
     Column('joined_at', DateTime(timezone=True), nullable=False, server_default=func.now()),
 )

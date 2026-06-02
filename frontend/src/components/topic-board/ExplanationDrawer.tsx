@@ -90,7 +90,7 @@ export default function ExplanationDrawer({ open, onClose, questionId }: Explana
         </div>
       }
       placement="right"
-      width={920}
+      width="80vw"
       open={open}
       onClose={handleClose}
       styles={{

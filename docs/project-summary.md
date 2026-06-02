@@ -5,9 +5,9 @@
 ### 运行中服务
 | 服务 | 地址 | 技术 |
 |------|------|------|
-| 后端 API | http://localhost:8000 | FastAPI + SQLAlchemy + SQLite |
-| 前端 SPA | http://localhost:3000 | React 18 + Ant Design + TypeScript |
-| API 文档 | http://localhost:8000/docs | OpenAPI (Swagger) |
+| 后端 API | http://localhost:8001 | FastAPI + SQLAlchemy + SQLite |
+| 前端 SPA | http://localhost:3001 | React 18 + Ant Design + TypeScript |
+| API 文档 | http://localhost:8001/docs | OpenAPI (Swagger) |
 | 一键启动 | `./start.sh` | Bash 自动化 |
 
 ### V1.0 指标

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Tag, Space, message, Typography, Popconfirm, Divider, Row, Col } from 'antd';
-import { PlusOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, ReloadOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, StopOutlined, CheckCircleOutlined, ReloadOutlined, UserOutlined, SearchOutlined, DeleteOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import { useReferenceValues, toSelectOptions } from '../../hooks/useReferenceValues';
+import { maxGradeNum, maxGradeCode, expandGradeRange } from '../../utils/grade';
+import { extractApiError } from '../../utils/api-error';
 
 const { Title } = Typography;
 
@@ -28,6 +30,7 @@ export default function SysAdminPage() {
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const { 'grade-levels': grades } = useReferenceValues();
+  const gradeCodes = useMemo(() => grades.map((g: any) => g.code), [grades]);
   const [subjectOptions, setSubjectOptions] = useState<{value:string;label:string}[]>([]);
   const [isQAdmin, setIsQAdmin] = useState(false);
   const [isQAdminEdit, setIsQAdminEdit] = useState(false);
@@ -59,7 +62,7 @@ export default function SysAdminPage() {
       if (filterStatus !== undefined && filterStatus !== '') params.is_active = String(filterStatus);
       const { data } = await apiClient.get('/auth/admin/list', { params });
       setAdmins(data);
-    } catch { message.error('加载失败'); }
+    } catch (err) { message.error(extractApiError(err, '加载管理员列表失败')); }
     finally { setLoading(false); }
   };
 
@@ -68,30 +71,32 @@ export default function SysAdminPage() {
     try {
       const params: any = { ...values };
       if (params.subjects?.length) params.subjects = JSON.stringify(params.subjects);
-      if (params.grade_level) params.grade_level = JSON.stringify([params.grade_level]);
-      else params.grade_level = JSON.stringify([]);
+      else params.subjects = JSON.stringify([]);
+      params.grade_level = JSON.stringify(expandGradeRange(params.grade_level, gradeCodes));
       await apiClient.post('/auth/admin/create', null, { params });
       message.success('管理员创建成功');
       setModalOpen(false);
       loadAdmins();
     } catch (err: any) {
-      message.error(err?.response?.data?.detail || '创建失败');
+      message.error(extractApiError(err, '创建管理员失败'));
     }
   };
 
   const handleEdit = (record: AdminItem) => {
     setEditingAdmin(record);
+    editForm.resetFields();
+    const atype = Number(record.admin_type);
     editForm.setFieldsValue({
       full_name: record.full_name,
       phone: record.phone,
       email: record.email,
-      admin_type: record.admin_type,
+      admin_type: atype,
       qualification: record.qualification,
       is_active: record.is_active,
       subjects: record.subjects || [],
-      grade_level: (record.grade_level || [])[0] || undefined,
+      grade_level: maxGradeCode(record.grade_level),
     });
-    setIsQAdminEdit(String(record.admin_type) === '1');
+    setIsQAdminEdit(atype === 1);
     setEditOpen(true);
   };
 
@@ -101,15 +106,24 @@ export default function SysAdminPage() {
       const params: any = { ...values };
       if (params.subjects?.length) params.subjects = JSON.stringify(params.subjects);
       else params.subjects = JSON.stringify([]);
-      if (params.grade_level) params.grade_level = JSON.stringify([params.grade_level]);
-      else params.grade_level = JSON.stringify([]);
+      params.grade_level = JSON.stringify(expandGradeRange(params.grade_level, gradeCodes));
       if (!values.password) delete params.password;
       await apiClient.put(`/auth/admin/${editingAdmin!.id}`, null, { params });
       message.success('更新成功');
       setEditOpen(false);
       loadAdmins();
     } catch (err: any) {
-      message.error(err?.response?.data?.detail || '更新失败');
+      message.error(extractApiError(err, '更新管理员信息失败'));
+    }
+  };
+
+  const handleDelete = async (record: AdminItem) => {
+    try {
+      await apiClient.delete(`/auth/admin/${record.id}`);
+      message.success('已删除');
+      loadAdmins();
+    } catch (err: any) {
+      message.error(extractApiError(err, '删除失败'));
     }
   };
 
@@ -119,7 +133,7 @@ export default function SysAdminPage() {
       message.success(record.is_active ? '已停用' : '已启用');
       loadAdmins();
     } catch (err: any) {
-      message.error(err?.response?.data?.detail || '操作失败');
+      message.error(extractApiError(err, '操作失败'));
     }
   };
 
@@ -137,7 +151,7 @@ export default function SysAdminPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}><UserOutlined /> 管理员账号管理</Title>
         <Button type="primary" icon={<PlusOutlined />}
-          onClick={() => { form.resetFields(); setModalOpen(true); }}>
+          onClick={() => { form.resetFields(); form.setFieldsValue({ username: '', password: '', admin_type: 0 }); setModalOpen(true); }}>
           创建管理员
         </Button>
       </div>
@@ -148,17 +162,17 @@ export default function SysAdminPage() {
           onPressEnter={loadAdmins}
           style={{ width: 180 }} allowClear size="small" />
         <Select value={filterSubject} onChange={v => { setFilterSubject(v); }}
-          allowClear size="small" style={{ width: 110 }}
-          options={[{ value: '', label: '全部学科' }, ...subjectOptions]} />
+          allowClear size="small" style={{ width: 110 }} placeholder="学科"
+          options={subjectOptions} />
         <Select value={filterGrade} onChange={v => { setFilterGrade(v); }}
-          allowClear size="small" style={{ width: 100 }}
-          options={[{ value: '', label: '全部年级' }, ...grades.map(g => ({ value: g.code, label: g.name }))]} />
+          allowClear size="small" style={{ width: 100 }} placeholder="年级"
+          options={grades.map(g => ({ value: g.code, label: g.name }))} />
         <Select value={filterType} onChange={v => { setFilterType(v); }}
-          allowClear size="small" style={{ width: 120 }}
-          options={[{ value: '', label: '全部角色' }, { value: '0', label: '教师' }, { value: '1', label: '题库管理员' }]} />
+          allowClear size="small" style={{ width: 120 }} placeholder="角色"
+          options={[{ value: '0', label: '教师' }, { value: '1', label: '题库管理员' }]} />
         <Select value={filterStatus} onChange={v => { setFilterStatus(v); }}
-          allowClear size="small" style={{ width: 90 }}
-          options={[{ value: '', label: '全部状态' }, { value: 'true', label: '启用' }, { value: 'false', label: '停用' }]} />
+          allowClear size="small" style={{ width: 90 }} placeholder="状态"
+          options={[{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }]} />
         <Button icon={<ReloadOutlined />} onClick={loadAdmins} size="small">刷新</Button>
       </Space>
 
@@ -171,11 +185,14 @@ export default function SysAdminPage() {
         { title: '学科', dataIndex: 'subjects', width: 160,
           render: (v: string[]) => v?.length ? v.map(s => <Tag key={s} style={{marginBottom:2}}>{s}</Tag>) : '-' },
         { title: '年级上限', dataIndex: 'grade_level', width: 90,
-          render: (v: string[]) => v?.length ? v.sort().map(g => <Tag key={g} color="blue" style={{marginBottom:2}}>{g.replace('G','')}</Tag>) : '-' },
+          render: (v: string[]) => {
+            const max = maxGradeNum(v);
+            return max != null ? <Tag color="blue">{max}</Tag> : '-';
+          } },
         { title: '状态', dataIndex: 'is_active', width: 60,
           render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? '启用' : '停用'}</Tag> },
         {
-          title: '操作', width: 100,
+          title: '操作', width: 140,
           render: (_: any, r: AdminItem) => (
             <Space size={2}>
               <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)} />
@@ -185,6 +202,9 @@ export default function SysAdminPage() {
                   icon={r.is_active ? <StopOutlined /> : <CheckCircleOutlined />}>
                   {r.is_active ? '停用' : '启用'}
                 </Button>
+              </Popconfirm>
+              <Popconfirm title="确定删除?" onConfirm={() => handleDelete(r)}>
+                <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
               </Popconfirm>
             </Space>
           ),
@@ -289,12 +309,12 @@ export default function SysAdminPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="username" label="用户名" rules={[{ required: true }]}>
-                <Input placeholder="登录用户名" />
+                <Input placeholder="登录用户名" autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="password" label="密码" rules={[{ required: true, min: 6 }]}>
-                <Input.Password placeholder="初始密码" />
+                <Input.Password placeholder="初始密码" autoComplete="new-password" />
               </Form.Item>
             </Col>
           </Row>

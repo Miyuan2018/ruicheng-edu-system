@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Drawer, Spin, Empty } from 'antd';
+import { Drawer, Spin, Empty, Button } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import apiClient from '../../api/client';
 import PaperTemplatePreview from './PaperTemplatePreview';
+import type { ExamPaperUnit } from '../../types/paper';
 
 interface PaperPreviewDrawerProps {
   open: boolean;
@@ -11,42 +13,77 @@ interface PaperPreviewDrawerProps {
 
 export default function PaperPreviewDrawer({ open, paperId, onClose }: PaperPreviewDrawerProps) {
   const [paper, setPaper] = useState<any>(null);
-  const [questions, setQuestions] = useState<any[]>([]);
+  const [units, setUnits] = useState<ExamPaperUnit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = () => {
+    if (!paperId) {
+      setError('未选择试卷');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    // Use preview endpoint which returns units with questions
+    apiClient.get('/exam-papers/' + paperId + '/preview')
+      .then((resp) => {
+        const data = resp.data;
+        setPaper(data);
+        setUnits(data.units || []);
+      })
+      .catch((err) => {
+        const detail = err?.response?.data?.detail
+          || err?.response?.data?.message
+          || '';
+        if (err?.response?.status === 404) {
+          setError('试卷不存在或已被删除');
+        } else if (err?.response?.status === 403) {
+          setError('没有权限查看该试卷');
+        } else if (detail) {
+          setError(detail);
+        } else if (err?.code === 'ERR_NETWORK') {
+          setError('网络连接失败，请检查后端服务');
+        } else {
+          setError('加载失败，请稍后重试');
+        }
+        setPaper(null);
+        setUnits([]);
+      })
+      .finally(() => { setLoading(false); });
+  };
 
   useEffect(() => {
     if (open && paperId) {
-      setLoading(true);
-      Promise.all([
-        apiClient.get('/exam-papers/' + paperId),
-        apiClient.get('/exam-papers/' + paperId + '/questions'),
-      ]).then((results) => {
-        let p = results[0].data;
-        if (p && p.data) p = p.data;
-        setPaper(p);
-        let qs = results[1].data;
-        if (qs && qs.data) qs = qs.data;
-        setQuestions(Array.isArray(qs) ? qs : (qs || []));
-      }).catch((err) => {
-        console.error('Preview load error:', err);
-        setPaper(null);
-        setQuestions([]);
-      }).finally(() => { setLoading(false); });
+      load();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, paperId]);
 
   let body;
   if (loading) {
-    body = <Spin style={{ display: 'block', textAlign: 'center', padding: 40 }} />;
+    body = <Spin style={{ display: 'block', textAlign: 'center', padding: 40 }} tip="加载中..." />;
   } else if (!paper) {
-    body = <Empty description="加载失败" />;
+    body = (
+      <Empty description={error || '加载失败'}>
+        <Button icon={<ReloadOutlined />} onClick={load}>重试</Button>
+      </Empty>
+    );
   } else {
+    const grades = paper.grade_level?.grades?.join(', ') || '';
+    const subParts: string[] = [];
+    if (paper.subject) subParts.push(paper.subject);
+    if (grades) subParts.push(grades);
+    subParts.push('总分: ' + (paper.total_score ?? 0) + '分');
+    if (paper.duration_minutes != null) subParts.push('时长: ' + paper.duration_minutes + '分钟');
+    const subtitle = paper.subtitle || subParts.join(' | ');
+
     body = (
       <PaperTemplatePreview
         title={paper.title}
-        subtitle={paper.subtitle || (paper.subject + ' | 总分: ' + (paper.total_score || 0) + '分 | 时长: ' + (paper.duration_minutes || 0) + '分钟')}
-        notes={paper.instructions || paper.description || ''}
-        questions={questions}
+        subtitle={subtitle}
+        instructions={paper.instructions || paper.description || ''}
+        units={units}
+        show_units={paper.show_units ?? false}
         readonly
       />
     );

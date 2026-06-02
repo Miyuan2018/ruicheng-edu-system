@@ -17,7 +17,7 @@ def _load_sysconfig():
             "port": db.get("port", "5432"),
             "database": db.get("database", "edu_system"),
             "user": db.get("user", "postgres"),
-            "password": os.getenv("DATABASE_PASSWORD", db.get("password", "postgres")),
+            "password": os.getenv("DATABASE_PASSWORD") or db.get("password") or "postgres",
         }
     except Exception:
         return {
@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     MODEL_CACHE_DIR: str = os.getenv("MODEL_CACHE_DIR", "./models")
 
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = int(os.getenv("BACKEND_PORT", "8001"))
 
     class Config:
         case_sensitive = True

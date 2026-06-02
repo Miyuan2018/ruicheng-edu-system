@@ -1,5 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Integer, CheckConstraint, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -8,10 +9,10 @@ from app.db.base import Base
 class ErrorNotebookQuestion(Base):
     __tablename__ = "error_notebook_questions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    error_notebook_id = Column(String(36), ForeignKey("error_notebooks.id"), nullable=False, index=True)
-    original_question_id = Column(String(36), ForeignKey("questions.id"), nullable=False, index=True)
-    practice_question_id = Column(String(36), ForeignKey("questions.id"), nullable=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    error_notebook_id = Column(UUID(as_uuid=True), ForeignKey("error_notebooks.id"), nullable=False, index=True)
+    original_question_id = Column(UUID(as_uuid=True), ForeignKey("questions.id"), nullable=False, index=True)
+    practice_question_id = Column(UUID(as_uuid=True), ForeignKey("questions.id"), nullable=True, index=True)
     error_type = Column(String(50), nullable=True)
     explanation = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

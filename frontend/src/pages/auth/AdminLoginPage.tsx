@@ -41,7 +41,11 @@ export default function AdminLoginPage() {
     try { const { data } = await apiClient.get('/auth/captcha'); setCaptchaSvg(data.captcha_svg); setCaptchaKey(data.captcha_key); } catch {}
   };
 
-  useEffect(() => { refreshCaptcha(); }, []);
+  useEffect(() => {
+    refreshCaptcha();
+    // 清除浏览器自动填充的默认值
+    form.resetFields();
+  }, []);
   useEffect(() => {
     if (countdown > 0) { const t = setTimeout(() => setCountdown(countdown - 1), 1000); return () => clearTimeout(t); }
   }, [countdown]);
@@ -115,7 +119,7 @@ export default function AdminLoginPage() {
         )}
 
         <Form form={form} onFinish={step === 0 ? handleVerify : handleLogin} size="large"
-          initialValues={{ role: 0 }}>
+          initialValues={{ role: 0 }} autoComplete="off">
 
           <Form.Item name="role" label="角色" rules={[{ required: true }]}>
             <Select disabled={verified} options={[
@@ -126,11 +130,11 @@ export default function AdminLoginPage() {
           </Form.Item>
 
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名或手机号' }]}>
-            <Input prefix={<UserOutlined />} placeholder="用户名或手机号" disabled={verified} />
+            <Input prefix={<UserOutlined />} placeholder="用户名或手机号" disabled={verified} autoComplete="off" />
           </Form.Item>
 
           <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" disabled={verified} />
+            <Input.Password prefix={<LockOutlined />} placeholder="密码" disabled={verified} autoComplete="new-password" />
           </Form.Item>
 
           <Form.Item name="captcha_code" rules={[{ required: step === 0, message: '请输入图形验证码' }]}>

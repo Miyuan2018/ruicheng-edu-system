@@ -1,5 +1,4 @@
 """Student statistics endpoints — real data for student dashboard."""
-import uuid
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession

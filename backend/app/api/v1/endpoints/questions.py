@@ -114,16 +114,6 @@ async def get_question_tags(
     return []
 
 
-@router.get("/knowledge-points", response_model=List[str])
-async def get_question_knowledge_points(
-    current_user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    # This would require a more complex query to extract distinct knowledge points from questions
-    # For now, returning an empty list as a placeholder
-    return []
-
-
 @router.post("/batch-import")
 async def batch_import_questions(
     questions: List[dict],
@@ -337,6 +327,73 @@ async def toggle_typical(
             await db.delete(old_session)
     await db.commit()
     return {"id": str(q.id), "is_typical": q.is_typical, "message": "已标记为典型题" if is_typical else "已取消典型题标记"}
+
+
+@router.post("/{question_id}/save-typical")
+async def save_typical(
+    question_id: uuid.UUID,
+    steps: List[dict] = Body(..., embed=True),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save explanation steps + mark question as typical. For QUESTION_ADMIN/TEACHER/SYS_ADMIN."""
+    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(403, detail="权限不足")
+
+    result = await db.execute(select(Question).where(Question.id == question_id))
+    q = result.scalar_one_or_none()
+    if not q:
+        raise HTTPException(404, detail="试题不存在")
+
+    from app.models.explanation_session import ExplanationSession
+    from app.models.explanation_step import ExplanationStep
+
+    # Check for existing session
+    sess_result = await db.execute(
+        select(ExplanationSession).where(
+            ExplanationSession.question_id == question_id,
+            ExplanationSession.is_active == True,
+        )
+    )
+    session = sess_result.scalar_one_or_none()
+
+    if session:
+        stmt = select(ExplanationStep).where(ExplanationStep.session_id == session.id)
+        old_steps = (await db.execute(stmt)).scalars().all()
+        for s in old_steps:
+            await db.delete(s)
+        await db.flush()
+    else:
+        session = ExplanationSession(
+            question_id=question_id,
+            title=q.title or "题目讲解",
+            topic=q.subject or "",
+            difficulty_label=q.difficulty or "MEDIUM",
+            problem_statement=q.title or "",
+            created_by=current_user.id,
+        )
+        db.add(session)
+        await db.flush()
+
+    try:
+        for step_in in steps:
+            step = ExplanationStep(
+                session_id=session.id,
+                step_order=step_in.get("step_order", 0),
+                text=step_in.get("text", ""),
+                panda_emotion=step_in.get("panda_emotion", "explaining"),
+                board_line=step_in.get("board_line"),
+            )
+            db.add(step)
+
+        q.is_typical = True
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        import logging
+        logging.getLogger(__name__).exception("save-typical failed")
+        raise HTTPException(500, detail=f"保存失败: {str(e)}")
+    return {"ok": True, "session_id": str(session.id), "message": "已标记为典型题并保存讲解"}
 
 
 @router.get("/has-explanations")

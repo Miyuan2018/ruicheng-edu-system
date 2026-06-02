@@ -1,5 +1,4 @@
 """Parent endpoints — invite code linking, encouragement, rewards, celebrations, stats."""
-import uuid
 import secrets
 import string
 from datetime import datetime, timezone, timedelta

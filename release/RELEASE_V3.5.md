@@ -151,7 +151,7 @@ pip install -r requirements.txt
 cp .env.example .env    # 编辑配置
 alembic upgrade head
 python seed_v35.py --force
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 # 前端
 cd frontend

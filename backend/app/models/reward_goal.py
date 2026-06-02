@@ -1,6 +1,7 @@
 """Reward goals set by parents for students."""
 import uuid
 from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, ForeignKey, CheckConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -8,9 +9,9 @@ from app.db.base import Base
 class RewardGoal(Base):
     __tablename__ = "reward_goals"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    parent_id = Column(String(36), ForeignKey("parents.id"), nullable=False, index=True)
-    student_id = Column(String(36), ForeignKey("students.id"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("parents.id"), nullable=False, index=True)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False)
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     reward_description = Column(String(500), nullable=False)
