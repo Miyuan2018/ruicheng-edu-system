@@ -78,11 +78,20 @@ const QUICK_PRESETS: Record<string, ExamPaperUnit[]> = {
   ],
 };
 
-/** 从 correct_answer JSON 中解析选项，用于 auto-generate 响应中提取 */
-function parseOptions(correctAnswer: string): any[] {
+/** 从 correct_answer JSON 中解析选项，统一转为 {label,text} 对象格式 */
+function parseOptions(correctAnswer: string): { label: string; text: string }[] {
   try {
     const parsed = JSON.parse(correctAnswer);
-    if (parsed?.options) return parsed.options;
+    if (!parsed?.options) return [];
+    return (parsed.options as any[]).map((opt: any) => {
+      if (typeof opt === 'string') {
+        // 数据库格式: "A. 选项文本" → 拆分为 label + text
+        const match = opt.match(/^([A-D])[.．、）\)]\s*(.*)/);
+        if (match) return { label: match[1], text: match[2] };
+        return { label: '', text: opt };
+      }
+      return { label: opt.label || opt.id || '', text: opt.text || opt.content || '' };
+    });
   } catch {}
   return [];
 }
@@ -120,7 +129,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
             question_type: q.question_type || '',
             difficulty: q.difficulty || '',
             subject: q.subject || paperData.subject || '',
-            options: q.options || [],
+            options: parseOptions(q.correct_answer || ''),
             correct_answer: q.correct_answer || '',
             explanation: q.explanation || '',
           },

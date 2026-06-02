@@ -158,8 +158,15 @@ export default function PrintPreviewPage() {
                   {isChoice && options && options.length > 0 && (
                     <div style={{ marginTop: 4, marginLeft: 24, fontSize: 13 }}>
                       {options.map((opt: any, idx: number) => {
-                        const label = opt.label || opt.id || String.fromCharCode(65 + idx);
-                        const text = opt.text || opt.content || '';
+                        let label: string, text: string;
+                        if (typeof opt === 'string') {
+                          const m = opt.match(/^([A-D])[.．、）\)]\s*(.*)/);
+                          label = m ? m[1] : String.fromCharCode(65 + idx);
+                          text = m ? m[2] : opt;
+                        } else {
+                          label = opt.label || opt.id || String.fromCharCode(65 + idx);
+                          text = opt.text || opt.content || '';
+                        }
                         return <div key={label} style={{ marginBottom: 2 }}>{label + '. ' + text}</div>;
                       })}
                     </div>
