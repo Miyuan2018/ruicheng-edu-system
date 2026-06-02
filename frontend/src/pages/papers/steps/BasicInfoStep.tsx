@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Form, Input, InputNumber, Select, Row, Col, Card } from 'antd';
+import { Form, Input, InputNumber, Select, Row, Col, Card, Divider, Collapse } from 'antd';
 import apiClient from '../../../api/client';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { useReferenceValues, toSelectOptions } from '../../../hooks/useReferenceValues';
-
-const DIFF_LABELS: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
-const DIFF_COLORS: Record<string, string> = { EASY: '#52c41a', MEDIUM: '#faad14', HARD: '#ff4d4f' };
 
 export default function BasicInfoStep() {
   const { paper, updateMeta } = usePaperEditorStore();
@@ -35,7 +32,6 @@ export default function BasicInfoStep() {
     }).catch(() => {});
   }, []);
 
-  // Sync store -> form when paper loads
   useEffect(() => {
     if (paper) {
       const scope = paper.grade_level?.scope || 'grade_comprehensive';
@@ -46,16 +42,11 @@ export default function BasicInfoStep() {
         total_score: paper.total_score || undefined,
         grade_scope: scope,
         grade_level: paper.grade_level?.grades || [],
-        subtitle: paper.subtitle,
-        description: paper.description,
-        instructions: paper.instructions,
-        duration_minutes: paper.duration_minutes,
-        diff_easy: paper.difficulty_ratio?.EASY ?? 20,
-        diff_medium: paper.difficulty_ratio?.MEDIUM ?? 50,
-        diff_hard: paper.difficulty_ratio?.HARD ?? 30,
+        subtitle: paper.subtitle || '',
+        instructions: paper.instructions || '',
+        duration_minutes: paper.duration_minutes || undefined,
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper?.id]);
 
   const loadKnowledgeTree = async (sid: string) => {
@@ -74,6 +65,7 @@ export default function BasicInfoStep() {
     } catch { /* ignore */ }
   };
 
+  // 只设置 Step1 负责的字段
   const handleValuesChange = (_changedValues: any, allValues: any) => {
     const scope = allValues.grade_scope || 'grade_comprehensive';
     updateMeta({
@@ -81,28 +73,16 @@ export default function BasicInfoStep() {
       subject: allValues.subject || '',
       total_score: allValues.total_score || 0,
       grade_level: { scope, grades: allValues.grade_level || [] },
-      subtitle: allValues.subtitle || '',
-      description: allValues.description || '',
-      instructions: allValues.instructions || '',
       duration_minutes: allValues.duration_minutes || null,
-      difficulty_ratio: {
-        EASY: allValues.diff_easy ?? 20,
-        MEDIUM: allValues.diff_medium ?? 50,
-        HARD: allValues.diff_hard ?? 30,
-      },
+      subtitle: allValues.subtitle || '',
+      instructions: allValues.instructions || '',
     });
-  };
-
-  const diffTotal = () => {
-    const e = form.getFieldValue('diff_easy') ?? 20;
-    const m = form.getFieldValue('diff_medium') ?? 50;
-    const h = form.getFieldValue('diff_hard') ?? 30;
-    return (e || 0) + (m || 0) + (h || 0);
   };
 
   return (
     <Card title="基本信息" style={{ maxWidth: 720, margin: '0 auto' }}>
       <Form form={form} layout="vertical" onValuesChange={handleValuesChange}>
+        {/* Row 1: 标题 | 学科 | 总分 */}
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item name="title" label="试卷标题" rules={[{ required: true, message: '请输入试卷标题' }]}>
@@ -116,18 +96,18 @@ export default function BasicInfoStep() {
           </Col>
           <Col span={6}>
             <Form.Item name="total_score" label="试卷总分">
-              <InputNumber style={{ width: '100%' }} min={1} max={999} placeholder="如：100" />
+              <InputNumber style={{ width: '100%' }} min={1} max={999} placeholder="100" />
             </Form.Item>
           </Col>
         </Row>
 
+        {/* Row 2: 适用范围 | 年级 | 时长 */}
         <Row gutter={16}>
           <Col span={8}>
             <Form.Item name="grade_scope" label="适用范围" initialValue="grade_comprehensive">
               <Select
                 onChange={(val) => {
                   setGradeMode(val === 'comprehensive' ? 'multiple' : 'single');
-                  // 切换模式时清空已选年级
                   form.setFieldValue('grade_level', []);
                 }}
                 options={[
@@ -147,75 +127,64 @@ export default function BasicInfoStep() {
             </Form.Item>
           </Col>
           <Col span={5}>
-            <Form.Item name="duration_minutes" label="考试时长(分钟)">
-              <Input placeholder="如：60" suffix="分钟" />
+            <Form.Item name="duration_minutes" label="考试时长">
+              <InputNumber style={{ width: '100%' }} min={1} max={300} placeholder="60" suffix="分钟" />
             </Form.Item>
           </Col>
-          <Col span={5}>
-            <Form.Item label="试卷难度">
-              <Row gutter={4}>
-                {['EASY', 'MEDIUM', 'HARD'].map((d) => (
-                  <Col span={8} key={d}>
-                    <Form.Item name={`diff_${d.toLowerCase()}`} noStyle initialValue={d === 'EASY' ? 20 : d === 'MEDIUM' ? 50 : 30}>
-                      <InputNumber
-                        size="small"
-                        style={{ width: '100%' }}
-                        min={0} max={100}
-                        addonAfter={<span style={{ fontSize: 10, color: DIFF_COLORS[d] }}>{DIFF_LABELS[d]}</span>}
-                      />
-                    </Form.Item>
-                  </Col>
-                ))}
-              </Row>
-              <div style={{ fontSize: 11, color: diffTotal() === 100 ? '#52c41a' : '#ff4d4f', marginTop: 2 }}>
-                {diffTotal() === 100 ? '✓ 合计 100%' : `⚠ 合计 ${diffTotal()}%（需为100%）`}
-              </div>
-            </Form.Item>
-          </Col>
+          <Col span={5} />
         </Row>
 
-        <Row gutter={16} style={{ marginTop: 16 }}>
-          <Col span={24}>
-            <Form.Item label="知识点范围">
-              <Select
-                placeholder="选择考纲（可选）"
-                value={selectedSyllabus || undefined}
-                onChange={(v) => { setSelectedSyllabus(v || ''); loadKnowledgeTree(v); }}
-                options={syllabi.map((s: any) => ({ value: s.id, label: s.title }))}
-                allowClear
-                style={{ marginBottom: 8, maxWidth: 400 }}
-              />
-              <Select
-                mode="multiple"
-                placeholder="选择知识点（可多选，可搜索）"
-                value={paper?.knowledge_node_ids || []}
-                onChange={(v: string[]) => updateMeta({ knowledge_node_ids: v })}
-                options={knowledgeNodes.map((n: any) => ({ value: n.key, label: n.title }))}
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </Col>
-        </Row>
+        <Divider style={{ margin: '4px 0 12px 0' }} />
 
+        {/* 选填区: 副标题 | 注意事项 */}
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="subtitle" label="副标题">
+            <Form.Item name="subtitle" label={<span style={{ color: '#999', fontWeight: 400 }}>副标题</span>}>
               <Input placeholder="如：满分100分，考试时间60分钟" />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="description" label="试卷描述">
-              <Input placeholder="简要描述试卷内容和范围" />
+            <Form.Item name="instructions" label={<span style={{ color: '#999', fontWeight: 400 }}>注意事项</span>}>
+              <Input placeholder="考生须知（选填）" />
             </Form.Item>
           </Col>
         </Row>
 
-        <Form.Item name="instructions" label="注意事项">
-          <Input.TextArea rows={3} placeholder="考生注意事项，如：请使用2B铅笔填涂答题卡" />
-        </Form.Item>
+        {/* 高级设置 */}
+        <Collapse
+          size="small"
+          ghost
+          items={[{
+            key: 'advanced',
+            label: <span style={{ fontSize: 12, color: '#bbb' }}>高级设置</span>,
+            children: (
+              <div style={{ padding: '8px 0' }}>
+                <div style={{ marginBottom: 8, fontSize: 13, color: '#666' }}>
+                  知识点范围 <span style={{ fontSize: 11, color: '#999' }}>— 选定后自动选题时优先匹配</span>
+                </div>
+                <Select
+                  placeholder="选择考纲（可选）"
+                  value={selectedSyllabus || undefined}
+                  onChange={(v) => { setSelectedSyllabus(v || ''); loadKnowledgeTree(v); }}
+                  options={syllabi.map((s: any) => ({ value: s.id, label: s.title }))}
+                  allowClear
+                  style={{ marginBottom: 8, maxWidth: 400 }}
+                />
+                <Select
+                  mode="multiple"
+                  placeholder="选择知识点（可多选，可搜索）"
+                  value={paper?.knowledge_node_ids || []}
+                  onChange={(v: string[]) => updateMeta({ knowledge_node_ids: v })}
+                  options={knowledgeNodes.map((n: any) => ({ value: n.key, label: n.title }))}
+                  filterOption={(input, option) =>
+                    (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+            ),
+          }]}
+        />
       </Form>
     </Card>
   );
