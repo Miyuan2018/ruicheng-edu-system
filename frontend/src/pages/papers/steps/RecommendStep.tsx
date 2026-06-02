@@ -19,14 +19,25 @@ export default function RecommendStep() {
 
   const hasAutoTriggered = useRef(false);
 
-  // 到步即自动触发智能生成
+  // 到步即自动触发智能生成 + 缺口检测
   useEffect(() => {
     if (!paper?.id || hasAutoTriggered.current) return;
     const units = paper?.units || [];
     const hasConfigs = units.some(u => (u.question_config || []).some(c => (c.count || 0) > 0));
     if (!hasConfigs) return;
     hasAutoTriggered.current = true;
-    handleGenerate();
+
+    // 检测是否有缺口需要补充
+    let needsFill = false;
+    units.forEach(u => {
+      (u.question_config || []).forEach(cfg => {
+        const existing = (u.questions || []).filter(q => q.question_type === cfg.question_type).length;
+        if ((cfg.count || 0) > existing) needsFill = true;
+      });
+    });
+    if (needsFill) {
+      handleGenerate(true);  // force: 缺口补充模式
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper?.id]);
 
@@ -199,8 +210,13 @@ export default function RecommendStep() {
             <span style={{ fontSize: 13, color: '#999' }}>点击"智能生成"自动选题</span>
           )}
         </div>
-        <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={handleGenerate}>
-          智能生成
+        <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={() => {
+          if (!paper?.id) { message.warning('请先保存基本信息'); return; }
+          clearAllQuestions();
+          setGenerateReport(null);
+          handleGenerate(true);
+        }}>
+          一键选题
         </Button>
       </div>
 
@@ -213,6 +229,8 @@ export default function RecommendStep() {
       {!loading && generateReport && Object.entries(groupedByType).map(([qtype, questions]) => {
         const unit = units.find(u => (u.question_config || []).some(c => c.question_type === qtype));
         const unitId = unit?.id || '';
+        const typeConfig = unit?.question_config?.find(c => c.question_type === qtype);
+        const configCount = typeConfig?.count || 0;
         return (
           <Card
             key={qtype}
@@ -220,37 +238,51 @@ export default function RecommendStep() {
             style={{ marginBottom: 12 }}
             title={<span>{QTYPE_LABELS[qtype] || qtype}<Tag style={{ marginLeft: 8 }}>{questions.length}题</Tag></span>}
           >
-            {questions.map((q, qi) => (
-              <div
-                key={q.question_id}
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 12,
-                  padding: '8px 0',
-                  borderBottom: qi < questions.length - 1 ? '1px solid #f5f5f5' : 'none',
-                }}
-              >
-                <span style={{ color: '#999', fontSize: 12, minWidth: 24 }}>{qi + 1}.</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.title}</div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <Tag color={DIFF_COLORS[q.difficulty]} style={{ fontSize: 10 }}>{DIFF_LABELS[q.difficulty]}</Tag>
-                    <Tag style={{ fontSize: 10 }}>{q.score}分</Tag>
-                    {q.recommendation_tags.map((t, i) => (
-                      <Tag key={i} color={t.includes('✓') ? 'success' : 'default'} style={{ fontSize: 10 }}>{t}</Tag>
-                    ))}
+            {questions.map((q, qi) => {
+              const isExtra = configCount > 0 && qi >= configCount;
+              return (
+                <div
+                  key={q.question_id}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
+                    padding: '8px 0',
+                    borderBottom: qi < questions.length - 1 ? '1px solid #f5f5f5' : 'none',
+                    borderLeft: isExtra ? '3px solid #ff4d4f' : 'none',
+                    paddingLeft: isExtra ? 8 : 0,
+                  }}
+                >
+                  <span style={{ color: '#999', fontSize: 12, minWidth: 24 }}>{qi + 1}.</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.title}</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <Tag color={DIFF_COLORS[q.difficulty]} style={{ fontSize: 10 }}>{DIFF_LABELS[q.difficulty]}</Tag>
+                      <Tag style={{ fontSize: 10 }}>{q.score}分</Tag>
+                      {isExtra && <Tag color="error" style={{ fontSize: 10, marginRight: 4 }}>多余</Tag>}
+                      {q.recommendation_tags.map((t, i) => (
+                        <Tag key={i} color={t.includes('✓') ? 'success' : 'default'} style={{ fontSize: 10 }}>{t}</Tag>
+                      ))}
+                    </div>
                   </div>
+                  <Space size="small" style={{ flexShrink: 0 }}>
+                    {!isExtra && (
+                      <Button size="small" type="link" style={{ fontSize: 11 }}>手工选题</Button>
+                    )}
+                    <Tooltip title="换一题">
+                      <Button size="small" icon={<SwapOutlined />} loading={swapLoading[q.question_id]}
+                        onClick={() => handleSwap(q.question_id, unitId)} />
+                    </Tooltip>
+                    <Popconfirm title="移除此题？" onConfirm={() => handleRemove(unitId, q.question_id)}>
+                      <Button size="small" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </Space>
                 </div>
-                <Space size="small" style={{ flexShrink: 0 }}>
-                  <Tooltip title="换一题">
-                    <Button size="small" icon={<SwapOutlined />} loading={swapLoading[q.question_id]}
-                      onClick={() => handleSwap(q.question_id, unitId)} />
-                  </Tooltip>
-                  <Popconfirm title="移除此题？" onConfirm={() => handleRemove(unitId, q.question_id)}>
-                    <Button size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
-                </Space>
+              );
+            })}
+            {configCount > 0 && questions.length > configCount && (
+              <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 8, padding: '4px 8px', background: '#fff2f0', borderRadius: 4 }}>
+                已选 {questions.length}/{configCount} 题，超出 {questions.length - configCount} 题（请手动删除多余试题）
               </div>
-            ))}
+            )}
           </Card>
         );
       })}
