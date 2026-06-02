@@ -217,7 +217,8 @@ async def run():
             try:
                 await _step_fn(db)
             except Exception as e:
-                print(f"   跳过步骤{_step_name} ({type(e).__name__})")
+                msg = str(e)[:120]
+                print(f"   跳过步骤{_step_name} ({type(e).__name__}: {msg})")
         summary()
 
     await engine.dispose()
@@ -1038,9 +1039,19 @@ async def step7_papers(db: AsyncSession):
         (PAPER_MATH_FINAL_ID,"八年级数学上册期末测试", "全册综合检测，满分120分",
          "数学", {"scope":"grade","grades":["G8"]}, 120, 120,
          "认真审题，书写规范。选择题用2B铅笔填涂。", T_MATH_ID, {"EASY":15,"MEDIUM":55,"HARD":30}, True, True),
+        (PAPER_CHN_MID_ID,   "七年级语文上册期中检测", "现代文+古诗词+写作，满分100分",
+         "语文", {"scope":"grade","grades":["G7"]}, 100, 120,
+         "作文字迹工整，卷面整洁将酌情加分。", T_CHINESE_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
+        (PAPER_ENG_FINAL_ID, "九年级英语中考模拟卷", "单选+填空+阅读+写作，满分120分",
+         "英语", {"scope":"grade","grades":["G9"]}, 120, 120,
+         "听力部分另行安排。本卷考查语法、阅读和写作能力。", T_ENG_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
+        (PAPER_PHY_UNIT_ID,  "八年级物理·光现象单元测试", "光的传播+反射+折射，满分60分",
+         "物理", {"scope":"grade","grades":["G8"]}, 60, 45,
+         "作图题请用铅笔和直尺。", T_PHY_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
     ]
 
     # Paper-question map with type info for unit grouping
+    # 语文/英语/物理：问题类型从 _q() 调用中提取
     paper_q_map = {
         PAPER_MATH_MID_ID: [
             ("q1",1,3, "SINGLE_CHOICE"),("q2",2,3, "SINGLE_CHOICE"),("q3",3,3, "SINGLE_CHOICE"),
@@ -1066,6 +1077,29 @@ async def step7_papers(db: AsyncSession):
             ("q20",12,6, "FILL_BLANK"),("q22",13,4, "FILL_BLANK"),("q23",14,4, "FILL_BLANK"),
             ("q25",15,10, "SUBJECTIVE"),("q27",16,12, "SUBJECTIVE"),
             ("q28",17,10, "SUBJECTIVE"),("q29",18,4, "SUBJECTIVE"),("q30",19,6, "SUBJECTIVE"),
+        ],
+        PAPER_CHN_MID_ID: [
+            ("q31",1,2,"SINGLE_CHOICE"),("q32",2,2,"SINGLE_CHOICE"),("q33",3,2,"SINGLE_CHOICE"),
+            ("q34",4,2,"SINGLE_CHOICE"),("q35",5,2,"SINGLE_CHOICE"),("q36",6,2,"SINGLE_CHOICE"),
+            ("q37",7,2,"SINGLE_CHOICE"),("q38",8,2,"SINGLE_CHOICE"),
+            ("q39",9,3,"FILL_BLANK"),("q40",10,4,"FILL_BLANK"),("q41",11,3,"FILL_BLANK"),("q42",12,3,"FILL_BLANK"),
+            ("q43",13,8,"SUBJECTIVE"),("q44",14,6,"SUBJECTIVE"),("q47",15,4,"SUBJECTIVE"),
+            ("q49",16,8,"SUBJECTIVE"),("q45",17,20,"SUBJECTIVE"),
+        ],
+        PAPER_ENG_FINAL_ID: [
+            ("q51",1,3,"SINGLE_CHOICE"),("q52",2,3,"FILL_BLANK"),("q53",3,3,"FILL_BLANK"),
+            ("q54",4,2,"SUBJECTIVE"),("q55",5,2,"SINGLE_CHOICE"),("q56",6,3,"SINGLE_CHOICE"),
+            ("q57",7,3,"SINGLE_CHOICE"),("q58",8,2,"SINGLE_CHOICE"),("q59",9,2,"FILL_BLANK"),
+            ("q60",10,2,"FILL_BLANK"),("q61",11,4,"SUBJECTIVE"),("q62",12,4,"FILL_BLANK"),
+            ("q63",13,3,"FILL_BLANK"),("q64",14,4,"SUBJECTIVE"),("q65",15,6,"SUBJECTIVE"),
+            ("q66",16,10,"SUBJECTIVE"),("q67",17,6,"SUBJECTIVE"),("q68",18,12,"SUBJECTIVE"),
+            ("q69",19,8,"SUBJECTIVE"),("q70",20,6,"SUBJECTIVE"),
+        ],
+        PAPER_PHY_UNIT_ID: [
+            ("q71",1,3,"SINGLE_CHOICE"),("q72",2,3,"FILL_BLANK"),("q73",3,3,"SINGLE_CHOICE"),
+            ("q74",4,3,"SINGLE_CHOICE"),("q75",5,3,"SINGLE_CHOICE"),
+            ("q76",6,3,"SINGLE_CHOICE"),("q77",7,6,"MULTIPLE_CHOICE"),("q78",8,6,"MULTIPLE_CHOICE"),
+            ("q79",9,3,"FILL_BLANK"),("q80",10,4,"SUBJECTIVE"),
         ],
     }
 
