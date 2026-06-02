@@ -31,7 +31,7 @@ from app.schemas.exam_paper import (
     AutoGenerateRequest,
 )
 from app.services.notification_service import NotificationService
-from app.services.exam_paper_export import export_word, export_pdf
+from app.services.exam_paper_export import export_word, export_pdf, _normalize_options
 from app.services.recommendation_engine import distribute_quotas, score_question, select_for_targets
 
 router = APIRouter()
@@ -1523,6 +1523,9 @@ async def preview_exam_paper(
             except (json.JSONDecodeError, TypeError):
                 answer_text = correct_answer
 
+            # 规范化选项：字符串转对象，裁剪题干行内选项
+            q_title, q_options = _normalize_options(q.title or "", options)
+
             uq_list.append(
                 {
                     "index": len(uq_list) + 1,
@@ -1531,11 +1534,11 @@ async def preview_exam_paper(
                     "question_type": q.question_type,
                     "position": uq.position,
                     "score": uq.score or q.score or 0,
-                    "title": q.title or "",
+                    "title": q_title,
                     "difficulty": q.difficulty or "",
                     "correct_answer": correct_answer,
                     "answer_text": answer_text,
-                    "options": options,
+                    "options": q_options,
                     "explanation": q.explanation or "",
                 }
             )

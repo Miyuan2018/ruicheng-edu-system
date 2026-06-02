@@ -3,8 +3,9 @@
 V3.5.1: Loads questions from ExamPaperUnit + ExamPaperUnitQuestion instead
 of the deleted exam_paper_questions association table.
 """
-import json
 import io
+import json
+import re
 from urllib.parse import quote
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,45 @@ TYPE_LABELS = {
     "MULTIPLE_CHOICE": "多选题",
     "SUBJECTIVE": "解答题",
 }
+
+
+def _normalize_options(title: str, options: list | None) -> tuple[str, list[dict] | None]:
+    """规范化选项：纯字母选项补文本，题干裁剪行内选项。返回 (title, options)。"""
+    if not options:
+        return title, None
+
+    # 纯字母选项 ["A","B","C","D"] → 从题干提取文本
+    if all(isinstance(o, str) and len(o) == 1 and o in 'ABCDEFGH' for o in options):
+        m = re.search(r'\s*A[.．、）\)]', title)
+        if m and m.start() > 0:
+            stripped = title[m.start():].strip()
+            title = title[:m.start()].rstrip(' （(').strip()
+            parts = re.split(r'\s+(?=[A-H][.．、）\)])', stripped)
+            full_opts = []
+            for part in parts:
+                pm = re.match(r'^([A-H])[.．、）\)]\s*(.*)', part)
+                if pm:
+                    full_opts.append({'label': pm.group(1), 'text': pm.group(2).strip()})
+            if len(full_opts) == len(options):
+                return title, full_opts
+        return title, options
+
+    # 字符串选项 "A. text" → 对象 {label,text}
+    if all(isinstance(o, str) for o in options):
+        full_opts = []
+        for o in options:
+            pm = re.match(r'^([A-H])[.．、）\)]\s*(.*)', o)
+            if pm:
+                full_opts.append({'label': pm.group(1), 'text': pm.group(2)})
+            else:
+                full_opts.append({'label': '', 'text': o})
+        # 同时裁剪题干
+        m = re.search(r'\s*A[.．、）\)]', title)
+        if m and m.start() > 0:
+            title = title[:m.start()].rstrip(' （(').strip()
+        return title, full_opts
+
+    return title, options
 
 
 def _parse_question(question, uq_score: int) -> dict:
@@ -38,8 +78,10 @@ def _parse_question(question, uq_score: int) -> dict:
     except (json.JSONDecodeError, TypeError):
         answer_text = correct_answer
 
+    title, options = _normalize_options(question.title or "", options)
+
     return {
-        "title": question.title or "",
+        "title": title,
         "question_type": question.question_type,
         "type_label": TYPE_LABELS.get(question.question_type, question.question_type),
         "difficulty": question.difficulty or "",
@@ -114,9 +156,15 @@ def _write_question_word(doc, q, t, Cm, Pt):
             opt_para = doc.add_paragraph()
             opt_para.paragraph_format.left_indent = Cm(1)
             if isinstance(opt, dict):
-                opt_para.add_run(f"{opt.get('label', '')}. {opt.get('text', '')}").font.size = Pt(10)
+                label = opt.get('label', '')
+                text = opt.get('text', '')
+                opt_para.add_run(f"{label}. {text}" if text else label).font.size = Pt(10)
             else:
-                opt_para.add_run(str(opt)).font.size = Pt(10)
+                line = str(opt)
+                pm = re.match(r'^([A-H])[.︐，）\)]\s*(.*)', line)
+                if pm and pm.group(2):
+                    line = f"{pm.group(1)}. {pm.group(2)}"
+                opt_para.add_run(line).font.size = Pt(10)
     if t == "FILL_BLANK":
         blank_para = doc.add_paragraph()
         blank_para.add_run("_" * 40).font.size = Pt(10)
@@ -236,9 +284,15 @@ def _write_type_sections_pdf(pdf, qs, type_order):
                 for opt in q["options"]:
                     pdf.cell(10, 6, "")
                     if isinstance(opt, dict):
-                        pdf.cell(0, 6, f"{opt.get('label', '')}. {opt.get('text', '')}", new_x="LMARGIN", new_y="NEXT")
+                        label = opt.get('label', '')
+                        text = opt.get('text', '')
+                        pdf.cell(0, 6, f"{label}. {text}" if text else label, new_x="LMARGIN", new_y="NEXT")
                     else:
-                        pdf.cell(0, 6, str(opt), new_x="LMARGIN", new_y="NEXT")
+                        line = str(opt)
+                        pm = re.match(r'^([A-H])[.．、）\)]\s*(.*)', line)
+                        if pm and pm.group(2):
+                            line = f"{pm.group(1)}. {pm.group(2)}"
+                        pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(1)
             if t == "FILL_BLANK":
                 pdf.cell(10, 6, "")
