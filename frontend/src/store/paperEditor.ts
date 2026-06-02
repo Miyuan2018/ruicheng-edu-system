@@ -60,6 +60,8 @@ const newEmptyPaper = (): PaperDraft => ({
   subtitle: '',
   instructions: '',
   description: '',
+  show_units: false,
+  per_unit_timer: false,
   units: [],
   knowledge_node_ids: [],
 });
@@ -70,9 +72,6 @@ const QUICK_PRESETS: Record<string, ExamPaperUnit[]> = {
     { name: '单选题', position: 2, question_config: [{ question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 4 }], time_limit_minutes: null },
     { name: '多选题', position: 3, question_config: [{ question_type: 'MULTIPLE_CHOICE', count: 0, score_per_question: 6 }], time_limit_minutes: null },
     { name: '解答题', position: 4, question_config: [{ question_type: 'SUBJECTIVE', count: 0, score_per_question: 10 }], time_limit_minutes: null },
-  ],
-  blank: [
-    { name: '未命名分组', position: 1, question_config: [], time_limit_minutes: null },
   ],
 };
 
@@ -304,14 +303,24 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   updateTypeConfig: (uid, index, config) => {
     const { paper } = get();
     if (!paper) return;
+    const newScorePerQuestion = config.score_per_question;
     set({
       paper: {
         ...paper,
         units: paper.units.map((u) => {
           if (u.id !== uid) return u;
           const cfgs = [...u.question_config];
-          cfgs[index] = { ...cfgs[index], ...config };
-          return { ...u, question_config: cfgs };
+          const oldCfg = cfgs[index];
+          cfgs[index] = { ...oldCfg, ...config };
+          // 同步更新该题型已有题目的分值
+          let questions = u.questions;
+          if (newScorePerQuestion !== undefined && newScorePerQuestion !== oldCfg.score_per_question) {
+            const targetType = cfgs[index].question_type;
+            questions = (questions || []).map((q) =>
+              q.question_type === targetType ? { ...q, score: newScorePerQuestion } : q
+            );
+          }
+          return { ...u, question_config: cfgs, questions };
         }),
       },
       dirty: true,
@@ -321,10 +330,15 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   removeTypeConfig: (uid, index) => {
     const { paper } = get();
     if (!paper) return;
-    set({
-      paper: { ...paper, units: paper.units.map(u => u.id === uid ? { ...u, question_config: u.question_config.filter((_, i) => i !== index) } : u) },
-      dirty: true,
-    });
+    const newUnits = paper.units
+      .map((u) => {
+        if (u.id !== uid) return u;
+        const cfgs = u.question_config.filter((_, i) => i !== index);
+        return { ...u, question_config: cfgs };
+      })
+      .filter((u) => (u.question_config || []).length > 0)  // 清理空单元
+      .map((u, i) => ({ ...u, position: i + 1 }));  // 重新编号
+    set({ paper: { ...paper, units: newUnits }, dirty: true });
   },
 
   // Persistence
