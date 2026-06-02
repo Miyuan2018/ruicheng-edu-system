@@ -166,26 +166,29 @@ async def _auto_select_for_config(
 
     # Knowledge-point filter via structured join (soft: fall back if too restrictive)
     base_conditions = list(conditions)
+    all_questions: list = []
     if config.knowledge_points:
-        from app.models.knowledge_node import QuestionKnowledgeNode, KnowledgeNode
+        try:
+            from app.models.knowledge_node import QuestionKnowledgeNode, KnowledgeNode
 
-        kp_query = (
-            select(Question.id)
-            .join(QuestionKnowledgeNode, QuestionKnowledgeNode.question_id == Question.id)
-            .join(KnowledgeNode, KnowledgeNode.id == QuestionKnowledgeNode.knowledge_node_id)
-            .where(KnowledgeNode.name.in_(config.knowledge_points))
-            .where(*conditions)
-        )
-        result = await db.execute(kp_query)
-        kp_question_ids = {row[0] for row in result.fetchall()}
-
-        if kp_question_ids:
-            result = await db.execute(
-                select(Question).where(Question.id.in_(kp_question_ids))
+            kp_query = (
+                select(Question.id)
+                .join(QuestionKnowledgeNode, QuestionKnowledgeNode.question_id == Question.id)
+                .join(KnowledgeNode, KnowledgeNode.id == QuestionKnowledgeNode.knowledge_node_id)
+                .where(KnowledgeNode.name.in_(config.knowledge_points))
+                .where(*conditions)
             )
-            all_questions = list(result.scalars().all())
-        else:
-            all_questions = []
+            result = await db.execute(kp_query)
+            kp_question_ids = {row[0] for row in result.fetchall()}
+
+            if kp_question_ids:
+                result = await db.execute(
+                    select(Question).where(Question.id.in_(kp_question_ids))
+                )
+                all_questions = list(result.scalars().all())
+        except Exception:
+            # question_knowledge_nodes 表可能不存在，降级到基础条件
+            await db.rollback()
 
     # Fall back to base conditions (without KP) if KP filter yields nothing
     if not config.knowledge_points or not all_questions:
@@ -600,6 +603,10 @@ async def save_paper_all(
         "duration_minutes",
         "status",
         "instructions",
+        "show_units",
+        "per_unit_timer",
+        "difficulty_ratio",
+        "knowledge_node_ids",
     ):
         val = getattr(data, field, None)
         if val is not None:
@@ -1549,6 +1556,10 @@ async def preview_exam_paper(
             "description": paper.description,
             "unit_count": len(paper.units),
             "question_count": q_total,
+            "show_units": paper.show_units,
+            "per_unit_timer": paper.per_unit_timer,
+            "difficulty_ratio": paper.difficulty_ratio,
+            "knowledge_node_ids": paper.knowledge_node_ids,
         },
         "units": unit_list,
     }
