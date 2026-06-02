@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Drawer, Input, Select } from 'antd';
 import { SyncOutlined, SwapOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { paperApi } from '../../../api/papers';
-import type { GenerateRecommendation } from '../../../types/paper';
+import type { ExamPaperUnitQuestion, AlternativeQuestion } from '../../../types/paper';
 
 const DIFF_COLORS: Record<string, string> = { EASY: '#52c41a', MEDIUM: '#faad14', HARD: '#ff4d4f' };
 const DIFF_LABELS: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
@@ -15,28 +15,38 @@ export default function RecommendStep() {
   const {
     paper, generateReport, setGenerateReport,
     addQuestionToUnit, removeQuestionFromUnit, clearAllQuestions, setDirty,
+    regenerateAll, fillGaps, replaceQuestion,
   } = usePaperEditorStore();
 
-  const hasAutoTriggered = useRef(false);
+  const hasAutoAdjusted = useRef(false);
 
-  // 到步即自动触发智能生成 + 缺口检测
+  // 到步即自动检测缺口或自动选题
   useEffect(() => {
-    if (!paper?.id || hasAutoTriggered.current) return;
+    if (!paper?.id || hasAutoAdjusted.current) return;
     const units = paper?.units || [];
     const hasConfigs = units.some(u => (u.question_config || []).some(c => (c.count || 0) > 0));
     if (!hasConfigs) return;
-    hasAutoTriggered.current = true;
 
-    // 检测是否有缺口需要补充
-    let needsFill = false;
-    units.forEach(u => {
-      (u.question_config || []).forEach(cfg => {
-        const existing = (u.questions || []).filter(q => q.question_type === cfg.question_type).length;
-        if ((cfg.count || 0) > existing) needsFill = true;
+    const hasExistingQuestions = units.some(u => (u.questions || []).length > 0);
+
+    if (hasExistingQuestions) {
+      hasAutoAdjusted.current = true;
+      const hasGaps = units.some(u =>
+        (u.question_config || []).some(cfg => {
+          const existing = (u.questions || []).filter(q => q.question_type === cfg.question_type).length;
+          return cfg.count > existing;
+        })
+      );
+      if (hasGaps) {
+        fillGaps(paper.id).then(() => {
+          message.info('已自动补充缺口题目');
+        });
+      }
+    } else {
+      hasAutoAdjusted.current = true;
+      regenerateAll(paper.id).then(() => {
+        message.success('已自动生成题目');
       });
-    });
-    if (needsFill) {
-      handleGenerate(true);  // force: 缺口补充模式
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper?.id]);
@@ -88,15 +98,16 @@ export default function RecommendStep() {
   const handleManualReplace = (newQ: any) => {
     if (!manualTarget || !paper) return;
     const { questionId, unitId } = manualTarget;
-    // 从 generateReport 获取旧题信息
-    const oldQ = generateReport?.questions?.find(q => q.question_id === questionId);
+    // 从 unit 中获取旧题信息
+    const unit = paper.units?.find(u => u.id === unitId);
+    const oldQ = unit?.questions?.find(q => q.question_id === questionId);
     const score = oldQ?.score || newQ.score || 5;
     // 替换 unit 中的题目
     removeQuestionFromUnit(unitId, questionId);
     addQuestionToUnit(unitId, {
       question_id: newQ.id,
       question_type: newQ.question_type,
-      position: (paper.units?.find(u => u.id === unitId)?.questions?.length || 0) + 1,
+      position: 0,
       score,
       question: {
         id: newQ.id, title: newQ.title,
@@ -104,20 +115,8 @@ export default function RecommendStep() {
         difficulty: newQ.difficulty,
         subject: newQ.subject || paper.subject,
       },
+      recommendation_tags: ['手工选择'],
     });
-    // 同步 generateReport
-    if (generateReport) {
-      setGenerateReport({
-        ...generateReport,
-        questions: generateReport.questions.map(q =>
-          q.question_id === questionId ? {
-            ...q, question_id: newQ.id, title: newQ.title,
-            difficulty: newQ.difficulty, question_type: newQ.question_type,
-            recommendation_tags: ['手工选择'],
-          } : q
-        ),
-      });
-    }
     setDirty(true);
     message.success('已更换');
     setManualOpen(false);
@@ -125,45 +124,13 @@ export default function RecommendStep() {
 
   const units = paper?.units || [];
 
-  const handleGenerate = async (force = false) => {
+  const handleGenerate = async () => {
     if (!paper?.id) { message.warning('请先保存基本信息'); return; }
-    if (!force && generateReport && generateReport.questions.length > 0) return;
-    setLoading(true);
+    clearAllQuestions();
     try {
-      const resp = await paperApi.autoGenerate(paper.id, {
-        difficulty_ratio: paper.difficulty_ratio,
-        knowledge_node_ids: paper.knowledge_node_ids || [],
-      });
-      const data = resp.data;
-      setGenerateReport(data);
-      // Clear old and populate with new results
-      clearAllQuestions();
-      (data.questions || []).forEach((rec: GenerateRecommendation) => {
-        const unit = units.find(u =>
-          (u.question_config || []).some(c => c.question_type === rec.question_type)
-        );
-        if (unit) {
-          addQuestionToUnit(unit.id!, {
-            question_id: rec.question_id,
-            question_type: rec.question_type,
-            position: (unit.questions?.length || 0) + 1,
-            score: rec.score,
-            question: {
-              id: rec.question_id,
-              title: rec.title,
-              question_type: rec.question_type,
-              difficulty: rec.difficulty,
-              subject: paper.subject,
-            },
-          });
-        }
-      });
-      setDirty(true);
-      message.success(`已推荐 ${data.questions?.length || 0} 道题`);
-    } catch (err: any) {
-      message.error(err?.response?.data?.detail || '推荐生成失败');
-    } finally {
-      setLoading(false);
+      await regenerateAll(paper.id);
+    } catch {
+      message.error('选题失败，请重试');
     }
   };
 
@@ -175,12 +142,18 @@ export default function RecommendStep() {
       const alts: any[] = resp.data?.alternatives || [];
       if (alts.length === 0) { message.warning('没有可替换的题目'); return; }
       const alt = alts[0];
+      const remainingAlts: AlternativeQuestion[] = alts.slice(1).map((a: any) => ({
+        question_id: a.question_id,
+        title: a.title || '',
+        difficulty: a.difficulty || '',
+        tags: a.tags || [],
+      }));
       // 更新 units 中的题目
       removeQuestionFromUnit(unitId, questionId);
       addQuestionToUnit(unitId, {
         question_id: alt.question_id,
         question_type: alt.question_type,
-        position: (units.find(u => u.id === unitId)?.questions?.length || 0) + 1,
+        position: 0,
         score: alt.score || 5,
         question: {
           id: alt.question_id,
@@ -189,31 +162,9 @@ export default function RecommendStep() {
           difficulty: alt.difficulty,
           subject: paper.subject,
         },
+        recommendation_tags: ['已替换'],
+        alternatives: remainingAlts,
       });
-      // 同步更新 generateReport 中的题目列表（渲染依赖它）
-      if (generateReport) {
-        const remainingAlts = alts.slice(1).map((a: any) => ({
-          question_id: a.question_id,
-          title: a.title || '',
-          difficulty: a.difficulty || '',
-          tags: a.tags || [],
-        }));
-        const swappedQuestion: GenerateRecommendation = {
-          question_id: alt.question_id,
-          question_type: alt.question_type,
-          difficulty: alt.difficulty,
-          score: alt.score || 5,
-          title: alt.title,
-          recommendation_tags: ['已替换'],
-          alternatives: remainingAlts,
-        };
-        setGenerateReport({
-          ...generateReport,
-          questions: generateReport.questions.map((q) =>
-            q.question_id === questionId ? swappedQuestion : q
-          ),
-        });
-      }
       setDirty(true);
       message.success('已替换');
     } catch {
@@ -272,28 +223,36 @@ export default function RecommendStep() {
     );
   };
 
-  // Group by question type
-  const groupedByType = (generateReport?.questions || []).reduce<Record<string, GenerateRecommendation[]>>((acc, q) => {
-    (acc[q.question_type] = acc[q.question_type] || []).push(q);
-    return acc;
-  }, {});
+  // Group by question type from paper.units
+  const groupedByType = useMemo(() => {
+    const groups: Record<string, ExamPaperUnitQuestion[]> = {};
+    (paper?.units || []).forEach(unit => {
+      (unit.questions || []).forEach(q => {
+        const qt = q.question_type || 'SINGLE_CHOICE';
+        if (!groups[qt]) groups[qt] = [];
+        groups[qt].push(q);
+      });
+    });
+    return groups;
+  }, [paper?.units]);
+
+  const totalQCount = (paper?.units || []).reduce((s, u) => s + (u.questions?.length || 0), 0);
 
   return (
     <div>
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          {generateReport ? (
-            <span style={{ fontSize: 13, color: '#666' }}>共推荐 {generateReport.questions?.length || 0} 题</span>
+          {totalQCount > 0 ? (
+            <span style={{ fontSize: 13, color: '#666' }}>共 {totalQCount} 题</span>
           ) : (
-            <span style={{ fontSize: 13, color: '#999' }}>点击"智能生成"自动选题</span>
+            <span style={{ fontSize: 13, color: '#999' }}>点击"一键选题"自动选题</span>
           )}
         </div>
         <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={() => {
           if (!paper?.id) { message.warning('请先保存基本信息'); return; }
           clearAllQuestions();
-          setGenerateReport(null);
-          handleGenerate(true);
+          try { regenerateAll(paper.id); } catch { message.error('选题失败'); }
         }}>
           一键选题
         </Button>
@@ -303,13 +262,15 @@ export default function RecommendStep() {
 
       {loading && <div style={{ textAlign: 'center', padding: 60 }}><Spin tip="正在智能选题..." /></div>}
 
-      {!loading && !generateReport && <Empty description="尚未生成推荐" style={{ padding: 40 }} />}
+      {!loading && totalQCount === 0 && <Empty description="尚未生成推荐" style={{ padding: 40 }} />}
 
-      {!loading && generateReport && Object.entries(groupedByType).map(([qtype, questions]) => {
+      {!loading && Object.entries(groupedByType).map(([qtype, questions]) => {
         const unit = units.find(u => (u.question_config || []).some(c => c.question_type === qtype));
         const unitId = unit?.id || '';
         const typeConfig = unit?.question_config?.find(c => c.question_type === qtype);
         const configCount = typeConfig?.count || 0;
+        const excessCount = configCount > 0 ? questions.length - configCount : 0;
+        const isExcessType = excessCount > 0;
         return (
           <Card
             key={qtype}
@@ -318,7 +279,6 @@ export default function RecommendStep() {
             title={<span>{QTYPE_LABELS[qtype] || qtype}<Tag style={{ marginLeft: 8 }}>{questions.length}题</Tag></span>}
           >
             {questions.map((q, qi) => {
-              const isExtra = configCount > 0 && qi >= configCount;
               return (
                 <div
                   key={q.question_id}
@@ -326,8 +286,8 @@ export default function RecommendStep() {
                     display: 'flex', alignItems: 'flex-start', gap: 12,
                     padding: '8px 0',
                     borderBottom: qi < questions.length - 1 ? '1px solid #f5f5f5' : 'none',
-                    borderLeft: isExtra ? '3px solid #ff4d4f' : 'none',
-                    paddingLeft: isExtra ? 8 : 0,
+                    borderLeft: isExcessType ? '3px solid #ff4d4f' : 'none',
+                    paddingLeft: isExcessType ? 8 : 0,
                   }}
                 >
                   <span style={{ color: '#999', fontSize: 12, minWidth: 24 }}>{qi + 1}.</span>
@@ -336,17 +296,15 @@ export default function RecommendStep() {
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <Tag color={DIFF_COLORS[q.difficulty]} style={{ fontSize: 10 }}>{DIFF_LABELS[q.difficulty]}</Tag>
                       <Tag style={{ fontSize: 10 }}>{q.score}分</Tag>
-                      {isExtra && <Tag color="error" style={{ fontSize: 10, marginRight: 4 }}>多余</Tag>}
-                      {q.recommendation_tags.map((t, i) => (
+                      {isExcessType && <Tag color="error" style={{ fontSize: 10, marginRight: 4 }}>多余（共多{excessCount}题）</Tag>}
+                      {(q.recommendation_tags || []).map((t, i) => (
                         <Tag key={i} color={t.includes('✓') ? 'success' : 'default'} style={{ fontSize: 10 }}>{t}</Tag>
                       ))}
                     </div>
                   </div>
                   <Space size="small" style={{ flexShrink: 0 }}>
-                    {!isExtra && (
-                      <Button size="small" type="link" style={{ fontSize: 11 }}
-                        onClick={() => openManualSelect(q.question_id, unitId, q.question_type)}>手工选题</Button>
-                    )}
+                    <Button size="small" type="link" style={{ fontSize: 11 }}
+                      onClick={() => openManualSelect(q.question_id, unitId, q.question_type)}>手工选题</Button>
                     <Tooltip title="换一题">
                       <Button size="small" icon={<SwapOutlined />} loading={swapLoading[q.question_id]}
                         onClick={() => handleSwap(q.question_id, unitId)} />
@@ -358,9 +316,9 @@ export default function RecommendStep() {
                 </div>
               );
             })}
-            {configCount > 0 && questions.length > configCount && (
+            {isExcessType && (
               <div style={{ color: '#ff4d4f', fontSize: 12, marginTop: 8, padding: '4px 8px', background: '#fff2f0', borderRadius: 4 }}>
-                已选 {questions.length}/{configCount} 题，超出 {questions.length - configCount} 题（请手动删除多余试题）
+                已选 {questions.length}/{configCount} 题，超出 {excessCount} 题（请手动删除多余试题）
               </div>
             )}
           </Card>
