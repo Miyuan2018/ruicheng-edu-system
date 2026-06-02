@@ -157,8 +157,7 @@ export default function PaperWizardPage() {
 
     const nextStep = currentStep + 1;
     if (nextStep < STEP_TITLES.length) {
-      setStep(nextStep);
-      // Auto-save on step change
+      // 先保存再切换步骤，避免后续操作读到旧数据
       if (dirty) {
         setSaveStatus('saving');
         try {
@@ -166,11 +165,16 @@ export default function PaperWizardPage() {
         } catch { /* ignore */ }
         setSaveStatus('idle');
       }
+      setStep(nextStep);
     }
   };
 
   const handlePrev = () => {
     if (currentStep > 0) {
+      if (currentStep === 2) {
+        // 从选题退回结构：保留题目分配在 units 中，清除推荐报告
+        usePaperEditorStore.getState().setGenerateReport(null);
+      }
       setStep(currentStep - 1);
     }
   };

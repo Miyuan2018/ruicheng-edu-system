@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip } from 'antd';
 import { SyncOutlined, SwapOutlined, DeleteOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
@@ -16,13 +16,28 @@ export default function RecommendStep() {
     paper, generateReport, setGenerateReport,
     addQuestionToUnit, removeQuestionFromUnit, clearAllQuestions, setDirty,
   } = usePaperEditorStore();
+
+  const hasAutoTriggered = useRef(false);
+
+  // 到步即自动触发智能生成
+  useEffect(() => {
+    if (!paper?.id || hasAutoTriggered.current) return;
+    const units = paper?.units || [];
+    const hasConfigs = units.some(u => (u.question_config || []).some(c => (c.count || 0) > 0));
+    if (!hasConfigs) return;
+    hasAutoTriggered.current = true;
+    handleGenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paper?.id]);
+
   const [loading, setLoading] = useState(false);
   const [swapLoading, setSwapLoading] = useState<Record<string, boolean>>({});
 
   const units = paper?.units || [];
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (force = false) => {
     if (!paper?.id) { message.warning('请先保存基本信息'); return; }
+    if (!force && generateReport && generateReport.questions.length > 0) return;
     setLoading(true);
     try {
       const resp = await paperApi.autoGenerate(paper.id, {
@@ -67,9 +82,10 @@ export default function RecommendStep() {
     setSwapLoading(prev => ({ ...prev, [questionId]: true }));
     try {
       const resp = await paperApi.swapQuestion(paper.id, questionId);
-      const alts = resp.data?.alternatives || [];
+      const alts: any[] = resp.data?.alternatives || [];
       if (alts.length === 0) { message.warning('没有可替换的题目'); return; }
       const alt = alts[0];
+      // 更新 units 中的题目
       removeQuestionFromUnit(unitId, questionId);
       addQuestionToUnit(unitId, {
         question_id: alt.question_id,
@@ -84,6 +100,30 @@ export default function RecommendStep() {
           subject: paper.subject,
         },
       });
+      // 同步更新 generateReport 中的题目列表（渲染依赖它）
+      if (generateReport) {
+        const remainingAlts = alts.slice(1).map((a: any) => ({
+          question_id: a.question_id,
+          title: a.title || '',
+          difficulty: a.difficulty || '',
+          tags: a.tags || [],
+        }));
+        const swappedQuestion: GenerateRecommendation = {
+          question_id: alt.question_id,
+          question_type: alt.question_type,
+          difficulty: alt.difficulty,
+          score: alt.score || 5,
+          title: alt.title,
+          recommendation_tags: ['已替换'],
+          alternatives: remainingAlts,
+        };
+        setGenerateReport({
+          ...generateReport,
+          questions: generateReport.questions.map((q) =>
+            q.question_id === questionId ? swappedQuestion : q
+          ),
+        });
+      }
       setDirty(true);
       message.success('已替换');
     } catch {
@@ -102,9 +142,11 @@ export default function RecommendStep() {
   const dashboard = generateReport?.constraint_dashboard;
   const renderDashboard = () => {
     if (!dashboard) return null;
+    const scoreOk = dashboard.total_score === dashboard.requested_score;
+    const shortfall = dashboard.shortfall || [];
     return (
       <Card size="small" style={{ marginBottom: 16, background: '#fafafa' }}>
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13 }}>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13, alignItems: 'flex-start' }}>
           <div>
             <span style={{ color: '#888', marginRight: 8 }}>难度分布</span>
             {Object.entries(dashboard.difficulty || {}).map(([diff, info]: [string, any]) => (
@@ -116,11 +158,25 @@ export default function RecommendStep() {
           </div>
           <div>
             <span style={{ color: '#888', marginRight: 8 }}>总分</span>
-            <Tag color={dashboard.total_score === paper?.total_score ? 'success' : 'error'}>
-              {dashboard.total_score}/{paper?.total_score}
-              {dashboard.total_score === paper?.total_score ? ' ✓' : ' ⚠'}
+            <Tag color={scoreOk ? 'success' : 'error'}>
+              {dashboard.total_score}/{dashboard.requested_score}
+              {scoreOk ? ' ✓' : ' ⚠'}
             </Tag>
           </div>
+          {shortfall.length > 0 && (
+            <div style={{ color: '#ff4d4f', fontSize: 12, lineHeight: 1.6 }}>
+              <span>题库不足 {shortfall.length} 题：</span>
+              {shortfall.map((s, i) => (
+                <span key={i}>
+                  {(DIFF_LABELS[s.target_difficulty] || s.target_difficulty) + '·' + (s.question_type ? QTYPE_LABELS[s.question_type] || s.question_type : '')}
+                  {i < shortfall.length - 1 ? '、' : ''}
+                </span>
+              ))}
+              <span style={{ marginLeft: 4, color: '#999' }}>
+                （已放宽难度约束，仍缺{shortfall.length}题）
+              </span>
+            </div>
+          )}
         </div>
       </Card>
     );
