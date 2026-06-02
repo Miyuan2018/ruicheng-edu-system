@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip } from 'antd';
-import { SyncOutlined, SwapOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Drawer, Input, Select } from 'antd';
+import { SyncOutlined, SwapOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { paperApi } from '../../../api/papers';
 import type { GenerateRecommendation } from '../../../types/paper';
@@ -43,6 +43,81 @@ export default function RecommendStep() {
 
   const [loading, setLoading] = useState(false);
   const [swapLoading, setSwapLoading] = useState<Record<string, boolean>>({});
+
+  // 手工选题抽屉
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualTarget, setManualTarget] = useState<{ questionId: string; unitId: string; questionType: string } | null>(null);
+  const [manualResults, setManualResults] = useState<any[]>([]);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualKeyword, setManualKeyword] = useState('');
+
+  const openManualSelect = (questionId: string, unitId: string, questionType: string) => {
+    setManualTarget({ questionId, unitId, questionType });
+    setManualKeyword('');
+    setManualResults([]);
+    setManualOpen(true);
+    fetchManualResults(questionType, '');
+  };
+
+  const fetchManualResults = async (questionType: string, keyword: string) => {
+    setManualLoading(true);
+    try {
+      const resp = await paperApi.getQuestions({
+        question_type: questionType,
+        subject: paper?.subject || undefined,
+        keyword: keyword || undefined,
+        review_status: 'APPROVED',
+        is_active: true,
+        limit: 30,
+      });
+      const data = Array.isArray(resp.data) ? resp.data : (resp.data?.items || resp.data?.data || []);
+      // 排除已在试卷中的题
+      const allQids = new Set((paper?.units || []).flatMap(u => (u.questions || []).map(q => q.question_id)));
+      setManualResults(data.filter((q: any) => !allQids.has(q.id)));
+    } catch {
+      setManualResults([]);
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const handleManualReplace = (newQ: any) => {
+    if (!manualTarget || !paper) return;
+    const { questionId, unitId } = manualTarget;
+    // 从 generateReport 获取旧题信息
+    const oldQ = generateReport?.questions?.find(q => q.question_id === questionId);
+    const score = oldQ?.score || newQ.score || 5;
+    // 替换 unit 中的题目
+    removeQuestionFromUnit(unitId, questionId);
+    addQuestionToUnit(unitId, {
+      question_id: newQ.id,
+      question_type: newQ.question_type,
+      position: (paper.units?.find(u => u.id === unitId)?.questions?.length || 0) + 1,
+      score,
+      question: {
+        id: newQ.id, title: newQ.title,
+        question_type: newQ.question_type,
+        difficulty: newQ.difficulty,
+        subject: newQ.subject || paper.subject,
+      },
+    });
+    // 同步 generateReport
+    if (generateReport) {
+      setGenerateReport({
+        ...generateReport,
+        questions: generateReport.questions.map(q =>
+          q.question_id === questionId ? {
+            ...q, question_id: newQ.id, title: newQ.title,
+            difficulty: newQ.difficulty, question_type: newQ.question_type,
+            recommendation_tags: ['手工选择'],
+          } : q
+        ),
+      });
+    }
+    setDirty(true);
+    message.success('已更换');
+    setManualOpen(false);
+  };
 
   const units = paper?.units || [];
 
@@ -265,7 +340,8 @@ export default function RecommendStep() {
                   </div>
                   <Space size="small" style={{ flexShrink: 0 }}>
                     {!isExtra && (
-                      <Button size="small" type="link" style={{ fontSize: 11 }}>手工选题</Button>
+                      <Button size="small" type="link" style={{ fontSize: 11 }}
+                        onClick={() => openManualSelect(q.question_id, unitId, q.question_type)}>手工选题</Button>
                     )}
                     <Tooltip title="换一题">
                       <Button size="small" icon={<SwapOutlined />} loading={swapLoading[q.question_id]}
@@ -286,6 +362,48 @@ export default function RecommendStep() {
           </Card>
         );
       })}
+
+      {/* 手工选题抽屉 */}
+      <Drawer
+        title="手工选题"
+        open={manualOpen}
+        onClose={() => setManualOpen(false)}
+        width={560}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Input.Search
+            placeholder="搜索题目关键词..."
+            value={manualKeyword}
+            onChange={(e) => setManualKeyword(e.target.value)}
+            onSearch={(v) => fetchManualResults(manualTarget?.questionType || '', v)}
+            enterButton={<><SearchOutlined /> 搜索</>}
+            allowClear
+          />
+        </div>
+        <Spin spinning={manualLoading}>
+          {manualResults.length === 0 && !manualLoading && (
+            <Empty description="未找到匹配题目" />
+          )}
+          {manualResults.map((q: any) => (
+            <Card
+              key={q.id}
+              size="small"
+              hoverable
+              style={{ marginBottom: 8 }}
+              onClick={() => handleManualReplace(q)}
+            >
+              <div style={{ fontSize: 13, lineHeight: 1.5 }}>{q.title?.substring(0, 120)}</div>
+              <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
+                <Tag color={DIFF_COLORS[q.difficulty] || 'default'} style={{ fontSize: 10 }}>
+                  {DIFF_LABELS[q.difficulty] || q.difficulty}
+                </Tag>
+                {q.subject && <Tag style={{ fontSize: 10 }}>{q.subject}</Tag>}
+                <span style={{ fontSize: 11, color: '#999' }}>点击替换</span>
+              </div>
+            </Card>
+          ))}
+        </Spin>
+      </Drawer>
     </div>
   );
 }
