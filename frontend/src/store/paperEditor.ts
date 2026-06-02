@@ -94,15 +94,33 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     set({ loading: true });
     try {
       const resp = await paperApi.preview(id);
-      // API interceptor unwraps {code,message,data} → data
-      // preview returns { paper: {...}, units: [...] }
       const previewData = resp.data || resp;
       const paperData = previewData.paper || previewData;
+      // 规范化题目数据：后端预览返回扁平结构，转为前端嵌套格式
+      const units = (previewData.units || paperData.units || []).map((unit: any) => ({
+        ...unit,
+        questions: (unit.questions || []).map((q: any) => ({
+          id: q.id || '',
+          question_id: q.question_id || q.id || '',
+          question_type: q.question_type || '',
+          position: q.position || 0,
+          score: q.score || 0,
+          question: {
+            id: q.question_id || q.id || '',
+            title: q.title || '',
+            question_type: q.question_type || '',
+            difficulty: q.difficulty || '',
+            subject: q.subject || paperData.subject || '',
+            options: q.options || [],
+            correct_answer: q.correct_answer || '',
+            explanation: q.explanation || '',
+          },
+          recommendation_tags: q.recommendation_tags || [],
+          alternatives: q.alternatives || [],
+        })),
+      }));
       set({
-        paper: {
-          ...paperData,
-          units: previewData.units || paperData.units || [],
-        },
+        paper: { ...paperData, units },
         currentStep: 0,
         loading: false,
         dirty: false,
