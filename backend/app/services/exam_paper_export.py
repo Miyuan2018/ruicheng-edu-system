@@ -140,7 +140,11 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
         if not tqs:
             continue
         header = doc.add_paragraph()
-        run = header.add_run(f"{tqs[0]['type_label']}（共{len(tqs)}题）")
+        type_score = sum(q['score'] for q in tqs)
+        per_q = tqs[0]['score'] if tqs else 0
+        run = header.add_run(f"{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）")
+        run.bold = True
+        run.font.size = Pt(13)
         run.bold = True
         run.font.size = Pt(13)
         for q in tqs:
@@ -241,7 +245,8 @@ async def export_word(exam_paper_id, db: AsyncSession):
         for uname, uqs in unit_groups.items():
             # Unit header
             u_header = doc.add_paragraph()
-            run = u_header.add_run(f"{uname}（共{len(uqs)}题）")
+            u_score = sum(q['score'] for q in uqs)
+            run = u_header.add_run(f"{uname}（共{len(uqs)}题，{u_score}分）")
             run.bold = True
             run.font.size = Pt(14)
             doc.add_paragraph()
@@ -273,7 +278,10 @@ def _write_type_sections_pdf(pdf, qs, type_order):
         if not tqs:
             continue
         pdf.set_font("CJK", "", 13)
-        pdf.cell(0, 10, f"{tqs[0]['type_label']}（共{len(tqs)}题）", new_x="LMARGIN", new_y="NEXT")
+        type_score = sum(q['score'] for q in tqs)
+        per_q = tqs[0]['score'] if tqs else 0
+        pdf.set_font("CJK", "", 13)
+        pdf.cell(0, 10, f"{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
         for q in tqs:
             pdf.set_font("CJK", "", 11)
@@ -365,7 +373,8 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
             unit_groups.setdefault(un, []).append(q)
         for uname, uqs in unit_groups.items():
             pdf.set_font("CJK", "", 14)
-            pdf.cell(0, 10, f"{uname}（共{len(uqs)}题）", new_x="LMARGIN", new_y="NEXT")
+            u_score = sum(q['score'] for q in uqs)
+            pdf.cell(0, 10, f"{uname}（共{len(uqs)}题，{u_score}分）", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(4)
             _write_type_sections_pdf(pdf, uqs, type_order)
     else:

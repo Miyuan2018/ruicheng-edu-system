@@ -126,11 +126,12 @@ export default function PrintPreviewPage() {
         const qs = grouped[t] || [];
         if (qs.length === 0) return null;
 
-        const sectionScore = qs.reduce((s, q) => s + (q.score || 0), 0);
+        const perQScore = qs[0]?.score || 0;
+        const totalTypeScore = qs.reduce((s, q) => s + (q.score || 0), 0);
         return (
           <div key={t} style={{ marginBottom: 16 }}>
             <h3 style={{ borderBottom: '2px solid #333', paddingBottom: 4, fontSize: 15 }}>
-              {toLabelMap(qtypes)[t]}（共{qs.length}题，{sectionScore}分）
+              {toLabelMap(qtypes)[t]}（每题{perQScore}分，共{qs.length}题，合计{totalTypeScore}分）
             </h3>
             {qs.map((q) => {
               globalIndex++;
