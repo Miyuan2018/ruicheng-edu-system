@@ -196,6 +196,7 @@ async def select_for_targets(
             "difficulty": best.difficulty,
             "score": target.score,
             "title": (best.title or "")[:120],
+            "correct_answer": best.correct_answer or "",
             "recommendation_tags": tags,
             "alternatives": alts,
             "_kn_ids": getattr(best, 'kn_ids', []) or [],

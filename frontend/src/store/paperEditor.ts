@@ -78,6 +78,15 @@ const QUICK_PRESETS: Record<string, ExamPaperUnit[]> = {
   ],
 };
 
+/** 从 correct_answer JSON 中解析选项，用于 auto-generate 响应中提取 */
+function parseOptions(correctAnswer: string): any[] {
+  try {
+    const parsed = JSON.parse(correctAnswer);
+    if (parsed?.options) return parsed.options;
+  } catch {}
+  return [];
+}
+
 export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   paper: null,
   currentStep: 0,
@@ -119,6 +128,16 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
           alternatives: q.alternatives || [],
         })),
       }));
+      // 用 question_config 的 score_per_question 同步已有题目分数（config 是权威来源）
+      units.forEach((unit: any) => {
+        (unit.question_config || []).forEach((cfg: any) => {
+          if (cfg.score_per_question != null) {
+            unit.questions = (unit.questions || []).map((q: any) =>
+              q.question_type === cfg.question_type ? { ...q, score: cfg.score_per_question } : q
+            );
+          }
+        });
+      });
       set({
         paper: { ...paperData, units },
         currentStep: 0,
@@ -348,6 +367,8 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
               question_type: rec.question_type,
               difficulty: rec.difficulty,
               subject: paper.subject,
+              options: parseOptions(rec.correct_answer || ''),
+              correct_answer: rec.correct_answer || '',
             },
             recommendation_tags: rec.recommendation_tags || [],
             alternatives: rec.alternatives || [],
@@ -404,6 +425,8 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
                 question_type: rec.question_type,
                 difficulty: rec.difficulty,
                 subject: paper.subject,
+                options: parseOptions(rec.correct_answer || ''),
+                correct_answer: rec.correct_answer || '',
               },
               recommendation_tags: rec.recommendation_tags || [],
               alternatives: rec.alternatives || [],
