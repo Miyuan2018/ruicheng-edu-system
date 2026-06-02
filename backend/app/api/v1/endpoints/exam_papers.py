@@ -186,7 +186,7 @@ async def _auto_select_for_config(
                     select(Question).where(Question.id.in_(kp_question_ids))
                 )
                 all_questions = list(result.scalars().all())
-        except Exception:
+        except ProgrammingError:
             # question_knowledge_nodes 表可能不存在，降级到基础条件
             await db.rollback()
 
