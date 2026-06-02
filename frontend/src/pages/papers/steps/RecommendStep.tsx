@@ -62,14 +62,18 @@ export default function RecommendStep() {
   const fetchManualResults = async (questionType: string, keyword: string) => {
     setManualLoading(true);
     try {
-      const resp = await paperApi.getQuestions({
+      const grades = paper?.grade_level?.grades || [];
+      const params: any = {
         question_type: questionType,
         subject: paper?.subject || undefined,
         keyword: keyword || undefined,
         review_status: 'APPROVED',
         is_active: true,
         limit: 30,
-      });
+      };
+      if (grades.length === 1) params.grade = grades[0];
+      else if (grades.length > 1) params.grade_level = grades[0]; // API 仅支持单年级过滤
+      const resp = await paperApi.getQuestions(params);
       const data = Array.isArray(resp.data) ? resp.data : (resp.data?.items || resp.data?.data || []);
       // 排除已在试卷中的题
       const allQids = new Set((paper?.units || []).flatMap(u => (u.questions || []).map(q => q.question_id)));
