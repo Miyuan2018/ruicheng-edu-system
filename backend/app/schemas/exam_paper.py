@@ -99,7 +99,7 @@ class ExamPaperFullSave(BaseModel):
     grade_level: Optional[GradeLevel] = None
     total_score: int = Field(ge=0, default=0)
     duration_minutes: Optional[int] = None
-    status: str = "DRAFT"
+    status: str = "READY"
     subtitle: Optional[str] = None
     instructions: Optional[str] = None
     description: Optional[str] = None
@@ -158,7 +158,7 @@ class ExamPaperBase(BaseModel):
     title: str = Field(..., max_length=200)
     subtitle: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
-    status: str = Field(default="DRAFT", pattern="^(DRAFT|PUBLISHED|ARCHIVED)$")
+    status: str = Field(default="DRAFT", pattern="^(READY|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
     grade_level: Optional[GradeLevel] = None
     total_score: int = Field(default=0, ge=0)
@@ -175,7 +175,7 @@ class ExamPaperUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     subtitle: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
-    status: Optional[str] = Field(None, pattern="^(DRAFT|PUBLISHED|ARCHIVED)$")
+    status: Optional[str] = Field(None, pattern="^(READY|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
     grade_level: Optional[GradeLevel] = None
     total_score: Optional[int] = Field(None, ge=0)
