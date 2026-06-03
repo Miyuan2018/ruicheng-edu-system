@@ -166,11 +166,14 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
 def _write_question_word(doc, q, t, Cm, Pt):
     """写入单道题目（Word）"""
     q_para = doc.add_paragraph()
+    q_para.paragraph_format.space_after = Pt(1)
     q_para.add_run(f"{q['index']}. {q['title']}（{q['score']}分）").font.size = Pt(12)
     if q["options"] and len(q["options"]) > 0:
         for opt in q["options"]:
             opt_para = doc.add_paragraph()
             opt_para.paragraph_format.left_indent = Cm(1)
+            opt_para.paragraph_format.space_after = Pt(0)
+            opt_para.paragraph_format.space_before = Pt(0)
             if isinstance(opt, dict):
                 label = opt.get('label', '')
                 text = opt.get('text', '')
@@ -201,6 +204,10 @@ async def export_word(exam_paper_id, db: AsyncSession):
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
     style.font.size = Pt(11)
+    # 紧凑行距
+    style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.line_spacing = 1.0
     # 东亚字体回退
     from docx.oxml.ns import qn
     style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
@@ -208,6 +215,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
     # ── Title ──
     title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_para.paragraph_format.space_after = Pt(2)
     run = title_para.add_run(paper.title or "")
     run.bold = True
     run.font.size = Pt(20)
