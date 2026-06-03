@@ -22,7 +22,7 @@ type RowItem = {
 export default function StructureStep() {
   const {
     paper, updateMeta, addUnit, updateUnit, removeUnit,
-    updateTypeConfig, addTypeConfig, removeTypeConfig,
+    updateTypeConfig, addTypeConfig, removeTypeConfig, moveTypeConfig,
     addQuickUnits, setDirty,
   } = usePaperEditorStore();
 
@@ -89,10 +89,11 @@ export default function StructureStep() {
           targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
         }
         if (targetUid && targetUid !== unitId) {
-          // 一次性原子操作：从旧单元移除 + 向新单元添加
-          const newCfg = { question_type: value, count: cfg.count, score_per_question: cfg.score_per_question };
-          removeTypeConfig(unitId, cfgIdx);
-          addTypeConfig(targetUid, newCfg);
+          moveTypeConfig(unitId, cfgIdx, targetUid);
+          // 更新新单元的题型字段
+          const st2 = usePaperEditorStore.getState();
+          const tgtCfg = st2.paper?.units?.find(u => u.id === targetUid)?.question_config || [];
+          updateTypeConfig(targetUid, tgtCfg.length - 1, { question_type: value });
           setDirty(true);
           return;
         }

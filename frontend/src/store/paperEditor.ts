@@ -42,6 +42,7 @@ interface PaperEditorState {
   addTypeConfig: (uid: string, config: any) => void;
   updateTypeConfig: (uid: string, index: number, config: any) => void;
   removeTypeConfig: (uid: string, index: number) => void;
+  moveTypeConfig: (fromUid: string, cfgIdx: number, toUid: string) => void;
 
   // Persistence
   autoSave: () => Promise<void>;
@@ -542,6 +543,25 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       .filter((u) => (u.question_config || []).length > 0)  // 清理空单元
       .map((u, i) => ({ ...u, position: i + 1 }));  // 重新编号
     set({ paper: { ...paper, units: newUnits }, dirty: true });
+  },
+
+  moveTypeConfig: (fromUid, cfgIdx, toUid) => {
+    const { paper } = get();
+    if (!paper || fromUid === toUid) return;
+    const units = paper.units.map((u) => {
+      if (u.id === fromUid) {
+        const cfgs = u.question_config.filter((_, i) => i !== cfgIdx);
+        return { ...u, question_config: cfgs };
+      }
+      if (u.id === toUid) {
+        const src = paper.units.find(x => x.id === fromUid);
+        const cfg = src?.question_config[cfgIdx];
+        return cfg ? { ...u, question_config: [...u.question_config, cfg] } : u;
+      }
+      return u;
+    }).filter(u => (u.question_config || []).length > 0)
+      .map((u, i) => ({ ...u, position: i + 1 }));
+    set({ paper: { ...paper, units }, dirty: true });
   },
 
   // Persistence
