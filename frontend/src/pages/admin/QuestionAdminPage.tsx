@@ -133,6 +133,24 @@ export default function QuestionAdminPage() {
   const [scrapeForm] = Form.useForm();
   const [scrapeKnNodes, setScrapeKnNodes] = useState<any[]>([]);
   const [scrapeTaskCount, setScrapeTaskCount] = useState(1);
+  const [scrapeResults, setScrapeResults] = useState<any[]>([]);
+  const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
+
+  const loadScrapeResults = () => {
+    setScrapeResultsLoading(true);
+    apiClient.get('/questions', { params: { source: 'SCRAPED', limit: 50 } })
+      .then(({ data }: any) => {
+        const resp = data || {};
+        setScrapeResults(resp.items || (Array.isArray(resp) ? resp : []));
+      }).catch(() => {}).finally(() => setScrapeResultsLoading(false));
+  };
+  const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
+  const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
+
+  const handleScrapeDelete = async (id: string) => {
+    try { await apiClient.delete('/questions/' + id); message.success('已删除'); loadScrapeResults(); }
+    catch { message.error('删除失败'); }
+  };
 
   // 加载知识树用于知识点选择
   useEffect(() => {
@@ -146,6 +164,7 @@ export default function QuestionAdminPage() {
       }
     }).catch(() => {});
   }, []);
+  useEffect(() => { loadScrapeResults(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateScrapeConditions = () => {
     const v = scrapeForm.getFieldsValue();
@@ -184,6 +203,7 @@ export default function QuestionAdminPage() {
       if (data.ok) {
         message.success(`抓取完成: ${data.count || 0} 道试题已入库（${data.tasks || 1} 个任务）`);
         loadPendingQuestions();
+        loadScrapeResults();
       } else {
         message.error(data.error || '抓取失败');
       }
@@ -265,6 +285,8 @@ export default function QuestionAdminPage() {
   };
 
   const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
+  const pageDiffMap = useMemo(() => toLabelMap(diffs), [diffs]);
+  const pageSourceMap = useMemo(() => toColorMap(['SCRAPED', 'LLM_GENERATED', 'MANUAL']), []);
 
   const tabItems = [
     {
@@ -470,7 +492,48 @@ export default function QuestionAdminPage() {
           )}
         </Card>
 
-        <QuestionListBySource sourceFilter="SCRAPED" title="抓取结果" key={"scrape-" + (taskProgress?.task_id || '')} />
+        {/* 抓取结果卡片列表 */}
+        <Card size="small" title={<span>抓取结果 <span style={{ fontWeight: 400, color: '#999', fontSize: 12 }}>共 {scrapeResults.length} 道</span></span>}
+          style={{ marginTop: 16 }}>
+          <Spin spinning={scrapeResultsLoading}>
+            {scrapeResults.length === 0 && !scrapeResultsLoading && <Empty description="暂无抓取结果" />}
+            {scrapeResults.map((q: any, i: number) => (
+              <div key={q.id} style={{
+                display: 'flex', alignItems: 'flex-start', padding: '10px 12px',
+                borderBottom: i < scrapeResults.length - 1 ? '1px solid #f5f5f5' : 'none',
+              }}>
+                <span style={{ width: 28, color: '#999', fontSize: 12, paddingTop: 2, flexShrink: 0 }}>{i + 1}</span>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                  <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.title?.substring(0, 120)}</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    <Tag color={toColorMap(diffs)[q.difficulty]?.color || 'default'} style={{ fontSize: 10 }}>{pageDiffMap[q.difficulty] || q.difficulty}</Tag>
+                    <Tag color="blue" style={{ fontSize: 10 }}>{typeMap[q.question_type] || q.question_type}</Tag>
+                    {q.score != null && <Tag color="orange" style={{ fontSize: 10 }}>{q.score}分</Tag>}
+                    {(q.grade_level?.knowledge_points || []).slice(0, 2).map((kp: string, j: number) => (
+                      <Tag key={j} color="purple" style={{ fontSize: 10 }}>{kp}</Tag>
+                    ))}
+                    <Tag color={(pageSourceMap[q.source] as any)?.color || 'default'} style={{ fontSize: 10 }}>
+                      {(pageSourceMap[q.source] as any)?.label || q.source}
+                    </Tag>
+                    <Tag color={statusMap[q.review_status]?.color || 'default'} style={{ fontSize: 10 }}>{statusMap[q.review_status]?.label || q.review_status}</Tag>
+                  </div>
+                </div>
+                <span style={{ width: 90, fontSize: 11, color: '#999', textAlign: 'center', paddingTop: 2, flexShrink: 0 }}>
+                  {(q.created_at || '').slice(5, 16).replace('T', ' ')}
+                </span>
+                <div style={{ width: 60, display: 'flex', gap: 4, justifyContent: 'flex-end', flexShrink: 0, paddingTop: 1 }}>
+                  <Button size="small" type="link" icon={<EditOutlined />} onClick={() => { setScrapeEditQ(q); setScrapeEditOpen(true); }} />
+                  <Popconfirm title="确定删除?" onConfirm={() => handleScrapeDelete(q.id)}>
+                    <Button size="small" type="link" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </div>
+              </div>
+            ))}
+          </Spin>
+        </Card>
+        {scrapeEditOpen && scrapeEditQ && (
+          <QuestionEditModal open={scrapeEditOpen} question={scrapeEditQ} onClose={() => { setScrapeEditOpen(false); setScrapeEditQ(null); loadScrapeResults(); }} />
+        )}
       </>),
     },
     {
