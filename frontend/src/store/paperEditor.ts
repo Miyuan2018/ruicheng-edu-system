@@ -590,7 +590,11 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       const resp = await draftApi.save(paper.id || null, paper);
       const respData = resp?.data;
       const newDraftId = typeof respData === 'object' && respData !== null ? (respData as any).id : undefined;
-      set({ saving: false, dirty: false, lastSaved: new Date(), draftId: newDraftId || null });
+      set({ saving: false, lastSaved: new Date(), draftId: newDraftId || null });
+      // 如果在保存期间用户又做了修改，保留 dirty 状态
+      if (!get().dirty) {
+        set({ dirty: false });
+      }
     } catch {
       set({ saving: false });
     }
@@ -617,10 +621,11 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
         set({ paper: { ...get().paper, id: pid } });
       }
 
-      // 阶段 2：写主表
+      // 阶段 2：写主表 — 必须从 store 重新读取，避免闭包旧值
+      const currentPaper = get().paper!;
       const cleanPaper = {
-        ...paper,
-        units: paper.units.map(u => ({
+        ...currentPaper,
+        units: currentPaper.units.map(u => ({
           name: u.name,
           description: u.description,
           position: u.position,
