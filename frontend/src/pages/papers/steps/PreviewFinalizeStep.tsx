@@ -178,12 +178,23 @@ export default function PreviewFinalizeStep() {
     const score = q.score || 0;
 
     let options: any[] = question.options || [];
+    // 兜底：从correct_answer JSON解析，并规范化字符串选项为{label,text}
     if (options.length === 0 && question.correct_answer) {
       try {
         const parsed = typeof question.correct_answer === 'string'
           ? JSON.parse(question.correct_answer)
           : question.correct_answer;
-        options = parsed.options || [];
+        const raw = parsed?.options;
+        if (Array.isArray(raw)) {
+          options = raw.map((opt: any) => {
+            if (typeof opt === 'string') {
+              const m = opt.match(/^([A-H])[.．、）\)]\s*(.*)/);
+              if (m) return { label: m[1], text: m[2] };
+              if (/^[A-H]$/.test(opt)) return { label: opt, text: '' };
+            }
+            return opt;
+          });
+        }
       } catch { /* */ }
     }
 
@@ -240,9 +251,17 @@ export default function PreviewFinalizeStep() {
       padding: '24px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
       fontFamily: "'Times New Roman', 'Noto Serif CJK SC', sans-serif", fontSize: 14,
     }}>
-      <div style={{ textAlign: 'center', marginBottom: 16 }}>
+      <div style={{ textAlign: 'center', marginBottom: 4 }}>
         <div style={{ fontSize: 20, fontWeight: 'bold', letterSpacing: 2 }}>{paper?.title || '试卷预览'}</div>
-        {paper?.subtitle ? <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>{paper.subtitle}</div> : null}
+      </div>
+      {paper?.subtitle ? <div style={{ textAlign: 'center', fontSize: 13, color: '#666', marginTop: 4 }}>{paper.subtitle}</div> : null}
+      <div style={{ textAlign: 'center', fontSize: 12, color: '#666', marginBottom: 12 }}>
+        {[
+          paper?.subject || '',
+          (paper?.grade_level?.grades || []).join(', ') || '',
+          '总分: ' + (paper?.total_score ?? 0) + '分',
+          paper?.duration_minutes != null ? '时长: ' + paper.duration_minutes + '分钟' : '',
+        ].filter(Boolean).join(' | ')}
       </div>
       {paper?.instructions ? (
         <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fffbe6', borderRadius: 4, fontSize: 12, color: '#666', border: '1px solid #ffe58f' }}>
