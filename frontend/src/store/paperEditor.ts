@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PaperDraft, ExamPaperUnit, ExamPaperUnitQuestion, AutoSelectReport, GenerateReport } from '../types/paper';
+import type { PaperDraft, ExamPaperUnit, ExamPaperUnitQuestion, AutoSelectReport, GenerateReport, TemplateType } from '../types/paper';
 import { paperApi } from '../api/papers';
 import { draftApi } from '../api/drafts';
 
@@ -28,7 +28,7 @@ interface PaperEditorState {
   updateUnit: (uid: string, data: Partial<ExamPaperUnit>) => void;
   removeUnit: (uid: string) => void;
   reorderUnits: (fromIndex: number, toIndex: number) => void;
-  addQuickUnits: (preset: 'byType' | 'blank') => void;
+  setTemplate: (templateType: TemplateType) => void;
   addUnitFromTemplate: (template: ExamPaperUnit) => void;
 
   // Question operations
@@ -70,20 +70,43 @@ const newEmptyPaper = (): PaperDraft => ({
   subtitle: '',
   instructions: '',
   description: '',
+  template_type: 'generic',
   show_units: false,
   per_unit_timer: false,
   units: [],
   knowledge_node_ids: [],
 });
 
-const QUICK_PRESETS: Record<string, ExamPaperUnit[]> = {
-  byType: [
-    { name: '填空题', position: 1, question_config: [{ question_type: 'FILL_BLANK', count: 0, score_per_question: 5 }], time_limit_minutes: null },
-    { name: '单选题', position: 2, question_config: [{ question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 4 }], time_limit_minutes: null },
-    { name: '多选题', position: 3, question_config: [{ question_type: 'MULTIPLE_CHOICE', count: 0, score_per_question: 6 }], time_limit_minutes: null },
-    { name: '解答题', position: 4, question_config: [{ question_type: 'SUBJECTIVE', count: 0, score_per_question: 10 }], time_limit_minutes: null },
+const TEMPLATE_PRESETS: Record<TemplateType, ExamPaperUnit[]> = {
+  knowledge_block: [
+    { name: '未命名模块', position: 1, question_config: [], time_limit_minutes: null },
+  ],
+  question_type: [
+    { name: '', position: 1, question_config: [
+      { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 4 },
+      { question_type: 'MULTIPLE_CHOICE', count: 0, score_per_question: 6 },
+      { question_type: 'FILL_BLANK', count: 0, score_per_question: 4 },
+      { question_type: 'SUBJECTIVE', count: 0, score_per_question: 10 },
+    ]},
+  ],
+  difficulty_progression: [
+    { name: '基础巩固', position: 1, question_config: [], time_limit_minutes: null },
+    { name: '能力提升', position: 2, question_config: [], time_limit_minutes: null },
+    { name: '拓展挑战', position: 3, question_config: [], time_limit_minutes: null },
+  ],
+  volume: [
+    { name: '第I卷（选择题）', position: 1, question_config: [], time_limit_minutes: null },
+    { name: '第II卷（非选择题）', position: 2, question_config: [], time_limit_minutes: null },
+  ],
+  generic: [
+    { name: '新单元', position: 1, question_config: [], time_limit_minutes: null },
   ],
 };
+
+function getTemplatePreset(type: TemplateType): ExamPaperUnit[] {
+  const tempId = () => '_temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  return TEMPLATE_PRESETS[type].map((t, i) => ({ ...t, id: tempId() + '_' + i }));
+}
 
 /** 从 units 收集所有 count>0 的题型配置 */
 const collectTypeConfigs = (units: ExamPaperUnit[]) => {
@@ -252,14 +275,19 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     set({ paper: { ...paper, units: units.map((u, i) => ({ ...u, position: i + 1 })) }, dirty: true });
   },
 
-  addQuickUnits: (preset) => {
+  setTemplate: (templateType) => {
     const { paper } = get();
     if (!paper) return;
-    const templates = QUICK_PRESETS[preset] || [];
-    const tempId = () => '_temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-    const newUnits = templates.map((t, i) => ({ ...t, id: tempId(), position: i + 1 }));
-    // 替换所有现有单元（快速创建是互斥操作）
-    set({ paper: { ...paper, units: newUnits }, dirty: true });
+    const presetUnits = getTemplatePreset(templateType);
+    set({
+      paper: {
+        ...paper,
+        template_type: templateType,
+        units: presetUnits,
+        show_units: templateType !== 'question_type',
+      },
+      dirty: true,
+    });
   },
 
   addUnitFromTemplate: (template) => {
@@ -635,6 +663,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       const cleanPaper = {
         ...currentPaper,
         grade_level: normalizeGradeLevel(currentPaper.grade_level),
+        template_type: currentPaper.template_type,
         units: currentPaper.units.map(u => ({
           name: u.name,
           description: u.description,
