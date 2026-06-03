@@ -520,7 +520,7 @@ export default function QuestionAdminPage() {
           {/* 任务预览条 */}
           <div style={{ marginTop: 10, padding: '6px 10px', background: '#f6f8fa', borderRadius: 6, fontSize: 12, color: '#888' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span>将拆分 <b style={{ color: '#1677ff' }}>{scrapeTaskCount}</b> 个任务</span>
+              <span>📋 将拆分 <b style={{ color: '#1677ff' }}>{scrapeTaskCount}</b> 个任务</span>
               <span style={{ color: '#ddd' }}>|</span>
               <span>预计入库 ≤ <b>{(() => { const v = scrapeForm.getFieldsValue(); return (v.count || 5) * scrapeTaskCount * 3; })()}</b> 道</span>
               <span style={{ color: '#ddd' }}>|</span>
@@ -563,7 +563,7 @@ export default function QuestionAdminPage() {
         </Card>
 
         <Card size="small" title={<span>抓取结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {scrapeResults.length} 道</span></span>}
-          extra={<span style={{fontSize:11,color:'#999'}}>仅展示本次抓取 · 已在题库中</span>} style={{marginTop:16}}>
+          extra={<span style={{fontSize:11,color:'#999'}}>👁 仅展示本次抓取 · 已在题库中</span>} style={{marginTop:16}}>
           <div style={{marginBottom:8,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
             <Input size="small" placeholder="搜索题目" style={{width:160}} value={scrapeSearchInput}
               onChange={e=>setScrapeSearchInput(e.target.value)} onPressEnter={()=>loadScrapeResultsWithFilters(1,scrapePageSize,scrapeTypeFilter,scrapeDiffFilter,scrapeStatusFilter,scrapeSearchInput)} allowClear />
@@ -583,6 +583,10 @@ export default function QuestionAdminPage() {
             {scrapeResults.length===0 && !scrapeResultsLoading && <Empty description="暂无抓取结果"/>}
             {scrapeResults.length > 0 && (
               <div style={{display:'flex',alignItems:'center',padding:'4px 12px',fontSize:10,color:'#bbb',borderBottom:'1px solid #f0f0f0'}}>
+                <Checkbox checked={scrapeResults.length>0 && scrapeSelectedIds.length===scrapeResults.length}
+                  indeterminate={scrapeSelectedIds.length>0 && scrapeSelectedIds.length<scrapeResults.length}
+                  onChange={()=>setScrapeSelectedIds(scrapeSelectedIds.length===scrapeResults.length?[]:scrapeResults.map((q:any)=>q.id))}
+                  style={{marginRight:8}} />
                 <span style={{width:28}}>#</span>
                 <span style={{flex:1}}>题目</span>
                 <span style={{width:90,textAlign:'center'}}>时间</span>
