@@ -75,19 +75,24 @@ export default function StructureStep() {
   };
 
   const updateRow = (unitId: string, cfgIdx: number, field: string, value: any) => {
-    // 修改题型时，自动切换到对应同名单元
+    // 按题型模式：改题型自动迁移到同名单元
     if (field === 'question_type' && !showUnits) {
-      const cfg = (units.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
+      const st = usePaperEditorStore.getState();
+      const curUnits = st.paper?.units || [];
+      const cfg = (curUnits.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
       if (cfg && cfg.question_type !== value) {
         const typeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
-        let targetUid = units.find(u => u.name === typeLabel)?.id;
+        let targetUid = curUnits.find(u => u.name === typeLabel)?.id;
+        // 确保目标单元存在
         if (!targetUid) {
           addUnit({ name: typeLabel, question_config: [] });
           targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
         }
         if (targetUid && targetUid !== unitId) {
+          // 一次性原子操作：从旧单元移除 + 向新单元添加
+          const newCfg = { question_type: value, count: cfg.count, score_per_question: cfg.score_per_question };
           removeTypeConfig(unitId, cfgIdx);
-          addTypeConfig(targetUid, { question_type: value, count: cfg.count, score_per_question: cfg.score_per_question });
+          addTypeConfig(targetUid, newCfg);
           setDirty(true);
           return;
         }
