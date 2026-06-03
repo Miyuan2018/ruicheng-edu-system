@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, message, Collapse, Tag, Tabs, Space } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
@@ -6,19 +6,7 @@ import apiClient from '../../../api/client';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { useReferenceValues, toLabelMap, toColorMap } from '../../../hooks/useReferenceValues';
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
-  constructor(props: { children: React.ReactNode }) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  render() {
-    if (this.state.error) {
-      return <div style={{ padding: 40, color: 'red', fontSize: 14 }}>渲染错误: {this.state.error.message}<pre style={{ fontSize: 11 }}>{this.state.error.stack}</pre></div>;
-    }
-    return this.props.children;
-  }
-}
-
 export default function PreviewFinalizeStep() {
-  console.log('[PreviewFinalizeStep] 渲染开始');
   const navigate = useNavigate();
   const { paper, saveAll, setDirty } = usePaperEditorStore();
   const { 'difficulty-levels': diffs, 'question-types': qtypes } = useReferenceValues();
@@ -32,6 +20,13 @@ export default function PreviewFinalizeStep() {
   const [submitting, setSubmitting] = useState(false);
 
   const units = paper?.units || [];
+  // 归一化 grades 为数组（防御旧版草稿数据中 grades 为字符串的情况）
+  const grades: string[] = (() => {
+    const raw = paper?.grade_level?.grades;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string' && raw) return [raw];
+    return [];
+  })();
   const totalQuestions = units.reduce((sum, u) => sum + (u.questions?.length || 0), 0);
   const totalScore = units.reduce((sum, u) => sum + (u.questions || []).reduce((s, q) => s + (q.score || 0), 0), 0);
 
@@ -87,7 +82,7 @@ export default function PreviewFinalizeStep() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: 14 }}>
           <div><span style={{ color: '#888' }}>标题：</span>{paper?.title || '未命名'}</div>
           <div><span style={{ color: '#888' }}>学科：</span>{paper?.subject || '-'}</div>
-          <div><span style={{ color: '#888' }}>年级：</span>{(paper?.grade_level?.grades || []).join(', ') || '-'}</div>
+          <div><span style={{ color: '#888' }}>年级：</span>{grades.join(', ') || '-'}</div>
           <div><span style={{ color: '#888' }}>时长：</span>{paper?.duration_minutes ? paper.duration_minutes + '分钟' : '不限时'}</div>
           <div><span style={{ color: '#888' }}>总题数：</span>{totalQuestions}</div>
           <div><span style={{ color: '#888' }}>总分：</span><span style={{ color: '#1890ff', fontWeight: 600 }}>{totalScore}</span></div>
@@ -271,7 +266,7 @@ export default function PreviewFinalizeStep() {
       <div style={{ textAlign: 'center', fontSize: 12, color: '#666', marginBottom: 12 }}>
         {[
           paper?.subject || '',
-          (paper?.grade_level?.grades || []).join(', ') || '',
+          grades.join(', ') || '',
           '总分: ' + (paper?.total_score ?? 0) + '分',
           paper?.duration_minutes != null ? '时长: ' + paper.duration_minutes + '分钟' : '',
         ].filter(Boolean).join(' | ')}
@@ -347,26 +342,24 @@ export default function PreviewFinalizeStep() {
   ];
 
   return (
-    <ErrorBoundary>
-      <div>
-        {/* Toolbar */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16 }}>
-          <Space>
-            <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSave}>
-              保存
-            </Button>
-            <Button type="primary" size="large" ghost icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSaveAndPublish}>
-              保存并发布
-            </Button>
-            {paper?.id && (
-              <Button size="large" danger onClick={handleCancelEdit}>取消修改</Button>
-            )}
-          </Space>
-        </div>
-
-        {/* Tabs */}
-        <Tabs defaultActiveKey="finalize" items={tabItems} />
+    <div>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16 }}>
+        <Space>
+          <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSave}>
+            保存
+          </Button>
+          <Button type="primary" size="large" ghost icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSaveAndPublish}>
+            保存并发布
+          </Button>
+          {paper?.id && (
+            <Button size="large" danger onClick={handleCancelEdit}>取消修改</Button>
+          )}
+        </Space>
       </div>
-    </ErrorBoundary>
+
+      {/* Tabs */}
+      <Tabs defaultActiveKey="finalize" items={tabItems} />
+    </div>
   );
 }
