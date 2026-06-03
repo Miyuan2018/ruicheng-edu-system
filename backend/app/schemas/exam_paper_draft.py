@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import uuid
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -16,5 +17,11 @@ class DraftResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+    @field_validator("id", "user_id", "paper_id", mode="before")
+    @classmethod
+    def coerce_uuid(cls, v):
+        if v is None:
+            return None
+        return str(v)
