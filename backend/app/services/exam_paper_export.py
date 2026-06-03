@@ -512,7 +512,7 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     def header():
         pdf.set_font("CJK", "", 9)
         pdf.cell(0, 8, paper.title or "", align="L")
-        pdf.ln(4)
+        pdf.ln(8)
     pdf.header = header
 
     def footer():
