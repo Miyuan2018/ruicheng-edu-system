@@ -73,6 +73,9 @@ export default function RecommendStep() {
   const [manualLoading, setManualLoading] = useState(false);
   const [manualKeyword, setManualKeyword] = useState('');
 
+  /** 从 store 获取最新 paper 状态，避免 async 闭包引用过期值 */
+  const getLivePaper = () => usePaperEditorStore.getState().paper;
+
   const openManualSelect = (questionId: string, unitId: string, questionType: string) => {
     setManualTarget({ questionId, unitId, questionType });
     setManualKeyword('');
@@ -84,22 +87,45 @@ export default function RecommendStep() {
   const fetchManualResults = async (questionType: string, keyword: string) => {
     setManualLoading(true);
     try {
-      const grades = paper?.grade_level?.grades || [];
+      const livePaper = getLivePaper();
+      console.log('[手工选题] livePaper.subject:', livePaper?.subject);
+      console.log('[手工选题] livePaper.grade_level:', JSON.stringify(livePaper?.grade_level));
+
+      // 归一化 grades 为数组（BasicInfoStep 单选模式下可能为字符串）
+      const rawGrades = livePaper?.grade_level?.grades;
+      const grades: string[] = Array.isArray(rawGrades)
+        ? rawGrades
+        : typeof rawGrades === 'string'
+          ? [rawGrades]
+          : [];
+
       const params: any = {
         question_type: questionType,
-        subject: paper?.subject || undefined,
+        subject: livePaper?.subject || undefined,
         keyword: keyword || undefined,
         review_status: 'APPROVED',
         limit: 30,
       };
       if (grades.length === 1) params.grade = grades[0];
       else if (grades.length > 1) params.grade_level = grades[0]; // API 仅支持单年级过滤
+      console.log('[手工选题] 请求参数:', JSON.stringify(params));
+
       const resp = await paperApi.getQuestions(params);
+      console.log('[手工选题] 原始响应:', resp);
+      console.log('[手工选题] resp.data 类型:', typeof resp.data, Array.isArray(resp.data) ? 'array' : typeof resp.data);
+
       const data = Array.isArray(resp.data) ? resp.data : (resp.data?.items || resp.data?.data || []);
+      console.log('[手工选题] data 条数:', data?.length);
+
       // 排除已在试卷中的题
-      const allQids = new Set((paper?.units || []).flatMap(u => (u.questions || []).map(q => q.question_id)));
-      setManualResults(data.filter((q: any) => !allQids.has(q.id)));
+      const allQids = new Set(
+        (getLivePaper()?.units || []).flatMap(u => (u.questions || []).map(q => q.question_id))
+      );
+      const filtered = data.filter((q: any) => !allQids.has(q.id));
+      console.log('[手工选题] 过滤后条数:', filtered.length);
+      setManualResults(filtered);
     } catch (e: any) {
+      console.error('[手工选题] 异常:', e);
       const detail = e?.response?.data?.detail || e?.message || '获取题目失败';
       message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       setManualResults([]);

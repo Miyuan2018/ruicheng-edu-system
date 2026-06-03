@@ -72,7 +72,14 @@ export default function BasicInfoStep() {
       title: allValues.title || '',
       subject: allValues.subject || '',
       total_score: allValues.total_score || 0,
-      grade_level: { scope, grades: allValues.grade_level || [] },
+      grade_level: {
+        scope,
+        grades: Array.isArray(allValues.grade_level)
+          ? allValues.grade_level
+          : allValues.grade_level
+            ? [allValues.grade_level]
+            : [],
+      },
       duration_minutes: allValues.duration_minutes || null,
       subtitle: allValues.subtitle || '',
       instructions: allValues.instructions || '',
