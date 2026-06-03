@@ -276,7 +276,10 @@ export default function RecommendStep() {
           if (!pid) { message.warning('无法创建试卷，请重试'); return; }
           setLoading(true);
           clearAllQuestions();
-          regenerateAll(pid).catch(() => message.error('选题失败')).finally(() => setLoading(false));
+          regenerateAll(pid).catch((e: any) => {
+            const detail = e?.response?.data?.detail || e?.message || '选题失败';
+            message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+          }).finally(() => setLoading(false));
         }}>
           一键选题
         </Button>
