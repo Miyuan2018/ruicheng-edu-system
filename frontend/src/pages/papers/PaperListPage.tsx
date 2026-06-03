@@ -153,7 +153,7 @@ export default function PaperListPage() {
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = 'paper.' + format;
+      a.download = 'paper.' + (format === 'word' ? 'docx' : 'pdf');
       a.click();
       URL.revokeObjectURL(blobUrl);
       message.success('导出成功');
