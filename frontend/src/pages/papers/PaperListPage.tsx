@@ -102,14 +102,15 @@ export default function PaperListPage() {
     try {
       const { draftApi } = await import('../../api/drafts');
       const resp = await draftApi.getByPaper(paperId);
-      const drafts = Array.isArray(resp?.data) ? resp.data : [];
+      const drafts = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
       for (const d of drafts) {
         await draftApi.delete(d.id);
       }
       message.success('已取消修改');
       fetchPapers();
-    } catch {
-      message.error('操作失败');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || String(err);
+      message.error(typeof detail === 'string' ? detail : '操作失败');
     }
   };
 
