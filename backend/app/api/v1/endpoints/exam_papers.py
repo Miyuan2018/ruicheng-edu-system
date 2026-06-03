@@ -33,6 +33,7 @@ from app.schemas.exam_paper import (
     ExamPaperFullSave,
     QuestionConfigItem,
     AutoGenerateRequest,
+    SwapQuestionRequest,
 )
 from app.services.notification_service import NotificationService
 from app.services.exam_paper_export import export_word, export_pdf, _normalize_options
@@ -1253,6 +1254,47 @@ async def auto_generate_paper(
     targets = distribute_quotas(type_configs, ratio)
     questions, dashboard = await select_for_targets(
         db, targets, set(request.knowledge_node_ids), paper.subject,
+        pre_existing_ids=request.existing_question_ids,
+    )
+
+    return {"questions": questions, "constraint_dashboard": dashboard}
+
+
+@router.post("/auto-generate")
+async def auto_generate_paperless(
+    request: AutoGenerateRequest,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """V4.4: 一键生成推荐 — paperless 版本，不依赖 paper_id"""
+    _check_teacher_or_admin(current_user)
+
+    # 1. Build type configs — paperless 场景必须前端直传
+    if not request.type_configs:
+        raise HTTPException(400, detail="请先在试卷结构步骤设置题型")
+    type_configs = [{
+        "question_type": cfg["question_type"],
+        "count": cfg.get("count", 0),
+        "score_per_question": cfg.get("score_per_question", 5),
+    } for cfg in request.type_configs if cfg.get("count", 0) > 0]
+
+    if not type_configs:
+        raise HTTPException(400, detail="试卷结构中没有配置题型")
+
+    # 2. Normalize difficulty ratio
+    ratio = request.difficulty_ratio
+    diffs = ["EASY", "MEDIUM", "HARD"]
+    total_ratio = sum(ratio.get(d, 0) for d in diffs)
+    if total_ratio <= 0:
+        ratio = {"EASY": 0.3, "MEDIUM": 0.5, "HARD": 0.2}
+    elif abs(total_ratio - 1.0) > 0.001:
+        ratio = {d: ratio.get(d, 0) / total_ratio for d in diffs}
+
+    # 3. Distribute quotas and select questions
+    targets = distribute_quotas(type_configs, ratio)
+    questions, dashboard = await select_for_targets(
+        db, targets, set(request.knowledge_node_ids),
+        request.subject,  # V4.4: 从 body 直取，不再查 DB paper
         pre_existing_ids=request.existing_question_ids,
     )
 
