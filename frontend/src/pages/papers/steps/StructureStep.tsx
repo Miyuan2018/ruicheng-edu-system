@@ -75,6 +75,24 @@ export default function StructureStep() {
   };
 
   const updateRow = (unitId: string, cfgIdx: number, field: string, value: any) => {
+    // 修改题型时，自动切换到对应同名单元
+    if (field === 'question_type' && !showUnits) {
+      const cfg = (units.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
+      if (cfg && cfg.question_type !== value) {
+        const typeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
+        let targetUid = units.find(u => u.name === typeLabel)?.id;
+        if (!targetUid) {
+          addUnit({ name: typeLabel, question_config: [] });
+          targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
+        }
+        if (targetUid && targetUid !== unitId) {
+          removeTypeConfig(unitId, cfgIdx);
+          addTypeConfig(targetUid, { question_type: value, count: cfg.count, score_per_question: cfg.score_per_question });
+          setDirty(true);
+          return;
+        }
+      }
+    }
     updateTypeConfig(unitId, cfgIdx, { [field]: value });
     setDirty(true);
   };
