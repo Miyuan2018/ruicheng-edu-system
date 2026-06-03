@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PaperDraft, ExamPaperUnit, ExamPaperUnitQuestion, AutoSelectReport, GenerateReport } from '../types/paper';
 import { paperApi } from '../api/papers';
+import { draftApi } from '../api/drafts';
 
 interface PaperEditorState {
   // State
@@ -12,6 +13,7 @@ interface PaperEditorState {
   dirty: boolean;
   autoSelectReports: AutoSelectReport[];
   generateReport: GenerateReport | null;
+  pendingDraft: any | null;
 
   // Actions
   initNew: () => void;
@@ -107,15 +109,25 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   dirty: false,
   autoSelectReports: [],
   generateReport: null,
+  pendingDraft: null,
 
-  initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null }),
+  initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null }),
 
   loadDraft: async (id: string) => {
     set({ loading: true });
     try {
+      // 先检查是否有未完成草稿
+      let draftData = null;
+      try {
+        const draftsResp = await draftApi.getByPaper(id);
+        const drafts = Array.isArray(draftsResp) ? draftsResp : [];
+        draftData = drafts.length > 0 ? drafts[0].data : null;
+      } catch {}
+
       const resp = await paperApi.preview(id);
       const previewData = resp.data || resp;
       const paperData = previewData.paper || previewData;
+
       // 规范化题目数据：后端预览返回扁平结构，转为前端嵌套格式
       const units = (previewData.units || paperData.units || []).map((unit: any) => ({
         ...unit,
@@ -131,7 +143,6 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
             question_type: q.question_type || '',
             difficulty: q.difficulty || '',
             subject: q.subject || paperData.subject || '',
-            // 后端 _normalize_options 已规范化选项（字符串→对象，纯字母补文本）
             options: normalizeOpts(q.options),
             correct_answer: q.correct_answer || '',
             explanation: q.explanation || '',
@@ -140,7 +151,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
           alternatives: q.alternatives || [],
         })),
       }));
-      // 用 question_config 的 score_per_question 同步已有题目分数（config 是权威来源）
+      // 用 question_config 的 score_per_question 同步已有题目分数
       units.forEach((unit: any) => {
         (unit.question_config || []).forEach((cfg: any) => {
           if (cfg.score_per_question != null) {
@@ -150,8 +161,10 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
           }
         });
       });
+
       set({
         paper: { ...paperData, units },
+        pendingDraft: draftData || null,
         currentStep: 0,
         loading: false,
         dirty: false,
@@ -532,19 +545,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     if (!paper || !dirty) return;
     set({ saving: true });
     try {
-      if (paper.id) {
-        await paperApi.saveAll(paper.id, paper);
-      } else {
-        const resp = await paperApi.create({
-          title: paper.title || '未命名试卷',
-          subject: paper.subject,
-          grade_level: paper.grade_level,
-          status: 'DRAFT',
-        });
-        const newId = resp.data?.id || resp.data;
-        set({ paper: { ...paper, id: newId }, saving: false, dirty: false, lastSaved: new Date() });
-        return;
-      }
+      await draftApi.save(paper.id || null, paper);
       set({ saving: false, dirty: false, lastSaved: new Date() });
     } catch {
       set({ saving: false });
@@ -556,8 +557,6 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     if (!paper || !paper.id) return;
     set({ saving: true });
     try {
-      // 只发送后端需要的字段(UnitQuestionCreate仅有4字段)，去除前端扩展的question/alternatives等
-      // 只发送后端 ExamPaperUnitCreate + UnitQuestionCreate 需要的字段
       const cleanPaper = {
         ...paper,
         units: paper.units.map(u => ({
@@ -575,6 +574,14 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
         })),
       };
       await paperApi.saveAll(paper.id, cleanPaper);
+      // 保存成功后清理对应草稿
+      try {
+        const draftsResp = await draftApi.getByPaper(paper.id);
+        const drafts = Array.isArray(draftsResp) ? draftsResp : [];
+        for (const d of drafts) {
+          await draftApi.delete(d.id).catch(() => {});
+        }
+      } catch {}
       set({ saving: false, dirty: false, lastSaved: new Date() });
     } catch (e) {
       set({ saving: false });
@@ -584,5 +591,5 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
 
   setDirty: (dirty) => set({ dirty }),
   setGenerateReport: (report) => set({ generateReport: report ? { constraint_dashboard: report.constraint_dashboard } : null }),
-  reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null }),
+  reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null }),
 }));
