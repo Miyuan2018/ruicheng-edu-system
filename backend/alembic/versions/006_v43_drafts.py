@@ -32,14 +32,14 @@ def upgrade():
     # Migrate existing DRAFT papers to READY
     op.execute("UPDATE exam_papers SET status = 'READY' WHERE status = 'DRAFT'")
     # Update CHECK constraint
-    op.execute("ALTER TABLE exam_papers DROP CONSTRAINT IF EXISTS check_exam_papers_status")
-    op.execute("ALTER TABLE exam_papers ADD CONSTRAINT check_exam_papers_status "
+    op.execute("ALTER TABLE exam_papers DROP CONSTRAINT IF EXISTS ck_exam_papers_check_exam_papers_status")
+    op.execute("ALTER TABLE exam_papers ADD CONSTRAINT ck_exam_papers_check_exam_papers_status "
                "CHECK (status IN ('READY', 'PUBLISHED', 'ARCHIVED'))")
 
 
 def downgrade():
-    op.execute("ALTER TABLE exam_papers DROP CONSTRAINT IF EXISTS check_exam_papers_status")
-    op.execute("ALTER TABLE exam_papers ADD CONSTRAINT check_exam_papers_status "
+    op.execute("ALTER TABLE exam_papers DROP CONSTRAINT IF EXISTS ck_exam_papers_check_exam_papers_status")
+    op.execute("ALTER TABLE exam_papers ADD CONSTRAINT ck_exam_papers_check_exam_papers_status "
                "CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))")
     op.execute("UPDATE exam_papers SET status = 'DRAFT' WHERE status = 'READY'")
     op.drop_table('exam_paper_drafts')
