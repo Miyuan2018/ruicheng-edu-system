@@ -25,6 +25,7 @@ interface PaperItem {
   total_score?: number;
   duration_minutes?: number;
   status?: string;
+  has_draft?: boolean;
   created_at?: string;
   updated_at?: string;
   created_by?: string;
@@ -97,6 +98,21 @@ export default function PaperListPage() {
   const handlePreview = (id: string) => { setPreviewId(id); setPreviewOpen(true); };
   const handleEdit = (id: string) => navigate('/papers/' + id + '/edit');
 
+  const handleCancelEdit = async (paperId: string) => {
+    try {
+      const { draftApi } = await import('../../api/drafts');
+      const resp = await draftApi.getByPaper(paperId);
+      const drafts = Array.isArray(resp) ? resp : [];
+      for (const d of drafts) {
+        await draftApi.delete(d.id);
+      }
+      message.success('已取消修改');
+      fetchPapers();
+    } catch {
+      message.error('操作失败');
+    }
+  };
+
   const handleDelete = async (id: string) => {
     try {
       await apiClient.delete('/exam-papers/' + id);
@@ -161,7 +177,7 @@ export default function PaperListPage() {
 
   // Check if paper is a stale draft (30+ days without update)
   const isStaleDraft = (record: PaperItem): boolean => {
-    if (record.status !== 'DRAFT') return false;
+    if (!record.has_draft) return false;
     if (!record.updated_at) return false;
     const updated = new Date(record.updated_at);
     const now = new Date();
@@ -209,6 +225,7 @@ export default function PaperListPage() {
       dataIndex: 'status',
       width: 75,
       render: (s: string, record: PaperItem) => {
+        if (record.has_draft) return <Tag color="orange">修改中</Tag>;
         const stale = isStaleDraft(record);
         const color = stale ? '#bbb' : (statusColors[s] || {}).color || 'default';
         return <Tag color={color}>{statusLabels[s] || s}</Tag>;
@@ -218,6 +235,7 @@ export default function PaperListPage() {
       title: '操作',
       width: 320,
       render: (_: unknown, record: PaperItem) => {
+        const isEditing = record.has_draft === true;
         const isDraft = record.status === 'DRAFT';
         const isPublished = record.status === 'PUBLISHED';
 
@@ -231,11 +249,16 @@ export default function PaperListPage() {
         return (
           <Space size="small" wrap>
             <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(record.id)}>预览</Button>
-            {isDraft && (
-              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record.id)}>继续编辑</Button>
+            {isEditing && (
+              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record.id)}>继续修改</Button>
             )}
-            {isPublished && (
+            {!isEditing && !isDraft && (
               <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record.id)}>编辑</Button>
+            )}
+            {isEditing && (
+              <Popconfirm title="取消修改后草稿将被删除，确定？" onConfirm={() => handleCancelEdit(record.id)}>
+                <Button type="link" size="small" danger>取消修改</Button>
+              </Popconfirm>
             )}
             <Dropdown menu={exportItems}>
               <Button type="link" size="small" icon={<DownloadOutlined />}>导出</Button>

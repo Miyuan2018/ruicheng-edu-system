@@ -57,6 +57,18 @@ export default function PreviewFinalizeStep() {
     } finally { setSubmitting(false); }
   };
 
+  const handleCancelEdit = async () => {
+    if (!paper?.id) return;
+    try {
+      const { draftApi } = await import('../../../api/drafts');
+      const resp = await draftApi.getByPaper(paper.id);
+      const drafts = Array.isArray(resp) ? resp : [];
+      for (const d of drafts) await draftApi.delete(d.id);
+      message.info('已取消修改');
+      navigate('/papers');
+    } catch { message.error('操作失败'); }
+  };
+
   const handleExport = async (format: 'word' | 'pdf') => {
     if (!paper?.id) { message.warning('请先保存试卷'); return; }
     try {
@@ -341,6 +353,9 @@ export default function PreviewFinalizeStep() {
           <Button type="primary" size="large" ghost icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSaveAndPublish}>
             保存并发布
           </Button>
+          {paper?.id && (
+            <Button size="large" danger onClick={handleCancelEdit}>取消修改</Button>
+          )}
         </Space>
         <Space>
           <Tooltip title="导出 Word"><Button icon={<FileWordOutlined />} onClick={() => handleExport('word')}>导出 Word</Button></Tooltip>

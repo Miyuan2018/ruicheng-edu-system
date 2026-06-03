@@ -342,12 +342,30 @@ async def list_exam_papers(
     paper_ids = [p.id for p in papers]
     unit_counts, question_counts = await _count_units_and_questions(db, paper_ids)
 
+    # 检查哪些试卷有草稿（正在修改中）
+    draft_paper_ids: set[str] = set()
+    if paper_ids and hasattr(current_user, 'id'):
+        try:
+            from app.models.exam_paper_draft import ExamPaperDraft
+            draft_rows = await db.execute(
+                select(ExamPaperDraft.paper_id).where(
+                    ExamPaperDraft.user_id == current_user.id,
+                    ExamPaperDraft.paper_id.in_(paper_ids),
+                )
+            )
+            draft_paper_ids = {str(r[0]) for r in draft_rows.fetchall() if r[0]}
+        except Exception:
+            pass
+
     return [
-        _paper_to_dict(
-            p,
-            unit_count=unit_counts.get(str(p.id), 0),
-            question_count=question_counts.get(str(p.id), 0),
-        )
+        {
+            **_paper_to_dict(
+                p,
+                unit_count=unit_counts.get(str(p.id), 0),
+                question_count=question_counts.get(str(p.id), 0),
+            ),
+            "has_draft": str(p.id) in draft_paper_ids,
+        }
         for p in papers
     ]
 
