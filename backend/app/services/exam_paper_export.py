@@ -302,7 +302,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
     header = section.header
     header.is_linked_to_previous = False
     hp = header.paragraphs[0]
-    hp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     hr = hp.add_run(paper.title or "")
     hr.bold = True
     hr.font.size = FONT_SMALL_SIZE
@@ -511,7 +511,7 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
 
     def header():
         pdf.set_font("CJK", "", 9)
-        pdf.cell(0, 8, paper.title or "", align="L")
+        pdf.cell(0, 8, paper.title or "", align="R")
         pdf.ln(8)
     pdf.header = header
 
