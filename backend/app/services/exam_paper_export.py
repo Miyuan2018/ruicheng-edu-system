@@ -212,6 +212,7 @@ def _write_question_word(doc, q, t, Cm, Pt):
     q_para = doc.add_paragraph()
     q_para.paragraph_format.space_after = Pt(0)
     q_para.paragraph_format.line_spacing = 1.5
+    q_para.paragraph_format.keep_with_next = True  # 与选项保持同页
     # 选择题用顿号"1、"，非选择题用句号"6."
     num_str = f"{q['index']}、"
     run_num = q_para.add_run(num_str)
@@ -229,12 +230,14 @@ def _write_question_word(doc, q, t, Cm, Pt):
     _set_cn_font(run_score)
 
     if is_choice and q["options"] and len(q["options"]) > 0:
-        for opt in q["options"]:
+        for i, opt in enumerate(q["options"]):
             opt_para = doc.add_paragraph()
-            opt_para.paragraph_format.left_indent = Cm(0.74)  # 2字符缩进
+            opt_para.paragraph_format.left_indent = Cm(0.74)
             opt_para.paragraph_format.space_after = Pt(0)
             opt_para.paragraph_format.space_before = Pt(0)
             opt_para.paragraph_format.line_spacing = 1.5
+            if i < len(q["options"]) - 1:
+                opt_para.paragraph_format.keep_with_next = True  # 选项间不分页
             if isinstance(opt, dict):
                 label = opt.get('label', '')
                 text = opt.get('text', '')
@@ -421,6 +424,15 @@ async def export_word(exam_paper_id, db: AsyncSession):
 def _write_q_pdf(pdf, q, t):
     """写入单道题目（PDF）"""
     is_choice = t in ("SINGLE_CHOICE", "MULTIPLE_CHOICE")
+    # 估空间：选择题(选项×7mm+20)，解答题(80mm)，填空(15mm)
+    if is_choice:
+        needed = len(q.get("options", [])) * 7 + 20
+    elif t == "SUBJECTIVE":
+        needed = 80
+    else:
+        needed = 15
+    if pdf.get_y() + needed > pdf.h - pdf.b_margin:
+        pdf.add_page()
     num_str = f"{q['index']}、"
     pdf.set_font("CJK", "B", 12)
     pdf.cell(8, 7, num_str)
@@ -429,6 +441,10 @@ def _write_q_pdf(pdf, q, t):
     pdf.multi_cell(0, 7, title_line)
     pdf.ln(1)
     if is_choice and q["options"] and len(q["options"]) > 0:
+        # 估空间：选项数×7mm行高，不够就换页
+        needed = len(q["options"]) * 7 + 5
+        if pdf.get_y() + needed > pdf.h - pdf.b_margin:
+            pdf.add_page()
         pdf.set_font("CJK", "", 10.5)
         for opt in q["options"]:
             if isinstance(opt, dict):
