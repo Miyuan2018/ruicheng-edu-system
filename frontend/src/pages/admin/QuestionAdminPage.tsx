@@ -102,13 +102,16 @@ export default function QuestionAdminPage() {
     setGenerating(true);
     setTaskProgress(null);
     try {
+      const kpVal = values.knowledge_point;
+      const kpStr = Array.isArray(kpVal) ? kpVal.map((id:string)=>{const fn=(n:any[],i:string):string=>{for(const x of n){if(x.key===i)return x.title;if(x.children){const r=fn(x.children,i);if(r)return r;}}return i;};return fn(scrapeKnNodes,id);}).join(',') : (kpVal||'');
       const { data } = await apiClient.post('/question-admin/generate', null, {
-        params: { ...values, model: llmProvider === 'deepseek' ? dsModel : selectedModel, provider: llmProvider }
+        params: { ...values, knowledge_point: kpStr, model: llmProvider === 'deepseek' ? dsModel : selectedModel, provider: llmProvider }
       });
       setTaskProgress(data);
       if (data.ok) {
         message.success('成功生成 ' + data.count + ' 道试题');
         loadPendingQuestions();
+        loadLlmResults();
       } else {
         const errMsg = data.error || data.detail || JSON.stringify(data);
         message.error(errMsg);
@@ -136,6 +139,20 @@ export default function QuestionAdminPage() {
   const [scrapeDetailExpanded, setScrapeDetailExpanded] = useState(false);
   const [scrapeDetailText, setScrapeDetailText] = useState('');
   const [scrapeHelpOpen, setScrapeHelpOpen] = useState(false);
+  const [llmResults, setLlmResults] = useState<any[]>([]);
+  const [llmResultsLoading, setLlmResultsLoading] = useState(false);
+  const [llmPage, setLlmPage] = useState(1);
+  const [llmTotal, setLlmTotal] = useState(0);
+  const [llmPageSize, setLlmPageSize] = useState(10);
+  const [llmSelectedIds, setLlmSelectedIds] = useState<string[]>([]);
+  const [llmEditQ, setLlmEditQ] = useState<any>(null);
+  const [llmEditOpen, setLlmEditOpen] = useState(false);
+  const [llmPromptExpanded, setLlmPromptExpanded] = useState(false);
+  const [llmSearch, setLlmSearch] = useState('');
+  const [llmTypeFilter, setLlmTypeFilter] = useState<string|undefined>();
+  const [llmDiffFilter, setLlmDiffFilter] = useState<string|undefined>();
+  const [llmStatusFilter, setLlmStatusFilter] = useState<string|undefined>();
+  const [llmHelpOpen, setLlmHelpOpen] = useState(false);
   const [scrapeResults, setScrapeResults] = useState<any[]>([]);
   const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
   const [scrapePage, setScrapePage] = useState(1);
@@ -201,7 +218,17 @@ export default function QuestionAdminPage() {
       }
     }).catch(() => {});
   }, []);
-  useEffect(() => { loadScrapeResults(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadScrapeResults(); loadLlmResults(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadLlmResults = (pg=1,ps=llmPageSize,tf=llmTypeFilter,df=llmDiffFilter,sf=llmStatusFilter,kw=llmSearch) => {
+    setLlmResultsLoading(true); setLlmPage(pg); setLlmPageSize(ps);
+    setLlmTypeFilter(tf); setLlmDiffFilter(df); setLlmStatusFilter(sf); setLlmSearch(kw);
+    const p:any={source:'LLM_GENERATED',limit:ps,skip:(pg-1)*ps};
+    if(tf)p.question_type=tf; if(df)p.difficulty=df; if(sf)p.review_status=sf; if(kw)p.keyword=kw;
+    apiClient.get('/questions',{params:p}).then(({data}:any)=>{const r=data||{};setLlmResults(r.items||[]);setLlmTotal(r.total||0);}).catch(()=>{}).finally(()=>setLlmResultsLoading(false));
+  };
+  const handleLlmDelete = async (id:string) => { try{await apiClient.delete('/questions/'+id);message.success('已删除');loadLlmResults();} catch{message.error('删除失败');} };
+  const handleLlmBatchDelete = async () => { if(llmSelectedIds.length===0){message.warning('请先选中');return;} try{await apiClient.post('/questions/batch-delete',llmSelectedIds);message.success('已删除 '+llmSelectedIds.length+' 道');setLlmSelectedIds([]);loadLlmResults();} catch{message.error('批量删除失败');} };
 
   const updateScrapeConditions = () => {
     const v = scrapeForm.getFieldsValue();
@@ -346,134 +373,142 @@ export default function QuestionAdminPage() {
       key: 'generate',
       label: <span><RobotOutlined />LLM生成</span>,
       children: (<>
-        <Card title="选择大模型并生成试题" size="small" styles={{ body: { padding: '8px 12px' } }}>
+        {/* 模型配置栏 */}
+        <Card size="small" styles={{body:{padding:'10px 16px'}}}>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <Select size="small" value={llmProvider} onChange={v=>{setLlmProvider(v);setTestPassed(false);}}
+              style={{width:150}} options={[{value:'ollama',label:'Ollama (本地)'},{value:'deepseek',label:'DeepSeek (云端)'}]} />
+            {llmProvider==='ollama'
+              ? <Select size="small" placeholder="选择模型" style={{flex:1}} value={selectedModel} onChange={setSelectedModel} options={llmConfigs.map((m:string)=>({value:m,label:m}))} />
+              : <Select size="small" placeholder="选择模型" style={{flex:1}} value={dsModel} onChange={setDsModel} options={dsModels.map((m:string)=>({value:m,label:m}))} />
+            }
+            <Button size="small" icon={<ApiOutlined/>} onClick={handleTestConnection} loading={testLoading}>{testPassed?'已连接':'测试连接'}</Button>
+          </div>
+        </Card>
 
-          <Row gutter={12}>
-            {/* ── Left 2/3 ── */}
-            <Col span={16}>
-              {/* Top: 模型配置 */}
-              <div style={{ marginBottom: 12, padding: '6px 10px', background: '#fafafa', borderRadius: 4 }}>
-                <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
-                  <Select size="small" value={llmProvider} onChange={v => { setLlmProvider(v); setTestPassed(false); }}
-                    style={{ width: 140, flexShrink: 0 }}
-                    options={[{ value: 'ollama', label: 'Ollama (本地)' }, { value: 'deepseek', label: 'DeepSeek (云端)' }]} />
-                  {llmProvider === 'ollama' ?
-                    <Select size="small" placeholder="选择模型" style={{ flex: 1 }} value={selectedModel} onChange={setSelectedModel}
-                      options={llmConfigs.map((m: string) => ({ value: m, label: m }))} />
-                  :
-                    <Select size="small" placeholder="选择模型" style={{ flex: 1 }} value={dsModel} onChange={setDsModel}
-                      options={dsModels.map((m: string) => ({ value: m, label: m }))} />
-                  }
-                  <Button size="small" icon={<ApiOutlined />} onClick={handleTestConnection} loading={testLoading}
-                    style={{ marginLeft: 8, flexShrink: 0, width: 90 }}>
-                    {testPassed ? '✓' : '测试连接'}
-                  </Button>
-                </div>
-              </div>
-              <Divider style={{ margin: '6px 0' }} />
+        {/* 生成条件栏 */}
+        <Card size="small" style={{marginTop:8}} styles={{body:{padding:'12px 16px'}}}>
+          <Form form={genForm} onFinish={handleGenerateQuestions} size="small"
+            onValuesChange={(_,all)=>{setPromptText(`知识点:${all.knowledge_point||'(未填)'} 难度:${all.difficulty||'MEDIUM'} 题型:${all.question_type||'SINGLE_CHOICE'} 数量:${all.count||3}道 年级:${all.grade_level||'G8'} 学科:${all.subject||'数学'}`);}}
+            initialValues={{subject:'数学',grade_level:'G8',difficulty:'MEDIUM',question_type:'SINGLE_CHOICE',count:3}}>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              <Form.Item name="subject" style={{marginBottom:0,minWidth:80}}><Select size="small" options={subjectOptions} placeholder="学科"/></Form.Item>
+              <Form.Item name="grade_level" style={{marginBottom:0,minWidth:100}}><Select size="small" options={toSelectOptions(grades)} placeholder="年级"/></Form.Item>
+              <Form.Item name="knowledge_point" rules={[{required:true,message:'请输入知识点'}]} style={{marginBottom:0,minWidth:180,flex:1}}>
+                <TreeSelect treeData={(function cnv(n:any[]):any[]{return(n||[]).map((n:any)=>({value:n.key,title:n.title,children:n.children?cnv(n.children):undefined}));})(scrapeKnNodes)}
+                  placeholder="选择知识点" treeCheckable showCheckedStrategy={TreeSelect.SHOW_CHILD} allowClear maxTagCount={2} size="small"/></Form.Item>
+              <Form.Item name="difficulty" style={{marginBottom:0,minWidth:80}}><Select size="small" options={toSelectOptions(diffs)} placeholder="难度"/></Form.Item>
+              <Form.Item name="question_type" style={{marginBottom:0,minWidth:100}}><Select size="small" options={toSelectOptions(qtypes)} placeholder="题型"/></Form.Item>
+              <Form.Item name="count" style={{marginBottom:0,width:52}}><InputNumber size="small" min={1} max={20} placeholder="数量"/></Form.Item>
+              <Button type="primary" htmlType="submit" icon={<RobotOutlined/>} loading={generating} disabled={!testPassed}>生成试题</Button>
+            </div>
+          </Form>
+          <div style={{marginTop:8,padding:'6px 10px',background:'#fafbfc',borderRadius:6,fontSize:12,color:'#999',display:'flex',alignItems:'center',gap:8}}>
+            <span>📝 提示词</span>
+            <span style={{flex:1,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis',color:'#bbb'}}>{promptText}</span>
+            <span style={{color:'#1677ff',cursor:'pointer',fontSize:11}} onClick={()=>setLlmPromptExpanded(!llmPromptExpanded)}>{llmPromptExpanded?'收起':'展开'}</span>
+          </div>
+          {llmPromptExpanded && <Input.TextArea rows={6} size="small" style={{fontFamily:'monospace',fontSize:11,marginTop:8}} value={promptText} onChange={e=>setPromptText(e.target.value)}/>}
+        </Card>
 
-              {/* Bottom: 生成条件 — label & input on same line */}
-              <Form form={genForm} onFinish={handleGenerateQuestions} layout="horizontal" size="small"
-                labelCol={{ style: { width: 50, fontSize: 12 } }}
-                onValuesChange={(_, all) => {
-                  const p = `你是一位专业的教育题目生成专家。请根据以下要求生成试题，直接返回JSON数组。\n\n要求：\n- 知识点：${all.knowledge_point || '(未填)'}\n- 难度：${all.difficulty || 'MEDIUM'}\n- 题型：${all.question_type || 'SINGLE_CHOICE'}\n- 数量：${all.count || 3}道\n- 年级：${all.grade_level || 'G8'}\n- 学科：${all.subject || '数学'}\n\n返回格式：严格的JSON数组，不要markdown代码块。`;
-                  setPromptText(p);
-                }}
-                initialValues={{ subject: '数学', grade_level: 'G8', difficulty: 'MEDIUM', question_type: 'SINGLE_CHOICE', count: 3 }}>
-                {/* Row 1 */}
-                <Row gutter={8} style={{ marginBottom: 2 }}>
-                  <Col span={12}>
-                    <Form.Item name="subject" label="学科" style={{ marginBottom: 0 }}>
-                      <Select size="small" options={subjectOptions} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="grade_level" label="年级" style={{ marginBottom: 0 }}>
-                      <Select size="small" options={toSelectOptions(grades)} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                {/* Row 2 */}
-                <Row gutter={8} style={{ marginBottom: 2 }}>
-                  <Col span={24}>
-                    <Form.Item name="knowledge_point" label="知识点" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
-                      <Input size="small" placeholder="多知识点综合用逗号分割，如：三角函数, 正弦" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                {/* Row 3 */}
-                <Row gutter={8} style={{ marginBottom: 2 }}>
-                  <Col span={12}>
-                    <Form.Item name="difficulty" label="难度" style={{ marginBottom: 0 }}>
-                      <Select size="small" options={toSelectOptions(diffs)} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="question_type" label="题型" style={{ marginBottom: 0 }}>
-                      <Select size="small" options={toSelectOptions(qtypes)} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                {/* Row 4 */}
-                <Row gutter={8}>
-                  <Col span={12}>
-                    <Form.Item name="count" label="数量" style={{ marginBottom: 0 }}>
-                      <InputNumber size="small" min={1} max={20} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item style={{ marginBottom: 0 }}>
-                      <Button type="primary" htmlType="submit" icon={<RobotOutlined />} loading={loading}
-                        disabled={!testPassed} size="small" block>
-                        生成试题{!testPassed ? '(请先测试连接)' : loading ? '(生成中...)' : ''}
-                      </Button>
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </Form>
-            </Col>
+        {/* 进度条 */}
+        {generating && (
+          <div style={{background:'#f0f5ff',borderRadius:6,padding:'8px 12px',marginTop:8,display:'flex',alignItems:'center',gap:8,fontSize:12}}>
+            <div style={{flex:1,height:3,background:'#e8e8e8',borderRadius:2,overflow:'hidden'}}><div style={{width:'70%',height:'100%',background:'#1677ff',borderRadius:2}}/></div>
+            <span style={{color:'#1677ff',whiteSpace:'nowrap'}}>生成中...</span>
+          </div>
+        )}
+        {taskProgress && (
+          <div style={{marginTop:8}}>
+            {taskProgress.ok===false?<Alert style={{padding:'2px 12px',fontSize:12}} type="error" message={taskProgress.error}/>
+              :<div style={{padding:'6px 10px',background:'#f6ffed',borderRadius:6,fontSize:12,color:'#52c41a'}}>✅ 已生成 <b>{taskProgress.count}</b> 道试题</div>}
+          </div>
+        )}
 
-            {/* ── Right 1/3: 提示词 ── */}
-            <Col span={8}>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>发送给模型的提示</div>
-              <Input.TextArea rows={9} size="small" style={{ fontFamily: 'monospace', fontSize: 10 }}
-                value={promptText} onChange={e => setPromptText(e.target.value)} />
-            </Col>
-          </Row>
-
-          <Space direction="vertical" style={{ width: '100%' }} size={4}>
-            {generating && (
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                padding: '2px 12px', background: 'linear-gradient(135deg, #667eea22, #764ba222)',
-                borderRadius: 4, border: '1px solid #667eea44', height: 24,
-                animation: 'breathe 1.8s ease-in-out infinite',
-              }}>
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%', background: '#667eea',
-                  marginRight: 8, boxShadow: '0 0 8px #667eea88',
-                  animation: 'pulse 0.8s ease-in-out infinite',
-                }} />
-                <Text style={{ color: '#667eea', fontSize: 12 }}>
-                  AI 正在生成试题，请稍候...
-                </Text>
+        {/* 结果列表 */}
+        <Card size="small" title={<span>生成结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {llmTotal} 道</span></span>}
+          extra={<span style={{fontSize:11,color:'#999'}}>👁 仅展示本次生成</span>} style={{marginTop:16}}>
+          <div style={{marginBottom:8,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+            <Input size="small" placeholder="搜索题目" style={{width:160}} value={llmSearch}
+              onChange={e=>setLlmSearch(e.target.value)} onPressEnter={()=>loadLlmResults(1,llmPageSize,llmTypeFilter,llmDiffFilter,llmStatusFilter,llmSearch)} allowClear/>
+            <Select size="small" placeholder="题型" allowClear style={{width:80}} value={llmTypeFilter}
+              onChange={v=>{setLlmTypeFilter(v);loadLlmResults(1,llmPageSize,v,llmDiffFilter,llmStatusFilter,llmSearch);}} options={toSelectOptions(qtypes)}/>
+            <Select size="small" placeholder="难度" allowClear style={{width:70}} value={llmDiffFilter}
+              onChange={v=>{setLlmDiffFilter(v);loadLlmResults(1,llmPageSize,llmTypeFilter,v,llmStatusFilter,llmSearch);}} options={toSelectOptions(diffs)}/>
+            <Select size="small" placeholder="状态" allowClear style={{width:70}} value={llmStatusFilter}
+              onChange={v=>{setLlmStatusFilter(v);loadLlmResults(1,llmPageSize,llmTypeFilter,llmDiffFilter,v,llmSearch);}}
+              options={[{value:'PENDING',label:'待审核'},{value:'APPROVED',label:'已通过'},{value:'REJECTED',label:'已驳回'}]}/>
+            <Button size="small" icon={<SearchOutlined/>} onClick={()=>loadLlmResults(1,llmPageSize,llmTypeFilter,llmDiffFilter,llmStatusFilter,llmSearch)}>查询</Button>
+            <Popconfirm title={'确定删除 '+llmSelectedIds.length+' 道?'} onConfirm={handleLlmBatchDelete} disabled={llmSelectedIds.length===0}>
+              <Button size="small" danger icon={<DeleteOutlined/>} disabled={llmSelectedIds.length===0}>批量删除{llmSelectedIds.length>0?`(${llmSelectedIds.length})`:''}</Button>
+            </Popconfirm>
+          </div>
+          <Spin spinning={llmResultsLoading}>
+            {llmResults.length===0 && !llmResultsLoading && <Empty description="暂无生成结果"/>}
+            {llmResults.length>0 && (
+              <div style={{display:'flex',alignItems:'center',padding:'4px 12px',fontSize:10,color:'#bbb',borderBottom:'1px solid #f0f0f0'}}>
+                <Checkbox checked={llmResults.length>0&&llmSelectedIds.length===llmResults.length}
+                  indeterminate={llmSelectedIds.length>0&&llmSelectedIds.length<llmResults.length}
+                  onChange={()=>setLlmSelectedIds(llmSelectedIds.length===llmResults.length?[]:llmResults.map((q:any)=>q.id))}
+                  style={{marginRight:8}}/>
+                <span style={{width:28}}>#</span>
+                <span style={{flex:1}}>题目</span>
+                <span style={{width:90,textAlign:'center'}}>时间</span>
+                <span style={{width:50,textAlign:'center'}}>状态</span>
+                <span style={{width:60,textAlign:'right'}}>操作</span>
               </div>
             )}
-            {taskProgress && <Alert type={taskProgress.ok === false ? 'error' : 'success'} style={{ padding: '2px 12px', fontSize: 12 }}
-              message={taskProgress.ok === false ? taskProgress.error : '已生成 ' + taskProgress.count + ' 道试题，请到审核标签查看'} />}
-          </Space>
+            {llmResults.map((q:any,i:number)=>(
+              <div key={q.id} style={{display:'flex',alignItems:'flex-start',padding:'10px 12px',borderBottom:i<llmResults.length-1?'1px solid #f5f5f5':'none',background:llmSelectedIds.includes(q.id)?'#f0f5ff':undefined}}>
+                <Checkbox checked={llmSelectedIds.includes(q.id)} style={{marginRight:8,marginTop:4,flexShrink:0}}
+                  onChange={()=>setLlmSelectedIds(llmSelectedIds.includes(q.id)?llmSelectedIds.filter(id=>id!==q.id):[...llmSelectedIds,q.id])}/>
+                <span style={{width:28,color:'#999',fontSize:12,paddingTop:2,flexShrink:0}}>{i+1}</span>
+                <div style={{flex:1,minWidth:0,paddingRight:12}}>
+                  <div style={{fontSize:13,lineHeight:1.5,marginBottom:4}}>{q.title?.substring(0,120)}</div>
+                  <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                    <Tag color={(toColorMap(diffs)[q.difficulty] as any)?.color||'default'} style={{fontSize:10}}>{pageDiffMap[q.difficulty]||q.difficulty}</Tag>
+                    <Tag color="blue" style={{fontSize:10}}>{typeMap[q.question_type]||q.question_type}</Tag>
+                    {q.score!=null && <Tag color="orange" style={{fontSize:10}}>{q.score}分</Tag>}
+                    {(q.grade_level?.knowledge_points||[]).slice(0,2).map((kp:string,j:number)=>(<Tag key={j} color="purple" style={{fontSize:10}}>{kp}</Tag>))}
+                    <Tag color={REVIEW_STATUS_MAP[q.review_status]?.color||'default'} style={{fontSize:10}}>{REVIEW_STATUS_MAP[q.review_status]?.label||q.review_status}</Tag>
+                  </div>
+                </div>
+                <span style={{width:90,fontSize:11,color:'#999',textAlign:'center',paddingTop:2,flexShrink:0}}>{(q.created_at||'').slice(5,16).replace('T',' ')}</span>
+                <span style={{width:50,textAlign:'center',paddingTop:2,flexShrink:0}}>
+                  <Tag color={REVIEW_STATUS_MAP[q.review_status]?.color||'default'} style={{fontSize:10,margin:0}}>{REVIEW_STATUS_MAP[q.review_status]?.label||q.review_status}</Tag>
+                </span>
+                <div style={{width:60,display:'flex',gap:4,justifyContent:'flex-end',flexShrink:0,paddingTop:1}}>
+                  <Button size="small" type="link" icon={<EditOutlined/>} onClick={()=>{setLlmEditQ(q);setLlmEditOpen(true);}}/>
+                  <Popconfirm title="确定删除?" onConfirm={()=>handleLlmDelete(q.id)}>
+                    <Button size="small" type="link" danger icon={<DeleteOutlined/>}/>
+                  </Popconfirm>
+                </div>
+              </div>
+            ))}
+          </Spin>
+          <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
+            <Pagination size="small" current={llmPage} onChange={(p:number)=>loadLlmResults(p)} onShowSizeChange={(_:number,sz:number)=>loadLlmResults(1,sz)}
+              pageSize={llmPageSize} total={llmTotal} showSizeChanger showQuickJumper={false} pageSizeOptions={['10','20','50']} showTotal={(t)=>`共 ${t} 条`}/>
+          </div>
         </Card>
-        <style>{`
-          @keyframes breathe {
-            0%, 100% { opacity: 0.6; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.02); }
-          }
-          @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 0.6; }
-            50% { transform: scale(1.6); opacity: 1; }
-          }
-        `}</style>
-        <QuestionListBySource sourceFilter="LLM_GENERATED" title="LLM 生成试题列表" key={"llm-"+(taskProgress?.task_id||"")} />
+        {llmEditOpen && llmEditQ && (
+          <QuestionEditModal open={llmEditOpen} question={llmEditQ} onClose={()=>{setLlmEditOpen(false);setLlmEditQ(null);}}
+            onSuccess={()=>{setLlmEditOpen(false);setLlmEditQ(null);loadLlmResults();}}/>
+        )}
+
+        <Card size="small" title="页面结构说明" style={{marginTop:12}}
+          extra={<Button size="small" type="link" onClick={()=>setLlmHelpOpen(!llmHelpOpen)}>{llmHelpOpen?'收起':'展开'}</Button>}>
+          {llmHelpOpen && (
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><tbody>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600,width:80}}>模型栏</td><td style={{padding:'6px 8px'}}>Provider选择 + 模型选择 + 测试连接</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>条件栏</td><td style={{padding:'6px 8px'}}>单行：学科、年级、知识点TreeSelect、难度、题型、数量、生成按钮</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>提示词</td><td style={{padding:'6px 8px'}}>预览条 + 展开编辑完整提示词</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>结果列表</td><td style={{padding:'6px 8px'}}>全选 · # · 标题+标签 · 时间 · 状态 · 编辑/删除图标</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>分页</td><td style={{padding:'6px 8px'}}>右下角：共N条 + 页码 + 每页行数下拉</td></tr>
+              <tr><td style={{padding:'6px 8px',fontWeight:600}}>按钮配色</td><td style={{padding:'6px 8px'}}>主操作蓝底白字；次要白底灰框；危险白底红框</td></tr>
+            </tbody></table>
+          )}
+        </Card>
       </>),
     },
     {
