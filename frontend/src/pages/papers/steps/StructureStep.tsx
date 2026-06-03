@@ -22,7 +22,7 @@ type RowItem = {
 export default function StructureStep() {
   const {
     paper, updateMeta, addUnit, updateUnit, removeUnit,
-    updateTypeConfig, addTypeConfig, removeTypeConfig, moveTypeConfig,
+    updateTypeConfig, addTypeConfig, removeTypeConfig,
     addQuickUnits, setDirty,
   } = usePaperEditorStore();
 
@@ -75,27 +75,19 @@ export default function StructureStep() {
   };
 
   const updateRow = (unitId: string, cfgIdx: number, field: string, value: any) => {
-    // 按题型模式：改题型自动迁移到同名单元下
+    // 按题型模式：改题型就地更新，行不移动
     if (field === 'question_type' && !showUnits) {
       const st = usePaperEditorStore.getState();
-      const curUnits = st.paper?.units || [];
-      const cfg = (curUnits.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
+      const cfg = (st.paper?.units?.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
       if (cfg && cfg.question_type !== value) {
         const newTypeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
-        let targetUid = curUnits.find(u => u.name === newTypeLabel)?.id;
-        if (!targetUid) {
+        // 确保目标单元存在（行不移动，但单元要有对应名字的记录）
+        if (!st.paper?.units?.find(u => u.name === newTypeLabel)) {
           addUnit({ name: newTypeLabel, question_config: [] });
-          targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === newTypeLabel)?.id || '';
         }
-        if (targetUid && targetUid !== unitId) {
-          moveTypeConfig(unitId, cfgIdx, targetUid);
-          // 新位置的题型字段已由moveTypeConfig保留，只需更新type
-          const st2 = usePaperEditorStore.getState();
-          const tgtCfg = st2.paper?.units?.find(u => u.id === targetUid)?.question_config || [];
-          updateTypeConfig(targetUid, tgtCfg.length - 1, { question_type: value });
-          setDirty(true);
-          return;
-        }
+        updateTypeConfig(unitId, cfgIdx, { question_type: value });
+        setDirty(true);
+        return;
       }
     }
     updateTypeConfig(unitId, cfgIdx, { [field]: value });
