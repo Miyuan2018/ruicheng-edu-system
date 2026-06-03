@@ -22,7 +22,7 @@ type RowItem = {
 export default function StructureStep() {
   const {
     paper, updateMeta, addUnit, updateUnit, removeUnit,
-    updateTypeConfig, addTypeConfig, removeTypeConfig, moveTypeConfig,
+    updateTypeConfig, addTypeConfig, removeTypeConfig,
     addQuickUnits, setDirty,
   } = usePaperEditorStore();
 
@@ -75,28 +75,22 @@ export default function StructureStep() {
   };
 
   const updateRow = (unitId: string, cfgIdx: number, field: string, value: any) => {
-    // 按题型模式：改题型自动迁移到同名单元
+    // 按题型模式：改题型就地更新+同步单元名，不移动行
     if (field === 'question_type' && !showUnits) {
       const st = usePaperEditorStore.getState();
       const curUnits = st.paper?.units || [];
       const cfg = (curUnits.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
+      const oldTypeLabel = QTYPE_OPTIONS.find(o => o.value === cfg?.question_type)?.label || '';
+      const newTypeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
       if (cfg && cfg.question_type !== value) {
-        const typeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
-        let targetUid = curUnits.find(u => u.name === typeLabel)?.id;
-        // 确保目标单元存在
-        if (!targetUid) {
-          addUnit({ name: typeLabel, question_config: [] });
-          targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
+        updateTypeConfig(unitId, cfgIdx, { question_type: value });
+        // 单元名同步更新（去掉旧题型名+加上新题型名，或直接替换）
+        const unit = curUnits.find(u => u.id === unitId);
+        if (unit && (unit.name === oldTypeLabel || unit.name === '未命名单元')) {
+          updateUnit(unitId, { name: newTypeLabel });
         }
-        if (targetUid && targetUid !== unitId) {
-          moveTypeConfig(unitId, cfgIdx, targetUid);
-          // 更新新单元的题型字段
-          const st2 = usePaperEditorStore.getState();
-          const tgtCfg = st2.paper?.units?.find(u => u.id === targetUid)?.question_config || [];
-          updateTypeConfig(targetUid, tgtCfg.length - 1, { question_type: value });
-          setDirty(true);
-          return;
-        }
+        setDirty(true);
+        return;
       }
     }
     updateTypeConfig(unitId, cfgIdx, { [field]: value });
