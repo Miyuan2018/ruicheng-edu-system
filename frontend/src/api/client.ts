@@ -24,6 +24,28 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    // 提取真正的错误消息：后端 ApiResponseMiddleware 包装了 {code,message,detail,data}
+    if (error.response?.data) {
+      const body = error.response.data;
+      if (typeof body === 'object' && 'message' in body) {
+        const msg = body.message;
+        // FastAPI 422 验证错误返回列表 [{"msg":"...","loc":[...]}]
+        if (Array.isArray(msg)) {
+          error.response.data = {
+            detail: msg.map((e: any) =>
+              `${e.loc?.join('.') || ''}: ${e.msg}`
+            ).join('; '),
+          };
+        } else if (typeof msg === 'string') {
+          error.response.data = { detail: msg };
+        }
+      }
+      // Fallback: 保持 detail 字段用于兼容
+      if (typeof body === 'object' && body.detail && typeof body.detail === 'string') {
+        error.response.data = { detail: body.detail };
+      }
+    }
+
     const originalRequest = error.config;
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;

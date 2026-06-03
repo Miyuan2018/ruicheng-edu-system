@@ -64,7 +64,10 @@ export default function PreviewFinalizeStep() {
       setDirty(false);
       setTimeout(() => navigate('/papers'), 500);
     } catch (err: any) {
-      message.error(err?.response?.data?.detail || '操作失败');
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail
+        : err?.message || '保存失败，请检查网络连接后重试';
+      message.error(msg);
     } finally { setSubmitting(false); }
   };
 
