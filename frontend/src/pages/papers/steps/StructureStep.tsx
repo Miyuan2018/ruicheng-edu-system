@@ -312,17 +312,19 @@ export default function StructureStep() {
 
       {/* Zone 3: Summary Bar */}
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={perUnitTimer}
-              onChange={(e) => updateMeta({ per_unit_timer: e.target.checked })}
-              style={{ margin: 0 }}
-            />
-            逐单元计时
-          </label>
-        </div>
+        {!isFlatView && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={perUnitTimer}
+                onChange={(e) => updateMeta({ per_unit_timer: e.target.checked })}
+                style={{ margin: 0 }}
+              />
+              逐单元计时
+            </label>
+          </div>
+        )}
         {!scoreOk && targetTotal > 0 && (
           <Tag color="error">
             结构总分（{computedTotal}）≠ 目标总分（{targetTotal}），差 {Math.abs(computedTotal - targetTotal)} 分
