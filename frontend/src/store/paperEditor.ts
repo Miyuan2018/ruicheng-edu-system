@@ -556,7 +556,26 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     if (!paper || !paper.id) return;
     set({ saving: true });
     try {
-      await paperApi.saveAll(paper.id, paper);
+      // 只发送后端需要的字段(UnitQuestionCreate仅有4字段)，去除前端扩展的question/alternatives等
+      const cleanPaper = {
+        ...paper,
+        units: paper.units.map(u => ({
+          id: u.id,
+          name: u.name,
+          description: u.description,
+          position: u.position,
+          time_limit_minutes: u.time_limit_minutes,
+          question_config: u.question_config,
+          total_score: u.total_score,
+          questions: (u.questions || []).map(q => ({
+            question_id: q.question_id,
+            question_type: q.question_type,
+            position: q.position,
+            score: q.score,
+          })),
+        })),
+      };
+      await paperApi.saveAll(paper.id, cleanPaper);
       set({ saving: false, dirty: false, lastSaved: new Date() });
     } catch (e) {
       set({ saving: false });
