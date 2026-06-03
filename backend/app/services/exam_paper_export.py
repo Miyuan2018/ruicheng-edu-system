@@ -490,7 +490,7 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     pdf.add_page()
     pdf.set_left_margin(30)
     pdf.set_right_margin(20)
-    pdf.set_top_margin(25)
+    pdf.set_top_margin(30)
 
     CJK_PATHS = [
         "/usr/share/fonts/truetype/arphic-gbsn00lp/gbsn00lp.ttf",
