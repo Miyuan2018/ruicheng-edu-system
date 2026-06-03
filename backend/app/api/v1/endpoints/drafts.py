@@ -1,8 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
 from app.core.security import get_current_user
+
+logger = logging.getLogger(__name__)
 from app.models.exam_paper_draft import ExamPaperDraft
 from app.schemas.exam_paper_draft import DraftCreate, DraftResponse
 
@@ -70,15 +73,23 @@ async def delete_draft(
 ):
     """删除草稿"""
     _check_teacher_or_admin(current_user)
-    result = await db.execute(
-        select(ExamPaperDraft).where(
-            ExamPaperDraft.id == draft_id,
-            ExamPaperDraft.user_id == current_user.id,
+    try:
+        result = await db.execute(
+            select(ExamPaperDraft).where(
+                ExamPaperDraft.id == draft_id,
+                ExamPaperDraft.user_id == current_user.id,
+            )
         )
-    )
-    draft = result.scalar_one_or_none()
-    if not draft:
-        raise HTTPException(404, detail="草稿不存在")
-    await db.delete(draft)
-    await db.commit()
+        draft = result.scalar_one_or_none()
+        if not draft:
+            raise HTTPException(404, detail="草稿不存在")
+        await db.delete(draft)
+        await db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logger.exception(f'delete_draft failed: draft_id={draft_id} user_id={current_user.id}')
+        await db.rollback()
+        raise HTTPException(500, detail=f'{type(e).__name__}: {e}')
     return None
