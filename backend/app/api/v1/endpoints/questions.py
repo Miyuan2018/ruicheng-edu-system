@@ -221,7 +221,7 @@ async def swap_question_paperless(
     if not current:
         raise HTTPException(404, detail="题目不存在")
 
-    exclude_ids = set(request.exclude_ids)
+    exclude_ids = set(request.exclude_ids) | {question_id}
 
     async def _query_candidates(qtype, diff, used, subj=None, grades_val=None, kn_ids=None):
         conds = [Question.is_active == True, Question.review_status == "APPROVED", Question.question_type == qtype]
