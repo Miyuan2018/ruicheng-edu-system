@@ -90,5 +90,5 @@ export default function PaperPreviewDrawer({ open, paperId, onClose }: PaperPrev
     );
   }
 
-  return <Drawer title="试卷预览" open={open} onClose={onClose} width={800}>{body}</Drawer>;
+  return <Drawer title={paper?.title || '试卷预览'} open={open} onClose={onClose} width={800}>{body}</Drawer>;
 }
