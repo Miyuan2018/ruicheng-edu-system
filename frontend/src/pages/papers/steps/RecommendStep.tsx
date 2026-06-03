@@ -90,7 +90,6 @@ export default function RecommendStep() {
         subject: paper?.subject || undefined,
         keyword: keyword || undefined,
         review_status: 'APPROVED',
-        is_active: true,
         limit: 30,
       };
       if (grades.length === 1) params.grade = grades[0];
@@ -100,7 +99,9 @@ export default function RecommendStep() {
       // 排除已在试卷中的题
       const allQids = new Set((paper?.units || []).flatMap(u => (u.questions || []).map(q => q.question_id)));
       setManualResults(data.filter((q: any) => !allQids.has(q.id)));
-    } catch {
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail || e?.message || '获取题目失败';
+      message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       setManualResults([]);
     } finally {
       setManualLoading(false);
