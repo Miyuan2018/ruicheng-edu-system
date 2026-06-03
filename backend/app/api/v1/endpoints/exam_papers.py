@@ -612,12 +612,13 @@ async def save_paper_all(
         if val is not None:
             setattr(paper, field, val)
 
-    # Delete all existing units (cascade deletes unit_questions at DB level)
-    await db.execute(
-        delete(ExamPaperUnit).where(
-            ExamPaperUnit.exam_paper_id == paper_id
-        )
+    # 删除已有单元（ORM delete 确保 session 级联和唯一约束正确处理）
+    old_units = await db.execute(
+        select(ExamPaperUnit).where(ExamPaperUnit.exam_paper_id == paper_id)
     )
+    for old_unit in old_units.scalars().all():
+        await db.delete(old_unit)
+    await db.flush()
 
     # Create new units
     for i, unit_in in enumerate(data.units):
