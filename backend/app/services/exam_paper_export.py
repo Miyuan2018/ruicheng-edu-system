@@ -260,10 +260,11 @@ def _write_question_word(doc, q, t, Cm, Pt):
     elif t == "SUBJECTIVE":
         ans_para = doc.add_paragraph()
         ans_para.paragraph_format.space_before = Pt(4)
+        ans_para.paragraph_format.page_break_before = True  # 每题另起一页
         run_ans = ans_para.add_run("答: ")
         run_ans.font.size = FONT_BODY_SIZE
         _set_cn_font(run_ans)
-        for _ in range(6):
+        for _ in range(13):
             space_para = doc.add_paragraph()
             space_para.paragraph_format.line_spacing = 1.5
             space_para.add_run(" ").font.size = FONT_BODY_SIZE
@@ -447,7 +448,7 @@ def _write_q_pdf(pdf, q, t):
         pdf.set_font("CJK", "", 10.5)
         pdf.cell(8, 6, "")
         pdf.cell(0, 6, "答:", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(10)
+        pdf.ln(70)
     elif t == "FILL_BLANK":
         pdf.ln(4)
 
