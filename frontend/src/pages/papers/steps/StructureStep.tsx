@@ -22,7 +22,7 @@ type RowItem = {
 export default function StructureStep() {
   const {
     paper, updateMeta, addUnit, updateUnit, removeUnit,
-    updateTypeConfig, addTypeConfig, removeTypeConfig,
+    updateTypeConfig, addTypeConfig, removeTypeConfig, moveTypeConfig,
     addQuickUnits, setDirty,
   } = usePaperEditorStore();
 
@@ -39,6 +39,8 @@ export default function StructureStep() {
         result.push({ unitId: u.id || '', unitName: u.name, unitTime: u.time_limit_minutes, cfg, cfgIdx: idx });
       });
     });
+    // 按 _sortKey 稳定排序，行不随单元移动
+    result.sort((a, b) => ((a.cfg as any)._sortKey || 0) - ((b.cfg as any)._sortKey || 0));
     return result;
   }, [units]);
 
@@ -75,19 +77,28 @@ export default function StructureStep() {
   };
 
   const updateRow = (unitId: string, cfgIdx: number, field: string, value: any) => {
-    // 按题型模式：改题型就地更新，行不移动
+    // 按题型模式：改题型 → 行移到同名单元，_sortKey 保序
     if (field === 'question_type' && !showUnits) {
       const st = usePaperEditorStore.getState();
-      const cfg = (st.paper?.units?.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
+      const curUnits = st.paper?.units || [];
+      const cfg = (curUnits.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
       if (cfg && cfg.question_type !== value) {
         const newTypeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
-        // 确保目标单元存在（行不移动，但单元要有对应名字的记录）
-        if (!st.paper?.units?.find(u => u.name === newTypeLabel)) {
+        let targetUid = curUnits.find(u => u.name === newTypeLabel)?.id;
+        if (!targetUid) {
           addUnit({ name: newTypeLabel, question_config: [] });
+          targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === newTypeLabel)?.id || '';
         }
-        updateTypeConfig(unitId, cfgIdx, { question_type: value });
-        setDirty(true);
-        return;
+        if (targetUid && targetUid !== unitId) {
+          // 保留 sortKey
+          const sortKey = (cfg as any)._sortKey || Date.now();
+          moveTypeConfig(unitId, cfgIdx, targetUid);
+          const st2 = usePaperEditorStore.getState();
+          const tgtCfg = st2.paper?.units?.find(u => u.id === targetUid)?.question_config || [];
+          updateTypeConfig(targetUid, tgtCfg.length - 1, { question_type: value, _sortKey: sortKey } as any);
+          setDirty(true);
+          return;
+        }
       }
     }
     updateTypeConfig(unitId, cfgIdx, { [field]: value });
@@ -381,7 +392,7 @@ export default function StructureStep() {
               addUnit({ name: typeLabel, question_config: [] });
               uid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
             }
-            if (uid) addTypeConfig(uid, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
+            if (uid) addTypeConfig(uid, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5, _sortKey: Date.now() });
             setDirty(true);
           }}>
             添加题型
