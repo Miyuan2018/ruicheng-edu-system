@@ -86,8 +86,8 @@ async def generate_questions(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
-        raise HTTPException(403, detail="仅题库管理员可操作")
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN", "TEACHER"):
+        raise HTTPException(403, detail="仅题库管理员和教师可操作")
 
     if count > 20:
         count = 20
@@ -396,8 +396,8 @@ async def start_scrape(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN"):
-        raise HTTPException(403, detail="权限不足")
+    if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN", "TEACHER"):
+        raise HTTPException(403, detail="仅题库管理员和教师可操作")
 
     # Check Celery config for async dispatch
     from app.services.config_service import load_config
