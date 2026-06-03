@@ -1036,22 +1036,22 @@ async def step7_papers(db: AsyncSession):
     papers = [
         (PAPER_MATH_MID_ID,  "八年级数学上册期中测试", "实数+代数式+方程三章，满分89分",
          "数学", {"scope":"grade","grades":["G8"]}, 89, 120,
-         "请将答案写在答题纸上，计算题须写出完整解题步骤，否则不得分。", T_MATH_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
+         "请将答案写在答题纸上，计算题须写出完整解题步骤，否则不得分。", T_MATH_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False, 'question_type'),
         (PAPER_MATH_UNIT_ID, "八年级数学·第一章单元测试(实数)", "实数概念与运算，满分49分",
          "数学", {"scope":"grade","grades":["G8"]}, 49, 60,
-         "全部题目均需作答。", T_MATH_ID, {"EASY":30,"MEDIUM":50,"HARD":20}, True, False),
+         "全部题目均需作答。", T_MATH_ID, {"EASY":30,"MEDIUM":50,"HARD":20}, True, False, 'generic'),
         (PAPER_MATH_FINAL_ID,"八年级数学上册期末测试", "全册综合检测，满分105分",
          "数学", {"scope":"grade","grades":["G8"]}, 105, 120,
-         "认真审题，书写规范。选择题用2B铅笔填涂。", T_MATH_ID, {"EASY":15,"MEDIUM":55,"HARD":30}, True, True),
+         "认真审题，书写规范。选择题用2B铅笔填涂。", T_MATH_ID, {"EASY":15,"MEDIUM":55,"HARD":30}, True, True, 'generic'),
         (PAPER_CHN_MID_ID,   "七年级语文上册期中检测", "现代文+古诗词+写作，满分75分",
          "语文", {"scope":"grade","grades":["G7"]}, 75, 120,
-         "作文字迹工整，卷面整洁将酌情加分。", T_CHINESE_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
+         "作文字迹工整，卷面整洁将酌情加分。", T_CHINESE_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False, 'question_type'),
         (PAPER_ENG_FINAL_ID, "九年级英语中考模拟卷", "单选+填空+阅读+写作，满分88分",
          "英语", {"scope":"grade","grades":["G9"]}, 88, 120,
-         "听力部分另行安排。本卷考查语法、阅读和写作能力。", T_ENG_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
+         "听力部分另行安排。本卷考查语法、阅读和写作能力。", T_ENG_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False, 'question_type'),
         (PAPER_PHY_UNIT_ID,  "八年级物理·光现象单元测试", "光的传播+反射+折射，满分37分",
          "物理", {"scope":"grade","grades":["G8"]}, 37, 45,
-         "作图题请用铅笔和直尺。", T_PHY_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False),
+         "作图题请用铅笔和直尺。", T_PHY_ID, {"EASY":20,"MEDIUM":50,"HARD":30}, False, False, 'question_type'),
     ]
 
     # Paper-question map with type info for unit grouping
@@ -1109,17 +1109,17 @@ async def step7_papers(db: AsyncSession):
 
     total_units = 0
     total_eqs = 0
-    for pid, title, desc, subj, grade, score, dur, instr, creator, diff_ratio, show_u, per_u in papers:
+    for pid, title, desc, subj, grade, score, dur, instr, creator, diff_ratio, show_u, per_u, tmpl in papers:
         await db.execute(text("""
             INSERT INTO exam_papers (id, title, description, subject, grade_level, status,
                 total_score, duration_minutes, instructions, difficulty_ratio,
-                show_units, per_unit_timer, created_by, created_at, updated_at)
+                show_units, per_unit_timer, template_type, created_by, created_at, updated_at)
             VALUES (:id, :title, :desc, :subj, CAST(:grade AS jsonb), 'PUBLISHED',
                 :score, :dur, :instr, CAST(:diff AS jsonb),
-                :show_u, :per_u, :creator, now(), now())
+                :show_u, :per_u, :tmpl, :creator, now(), now())
         """), {"id": pid, "title": title, "desc": desc, "subj": subj, "grade": json.dumps(grade),
                "score": score, "dur": dur, "instr": instr, "diff": json.dumps(diff_ratio),
-               "show_u": show_u, "per_u": per_u, "creator": creator})
+               "show_u": show_u, "per_u": per_u, "tmpl": tmpl, "creator": creator})
 
         # Build units by question type
         qlist = paper_q_map.get(pid, [])
