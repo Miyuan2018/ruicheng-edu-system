@@ -28,7 +28,7 @@ export default function PaperPreviewDrawer({ open, paperId, onClose }: PaperPrev
     apiClient.get('/exam-papers/' + paperId + '/preview')
       .then((resp) => {
         const data = resp.data;
-        setPaper(data);
+        setPaper(data.paper || data);
         setUnits(data.units || []);
       })
       .catch((err) => {
