@@ -539,10 +539,6 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
         pdf.cell(0, 8, " | ".join([p for p in info_parts if p]), new_x="LMARGIN", new_y="NEXT", align="C")
         pdf.ln(2)
 
-    y = pdf.get_y()
-    pdf.set_draw_color(0)
-    pdf.set_line_width(0.1)
-    pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
     pdf.ln(4)
 
     type_order = ["FILL_BLANK", "SINGLE_CHOICE", "MULTIPLE_CHOICE", "SUBJECTIVE"]
