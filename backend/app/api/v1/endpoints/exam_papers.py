@@ -7,7 +7,11 @@ ExamPaperUnit + ExamPaperUnitQuestion.
 import uuid
 import json
 import random
+import traceback
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete, cast, String, or_
@@ -612,43 +616,48 @@ async def save_paper_all(
         if val is not None:
             setattr(paper, field, val)
 
-    # 删除已有单元（ORM delete 确保 session 级联和唯一约束正确处理）
-    old_units = await db.execute(
-        select(ExamPaperUnit).where(ExamPaperUnit.exam_paper_id == paper_id)
-    )
-    for old_unit in old_units.scalars().all():
-        await db.delete(old_unit)
-    await db.flush()
-
-    # Create new units
-    for i, unit_in in enumerate(data.units):
-        unit = ExamPaperUnit(
-            exam_paper_id=paper.id,
-            name=unit_in.name,
-            description=unit_in.description,
-            position=unit_in.position if unit_in.position else i + 1,
-            time_limit_minutes=unit_in.time_limit_minutes,
-            question_config=[q.model_dump() for q in unit_in.question_config],
-            total_score=sum(
-                q.score for q in unit_in.questions
-            ),
+    try:
+        # 删除已有单元（ORM delete 确保 session 级联和唯一约束正确处理）
+        old_units = await db.execute(
+            select(ExamPaperUnit).where(ExamPaperUnit.exam_paper_id == paper_id)
         )
-        db.add(unit)
+        for old_unit in old_units.scalars().all():
+            await db.delete(old_unit)
         await db.flush()
 
-        # Create unit-question links
-        for j, q_in in enumerate(unit_in.questions):
-            uq = ExamPaperUnitQuestion(
-                unit_id=unit.id,
-                question_id=q_in.question_id,
-                question_type=q_in.question_type,
-                position=q_in.position if q_in.position else j + 1,
-                score=q_in.score,
+        # Create new units
+        for i, unit_in in enumerate(data.units):
+            unit = ExamPaperUnit(
+                exam_paper_id=paper.id,
+                name=unit_in.name,
+                description=unit_in.description,
+                position=unit_in.position if unit_in.position else i + 1,
+                time_limit_minutes=unit_in.time_limit_minutes,
+                question_config=[q.model_dump() for q in unit_in.question_config],
+                total_score=sum(
+                    q.score for q in unit_in.questions
+                ),
             )
-            db.add(uq)
+            db.add(unit)
+            await db.flush()
 
-    await db.commit()
-    await db.refresh(paper)
+            # Create unit-question links
+            for j, q_in in enumerate(unit_in.questions):
+                uq = ExamPaperUnitQuestion(
+                    unit_id=unit.id,
+                    question_id=q_in.question_id,
+                    question_type=q_in.question_type,
+                    position=q_in.position if q_in.position else j + 1,
+                    score=q_in.score,
+                )
+                db.add(uq)
+
+        await db.commit()
+        await db.refresh(paper)
+    except Exception as e:
+        logger.exception(f'save-all failed for paper {paper_id}')
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f'{type(e).__name__}: {e}')
 
     # Build response
     unit_rows = await db.execute(
