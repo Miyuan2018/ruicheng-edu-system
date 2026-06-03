@@ -359,12 +359,14 @@ export default function StructureStep() {
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {!showUnits && (
           <Button size="small" icon={<PlusOutlined />} onClick={() => {
-            let uid = units[0]?.id;
+            // 为该题型创建同名单元（如已有则复用）
+            const typeLabel = '单选题';
+            let uid = units.find(u => u.name === typeLabel)?.id;
             if (!uid) {
-              addUnit({ name: '单选题', question_config: [] });
-              uid = usePaperEditorStore.getState().paper?.units?.[0]?.id || '';
+              addUnit({ name: typeLabel, question_config: [] });
+              uid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
             }
-            addTypeConfig(uid, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
+            if (uid) addTypeConfig(uid, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
             setDirty(true);
           }}>
             添加题型
