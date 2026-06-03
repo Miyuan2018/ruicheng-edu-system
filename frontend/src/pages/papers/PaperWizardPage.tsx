@@ -129,6 +129,13 @@ export default function PaperWizardPage() {
         message.warning('请至少添加一个题型');
         return;
       }
+      // Check for units with no question_config
+      for (const unit of units) {
+        if (!unit.question_config || unit.question_config.length === 0) {
+          message.warning(`单元「${unit.name || '未命名'}」没有配置任何题型，请添加题型或删除该单元`);
+          return;
+        }
+      }
       // Collect all question_config across units (handles template B single-unit case)
       const allConfigs = units.flatMap(u => u.question_config || []);
       if (allConfigs.length === 0) {
