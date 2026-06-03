@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Card, Button, Select, InputNumber, Tag, Popconfirm, Space } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
-import type { TemplateType } from '../../../types/paper';
+import type { TemplateType, QuestionConfigItem } from '../../../types/paper';
 
 const QTYPE_OPTIONS = [
   { value: 'SINGLE_CHOICE', label: '单选题' },
@@ -145,10 +145,10 @@ export default function StructureStep() {
               </tr>
             </thead>
             <tbody>
-              {(units[0]?.question_config || []).map((cfg: any, idx: number) => {
+              {(units[0]?.question_config || []).map((cfg: QuestionConfigItem, idx: number) => {
                 const subtotal = (cfg.count || 0) * (cfg.score_per_question || 0);
                 return (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <tr key={`${units[0]?.id}-${idx}`} style={{ borderBottom: '1px solid #f0f0f0' }}>
                     <td style={{ padding: '8px 12px' }}>
                       <Select
                         size="small" variant="borderless" style={{ width: '100%' }}
@@ -209,8 +209,8 @@ export default function StructureStep() {
         <div>
           {units.map((unit) => {
             const configs = unit.question_config || [];
-            const unitScore = configs.reduce((s: number, c: any) => s + (c.count || 0) * (c.score_per_question || 0), 0);
-            const unitQCount = configs.reduce((s: number, c: any) => s + (c.count || 0), 0);
+            const unitScore = configs.reduce((s: number, c: QuestionConfigItem) => s + (c.count || 0) * (c.score_per_question || 0), 0);
+            const unitQCount = configs.reduce((s: number, c: QuestionConfigItem) => s + (c.count || 0), 0);
             const canDeleteUnit = !fixedCount || units.length > fixedCount;
             return (
               <Card
@@ -257,10 +257,10 @@ export default function StructureStep() {
                     </tr>
                   </thead>
                   <tbody>
-                    {configs.map((cfg: any, idx: number) => {
+                    {configs.map((cfg: QuestionConfigItem, idx: number) => {
                       const subtotal = (cfg.count || 0) * (cfg.score_per_question || 0);
                       return (
-                        <tr key={idx} style={{ borderBottom: '1px solid #fafafa' }}>
+                        <tr key={`${unit.id}-${idx}`} style={{ borderBottom: '1px solid #fafafa' }}>
                           <td style={{ padding: '6px 8px' }}>
                             <Select size="small" variant="borderless" style={{ width: '100%' }}
                               value={cfg.question_type}
