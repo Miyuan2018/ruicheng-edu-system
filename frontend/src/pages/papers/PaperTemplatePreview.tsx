@@ -53,13 +53,19 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
 
     let options: any[] = [];
     try {
-      if (question.options) {
+      // 优先嵌套格式(store)，兜底扁平格式(API直传)
+      if (question.options && Array.isArray(question.options)) {
         options = question.options;
+      } else if (Array.isArray(q.options)) {
+        options = q.options;
       } else if (question.correct_answer) {
         const parsed = typeof question.correct_answer === 'string'
           ? JSON.parse(question.correct_answer)
           : question.correct_answer;
-        options = parsed.options || [];
+        if (Array.isArray(parsed?.options)) options = parsed.options;
+      } else if (q.correct_answer && typeof q.correct_answer === 'string') {
+        const parsed = JSON.parse(q.correct_answer);
+        if (Array.isArray(parsed?.options)) options = parsed.options;
       }
     } catch { /* ignore */ }
 
