@@ -24,12 +24,11 @@ export default function PreviewFinalizeStep() {
   const totalScore = units.reduce((sum, u) => sum + (u.questions || []).reduce((s, q) => s + (q.score || 0), 0), 0);
 
   const handleSave = async () => {
-    if (!paper?.id) { message.warning('请先完成前序步骤'); return; }
     setSubmitting(true);
     try {
       await saveAll();
       message.success('已保存');
-      setDirty(false);
+      usePaperEditorStore.getState().setDirty(false);
       setTimeout(() => navigate('/papers'), 500);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
@@ -38,16 +37,18 @@ export default function PreviewFinalizeStep() {
   };
 
   const handleSaveAndPublish = async () => {
-    if (!paper?.id) { message.warning('请先完成前序步骤'); return; }
     setSubmitting(true);
     try {
       await saveAll();
-      await apiClient.post(`/exam-papers/${paper.id}/publish`, {
-        class_ids: selectedClasses,
-        note: publishNote || undefined,
-      });
+      const pid = usePaperEditorStore.getState().paper?.id;
+      if (pid) {
+        await apiClient.post(`/exam-papers/${pid}/publish`, {
+          class_ids: selectedClasses,
+          note: publishNote || undefined,
+        });
+      }
       message.success('已保存并发布');
-      setDirty(false);
+      usePaperEditorStore.getState().setDirty(false);
       setTimeout(() => navigate('/papers'), 500);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
