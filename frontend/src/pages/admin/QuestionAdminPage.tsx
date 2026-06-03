@@ -133,8 +133,13 @@ export default function QuestionAdminPage() {
   const [scrapeForm] = Form.useForm();
   const [scrapeKnNodes, setScrapeKnNodes] = useState<any[]>([]);
   const [scrapeTaskCount, setScrapeTaskCount] = useState(1);
+  const [scrapeDetailExpanded, setScrapeDetailExpanded] = useState(false);
+  const [scrapeDetailText, setScrapeDetailText] = useState('');
   const [scrapeResults, setScrapeResults] = useState<any[]>([]);
   const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
+  const [scrapePage, setScrapePage] = useState(1);
+  const [scrapeTotal, setScrapeTotal] = useState(0);
+  const PAGE_SIZE = 20;
 
   const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
   const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
@@ -143,12 +148,14 @@ export default function QuestionAdminPage() {
     catch { message.error('删除失败'); }
   };
 
-  const loadScrapeResults = () => {
+  const loadScrapeResults = (pg = 1) => {
     setScrapeResultsLoading(true);
-    apiClient.get('/questions', { params: { source: 'SCRAPED', limit: 50 } })
+    setScrapePage(pg);
+    apiClient.get('/questions', { params: { source: 'SCRAPED', limit: PAGE_SIZE, skip: (pg-1)*PAGE_SIZE } })
       .then(({ data }: any) => {
         const resp = data || {};
         setScrapeResults(resp.items || (Array.isArray(resp) ? resp : []));
+        setScrapeTotal(resp.total || 0);
       }).catch(() => {}).finally(() => setScrapeResultsLoading(false));
   };
 
@@ -173,6 +180,12 @@ export default function QuestionAdminPage() {
     const qts = Array.isArray(v.question_types) ? v.question_types : (v.question_types ? [v.question_types] : ['SINGLE_CHOICE']);
     const n = kps.length * gls.length * qts.length;
     setScrapeTaskCount(n || 1);
+    const c = v.count || 5;
+    const labels: Record<string,string> = {SINGLE_CHOICE:'单选题',MULTIPLE_CHOICE:'多选题',FILL_BLANK:'填空题',SUBJECTIVE:'解答题'};
+    setScrapeDetailText(kps.flatMap((kp:string) => gls.flatMap((gl:string) => qts.map((qt:string) =>
+      `知识点: ${kp} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
+    ))).join('\n'));
+    setScrapeDetailExpanded(false);
   };
 
   const handleScrape = async (values: any) => {
@@ -475,19 +488,34 @@ export default function QuestionAdminPage() {
           </Form>
 
           {/* 任务预览条 */}
-          <div style={{ marginTop: 10, padding: '6px 10px', background: '#f6f8fa', borderRadius: 6, fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span>将拆分 <b style={{ color: '#1677ff' }}>{scrapeTaskCount}</b> 个任务</span>
-            <span style={{ color: '#ddd' }}>|</span>
-            <span>预计入库 ≤ <b>{(() => { const v = scrapeForm.getFieldsValue(); return (v.count || 5) * scrapeTaskCount * 3; })()}</b> 道</span>
-            <span style={{ color: '#ddd' }}>|</span>
-            <span>DDG → 百度 → LLM</span>
+          <div style={{ marginTop: 10, padding: '6px 10px', background: '#f6f8fa', borderRadius: 6, fontSize: 12, color: '#888' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span>将拆分 <b style={{ color: '#1677ff' }}>{scrapeTaskCount}</b> 个任务</span>
+              <span style={{ color: '#ddd' }}>|</span>
+              <span>预计入库 ≤ <b>{(() => { const v = scrapeForm.getFieldsValue(); return (v.count || 5) * scrapeTaskCount * 3; })()}</b> 道</span>
+              <span style={{ color: '#ddd' }}>|</span>
+              <span>DDG → 百度 → LLM</span>
+              {scrapeDetailText && (
+                <span style={{ marginLeft: 'auto', color: '#1677ff', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  onClick={() => setScrapeDetailExpanded(!scrapeDetailExpanded)}>
+                  {scrapeDetailExpanded ? '收起 ▲' : '展开详情 ▸'}
+                </span>
+              )}
+            </div>
+            {scrapeDetailExpanded && (
+              <div style={{ marginTop: 6, padding: '6px 8px', background: '#fff', borderRadius: 4, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {scrapeDetailText}
+              </div>
+            )}
           </div>
 
           {/* 进度条 */}
           {scraping && (
-            <div style={{ marginTop: 8 }}>
-              <Progress percent={Math.round(Math.random() * 80 + 10)} status="active" size="small" strokeColor="#1677ff"
-                format={() => <span style={{ fontSize: 11 }}>抓取中...</span>} />
+            <div style={{ marginTop: 8, background: '#e6f4ff', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+              <div style={{ flex: 1, height: 4, background: '#d9d9d9', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ width: '60%', height: '100%', background: '#1677ff', borderRadius: 2, animation: 'scrape-progress 1.5s ease-in-out infinite' }} />
+              </div>
+              <span style={{ color: '#1677ff', whiteSpace: 'nowrap' }}>抓取中... {scrapeTaskCount} 个任务</span>
             </div>
           )}
 
@@ -495,16 +523,28 @@ export default function QuestionAdminPage() {
           {taskProgress && (
             <div style={{ marginTop: 8 }}>
               {taskProgress.ok
-                ? <Tag color="green">成功入库 {taskProgress.count} 道试题（{taskProgress.tasks || 1} 个任务）</Tag>
+                ? <div style={{ padding: '6px 10px', background: '#f6ffed', borderRadius: 6, fontSize: 12, color: '#52c41a' }}>
+                    已入库 <b>{taskProgress.count}</b> 道试题（{taskProgress.tasks || scrapeTaskCount} 个任务完成）
+                  </div>
                 : <Alert style={{ padding: '2px 12px', fontSize: 12 }} type="error" message={taskProgress.error || '抓取失败'} />
               }
             </div>
           )}
         </Card>
 
-        <Card size="small" title={<span>抓取结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {scrapeResults.length} 道</span></span>} style={{marginTop:16}}>
+        <Card size="small" title={<span>抓取结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {scrapeResults.length} 道</span></span>}
+          extra={<span style={{fontSize:11,color:'#999'}}>仅展示本次抓取 · 已在题库中</span>} style={{marginTop:16}}>
           <Spin spinning={scrapeResultsLoading}>
             {scrapeResults.length===0 && !scrapeResultsLoading && <Empty description="暂无抓取结果"/>}
+            {scrapeResults.length > 0 && (
+              <div style={{display:'flex',alignItems:'center',padding:'4px 12px',fontSize:10,color:'#bbb',borderBottom:'1px solid #f0f0f0'}}>
+                <span style={{width:28}}>#</span>
+                <span style={{flex:1}}>题目</span>
+                <span style={{width:90,textAlign:'center'}}>时间</span>
+                <span style={{width:50,textAlign:'center'}}>状态</span>
+                <span style={{width:60,textAlign:'right'}}>操作</span>
+              </div>
+            )}
             {scrapeResults.map((q:any,i:number)=>(
               <div key={q.id} style={{display:'flex',alignItems:'flex-start',padding:'10px 12px',borderBottom:i<scrapeResults.length-1?'1px solid #f5f5f5':'none'}}>
                 <span style={{width:28,color:'#999',fontSize:12,paddingTop:2,flexShrink:0}}>{i+1}</span>
@@ -516,10 +556,12 @@ export default function QuestionAdminPage() {
                     {q.score!=null && <Tag color="orange" style={{fontSize:10}}>{q.score}分</Tag>}
                     {(q.grade_level?.knowledge_points||[]).slice(0,2).map((kp:string,j:number)=>(<Tag key={j} color="purple" style={{fontSize:10}}>{kp}</Tag>))}
                     <Tag color={SCRAPE_SOURCE_MAP[q.source]?.color||'default'} style={{fontSize:10}}>{SCRAPE_SOURCE_MAP[q.source]?.label||q.source}</Tag>
-                    <Tag color={REVIEW_STATUS_MAP[q.review_status]?.color||'default'} style={{fontSize:10}}>{REVIEW_STATUS_MAP[q.review_status]?.label||q.review_status}</Tag>
                   </div>
                 </div>
                 <span style={{width:90,fontSize:11,color:'#999',textAlign:'center',paddingTop:2,flexShrink:0}}>{(q.created_at||'').slice(5,16).replace('T',' ')}</span>
+                <span style={{width:50,textAlign:'center',paddingTop:2,flexShrink:0}}>
+                  <Tag color={REVIEW_STATUS_MAP[q.review_status]?.color||'default'} style={{fontSize:10,margin:0}}>{REVIEW_STATUS_MAP[q.review_status]?.label||q.review_status}</Tag>
+                </span>
                 <div style={{width:60,display:'flex',gap:4,justifyContent:'flex-end',flexShrink:0,paddingTop:1}}>
                   <Button size="small" type="link" icon={<EditOutlined/>} onClick={()=>{setScrapeEditQ(q);setScrapeEditOpen(true);}}/>
                   <Popconfirm title="确定删除?" onConfirm={()=>handleScrapeDelete(q.id)}>
@@ -529,6 +571,12 @@ export default function QuestionAdminPage() {
               </div>
             ))}
           </Spin>
+          {scrapeTotal > PAGE_SIZE && (
+            <div style={{textAlign:'center',padding:'8px 0'}}>
+              <Pagination size="small" current={scrapePage} pageSize={PAGE_SIZE} total={scrapeTotal}
+                onChange={(pg) => loadScrapeResults(pg)} showTotal={(t) => `共 ${t} 道`} />
+            </div>
+          )}
         </Card>
         {scrapeEditOpen && scrapeEditQ && (
           <QuestionEditModal open={scrapeEditOpen} question={scrapeEditQ}
