@@ -185,8 +185,6 @@ async def export_questions(
     if question_type: query = query.where(Question.question_type == question_type)
     if difficulty: query = query.where(Question.difficulty == difficulty)
     if keyword: query = query.where(Question.title.ilike(f"%{keyword}%"))
-    if knowledge_point:
-        query = query.where(Question.meta_data != None)
     query = query.order_by(Question.created_at.desc()).limit(limit)
     result = await db.execute(query)
     questions = result.scalars().all()
@@ -201,7 +199,7 @@ async def export_questions(
             "id": str(q.id), "title": q.title, "question_type": q.question_type,
             "difficulty": q.difficulty, "subject": q.subject, "grade_level": q.grade_level,
             "score": q.score, "correct_answer": q.correct_answer,
-            "explanation": q.explanation, "meta_data": meta,
+            "explanation": q.explanation, "meta_data": q.meta_data,
             "source": q.source, "review_status": q.review_status,
         })
     return output
