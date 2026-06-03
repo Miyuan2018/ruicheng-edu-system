@@ -292,6 +292,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
     section.bottom_margin = Cm(2.5)
     section.left_margin = Cm(3.0)  # 20mm + 10mm装订线
     section.right_margin = Cm(2.0)
+    section.header_distance = Cm(2.0)  # 页眉与正文间距
 
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
@@ -343,16 +344,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
     fldChar4.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType', 'end')
     run_total._r.append(fldChar4)
 
-    # ── 大标题 — 黑体二号居中加粗 ──
-    title_para = doc.add_paragraph()
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_para.paragraph_format.space_after = Pt(4)
-    run_t = title_para.add_run(paper.title or "")
-    run_t.bold = True
-    run_t.font.size = FONT_TITLE_SIZE
-    _set_cn_font(run_t, "黑体")
-
-    # 副标题
+    # 标题已在页眉中，正文只放信息行和副标题
     if paper.subtitle:
         sub_para = doc.add_paragraph()
         sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
