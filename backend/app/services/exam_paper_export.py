@@ -178,8 +178,10 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
         # 模块标题 — 黑体四号左对齐加粗
         header_text = f"{num}、{tqs[0]['type_label']}"
         # 答题要求（选择题）
-        if t in ("SINGLE_CHOICE", "MULTIPLE_CHOICE"):
+        if t == "SINGLE_CHOICE":
             header_text += f"（每题{per_q}分，共{len(tqs)}题，合计{type_score}分。在每小题给出的选项中，只有一项符合题目要求）"
+        elif t == "MULTIPLE_CHOICE":
+            header_text += f"（每题{per_q}分，共{len(tqs)}题，合计{type_score}分。在每小题给出的选项中，有多项符合题目要求）"
         elif t == "FILL_BLANK":
             header_text += f"（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）"
         elif t == "SUBJECTIVE":
@@ -256,23 +258,11 @@ def _write_question_word(doc, q, t, Cm, Pt):
                 run_ot.font.size = FONT_BODY_SIZE
                 _set_cn_font(run_ot)
     elif t == "SUBJECTIVE":
-        # 答题区 — 1磅黑实线框 + "答:"
         ans_para = doc.add_paragraph()
         ans_para.paragraph_format.space_before = Pt(4)
-        from docx.oxml import OxmlElement
-        pPr = ans_para._p.get_or_add_pPr()
-        pBdr = OxmlElement('w:pBdr')
-        for side in ['top', 'left', 'bottom', 'right']:
-            el = OxmlElement(f'w:{side}')
-            el.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'single')
-            el.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '8')
-            el.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', '000000')
-            pBdr.append(el)
-        pPr.append(pBdr)
         run_ans = ans_para.add_run("答: ")
         run_ans.font.size = FONT_BODY_SIZE
         _set_cn_font(run_ans)
-        # 预留空行
         for _ in range(6):
             space_para = doc.add_paragraph()
             space_para.paragraph_format.line_spacing = 1.5
@@ -454,14 +444,10 @@ def _write_q_pdf(pdf, q, t):
                 pdf.cell(0, 6, f"{label}、{text}", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
     elif t == "SUBJECTIVE":
-        pdf.set_draw_color(0)
-        pdf.set_line_width(0.1)
-        x, y = pdf.get_x() + 10, pdf.get_y()
-        pdf.rect(x, y, 170, 50)
-        pdf.set_xy(x + 2, y + 2)
         pdf.set_font("CJK", "", 10.5)
+        pdf.cell(8, 6, "")
         pdf.cell(0, 6, "答:", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(3)
+        pdf.ln(10)
     elif t == "FILL_BLANK":
         pdf.ln(4)
 
