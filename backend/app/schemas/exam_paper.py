@@ -105,6 +105,7 @@ class ExamPaperFullSave(BaseModel):
     description: Optional[str] = None
     show_units: bool = True
     per_unit_timer: bool = False
+    template_type: str = "generic"  # NEW: knowledge_block|question_type|difficulty_progression|volume|generic
     difficulty_ratio: Optional[dict] = None
     units: list[ExamPaperUnitCreate] = []
 
@@ -200,6 +201,7 @@ class ExamPaperResponse(ExamPaperBase):
     updated_at: datetime
     unit_count: int = 0
     question_count: int = 0
+    template_type: str = "generic"  # NEW
 
     model_config = ConfigDict(from_attributes=True)
 
