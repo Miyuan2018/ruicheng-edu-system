@@ -130,6 +130,34 @@ async def load_paper_with_questions(
     return paper, questions
 
 
+# 字体字号：二号22pt 四号14pt 小四12pt 五号10.5pt 小五9pt
+FONT_TITLE_SIZE = Pt(22)
+FONT_SECTION_SIZE = Pt(14)
+FONT_QNUM_SIZE = Pt(12)
+FONT_BODY_SIZE = Pt(10.5)
+FONT_SMALL_SIZE = Pt(9)
+
+def _set_cn_font(run, cn_name="宋体", en_name="Times New Roman"):
+    """设置中西文字体"""
+    from docx.oxml.ns import qn
+    run.font.name = en_name
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), cn_name)
+
+def _add_divider(doc):
+    """1磅黑色实线分割线"""
+    from docx.oxml import OxmlElement
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(2)
+    pPr = p._p.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    bottom = OxmlElement('w:bottom')
+    bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'single')
+    bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '8')
+    bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', '000000')
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
 def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
     """写入题型分区（Word）"""
     grouped: dict[str, list] = {}
@@ -146,17 +174,27 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
         per_q = tqs[0]['score'] if tqs else 0
         num = num_labels[section_idx] if section_idx < len(num_labels) else str(section_idx + 1)
         section_idx += 1
-        run = header.add_run(f"{num}、{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）")
+        # 模块标题 — 黑体四号左对齐加粗
+        header_text = f"{num}、{tqs[0]['type_label']}"
+        # 答题要求（选择题）
+        if t in ("SINGLE_CHOICE", "MULTIPLE_CHOICE"):
+            header_text += f"（每题{per_q}分，共{len(tqs)}题，合计{type_score}分。在每小题给出的选项中，只有一项符合题目要求）"
+        elif t == "FILL_BLANK":
+            header_text += f"（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）"
+        elif t == "SUBJECTIVE":
+            header_text += f"（共{len(tqs)}题，合计{type_score}分）"
+        run = header.add_run(header_text)
         run.bold = True
-        run.font.size = Pt(14)
-        # 底部分割线，与打印预览 borderBottom 一致
+        run.font.size = FONT_SECTION_SIZE
+        _set_cn_font(run, "黑体")
+        # 1磅黑色实线分割
         from docx.oxml import OxmlElement
         pPr = header._p.get_or_add_pPr()
         pBdr = OxmlElement('w:pBdr')
         bottom = OxmlElement('w:bottom')
         bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'single')
-        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '12')
-        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', '333333')
+        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '8')
+        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', '000000')
         pBdr.append(bottom)
         pPr.append(pBdr)
         for q in tqs:
@@ -164,32 +202,82 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
 
 
 def _write_question_word(doc, q, t, Cm, Pt):
-    """写入单道题目（Word）"""
+    """写入单道题目（Word）— 高考标准排版"""
+    is_choice = t in ("SINGLE_CHOICE", "MULTIPLE_CHOICE")
+
+    # 题号+题干 — 黑体小四号加粗题号, 宋体五号题干, 1.5倍行距
     q_para = doc.add_paragraph()
-    q_para.paragraph_format.space_after = Pt(1)
-    q_para.add_run(f"{q['index']}. {q['title']}（{q['score']}分）").font.size = Pt(12)
-    if q["options"] and len(q["options"]) > 0:
+    q_para.paragraph_format.space_after = Pt(0)
+    q_para.paragraph_format.line_spacing = 1.5
+    # 选择题用顿号"1、"，非选择题用句号"6."
+    num_str = f"{q['index']}、"
+    run_num = q_para.add_run(num_str)
+    run_num.bold = True
+    run_num.font.size = FONT_QNUM_SIZE
+    _set_cn_font(run_num, "黑体")
+    # 题干
+    title_text = f"{q['title']} "
+    run_title = q_para.add_run(title_text)
+    run_title.font.size = FONT_BODY_SIZE
+    _set_cn_font(run_title)
+    # 分值 — 右侧小五号
+    run_score = q_para.add_run(f"（{q['score']}分）")
+    run_score.font.size = FONT_SMALL_SIZE
+    _set_cn_font(run_score)
+
+    if is_choice and q["options"] and len(q["options"]) > 0:
         for opt in q["options"]:
             opt_para = doc.add_paragraph()
-            opt_para.paragraph_format.left_indent = Cm(1)
+            opt_para.paragraph_format.left_indent = Cm(0.74)  # 2字符缩进
             opt_para.paragraph_format.space_after = Pt(0)
             opt_para.paragraph_format.space_before = Pt(0)
+            opt_para.paragraph_format.line_spacing = 1.5
             if isinstance(opt, dict):
                 label = opt.get('label', '')
                 text = opt.get('text', '')
-                opt_para.add_run(f"{label}. {text}" if text else label).font.size = Pt(10)
+                run_ol = opt_para.add_run(f"{label}、")
+                run_ol.bold = True
+                run_ol.font.size = FONT_BODY_SIZE
+                _set_cn_font(run_ol)
+                run_ot = opt_para.add_run(text)
+                run_ot.font.size = FONT_BODY_SIZE
+                _set_cn_font(run_ot)
             else:
                 line = str(opt)
                 pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', line)
-                if pm and pm.group(2):
-                    line = f"{pm.group(1)}. {pm.group(2)}"
-                opt_para.add_run(line).font.size = Pt(10)
-    if t == "FILL_BLANK":
-        doc.add_paragraph()
-    if t == "SUBJECTIVE":
-        for _ in range(4):
-            doc.add_paragraph()
-    doc.add_paragraph()
+                label = pm.group(1) if pm else ''
+                text = pm.group(2) if pm else line
+                run_ol = opt_para.add_run(f"{label}、")
+                run_ol.bold = True
+                run_ol.font.size = FONT_BODY_SIZE
+                _set_cn_font(run_ol)
+                run_ot = opt_para.add_run(text)
+                run_ot.font.size = FONT_BODY_SIZE
+                _set_cn_font(run_ot)
+    elif t == "SUBJECTIVE":
+        # 答题区 — 1磅黑实线框 + "答:"
+        ans_para = doc.add_paragraph()
+        ans_para.paragraph_format.space_before = Pt(4)
+        from docx.oxml import OxmlElement
+        pPr = ans_para._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        for side in ['top', 'left', 'bottom', 'right']:
+            el = OxmlElement(f'w:{side}')
+            el.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'single')
+            el.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '8')
+            el.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', '000000')
+            pBdr.append(el)
+        pPr.append(pBdr)
+        run_ans = ans_para.add_run("答: ")
+        run_ans.font.size = FONT_BODY_SIZE
+        _set_cn_font(run_ans)
+        # 预留空行
+        for _ in range(6):
+            space_para = doc.add_paragraph()
+            space_para.paragraph_format.line_spacing = 1.5
+            space_para.add_run(" ").font.size = FONT_BODY_SIZE
+    elif t == "FILL_BLANK":
+        doc.add_paragraph().paragraph_format.line_spacing = 1.5
 
 
 async def export_word(exam_paper_id, db: AsyncSession):
@@ -201,73 +289,125 @@ async def export_word(exam_paper_id, db: AsyncSession):
     paper, questions = await load_paper_with_questions(exam_paper_id, db)
 
     doc = Document()
+    # ── A4 页面设置 ──
+    section = doc.sections[0]
+    section.page_width = Cm(21)
+    section.page_height = Cm(29.7)
+    section.top_margin = Cm(2.5)
+    section.bottom_margin = Cm(2.5)
+    section.left_margin = Cm(3.0)  # 20mm + 10mm装订线
+    section.right_margin = Cm(2.0)
+
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
-    style.font.size = Pt(11)
-    # 紧凑行距
+    style.font.size = FONT_BODY_SIZE
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.space_after = Pt(0)
-    style.paragraph_format.line_spacing = 1.0
-    # 东亚字体回退
+    style.paragraph_format.line_spacing = 1.5
     from docx.oxml.ns import qn
     style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
 
-    # ── Title ──
+    # ── 页眉 ──
+    header = section.header
+    header.is_linked_to_previous = False
+    hp = header.paragraphs[0]
+    hp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    hr = hp.add_run("普通高等学校招生全国统一考试")
+    hr.bold = True
+    hr.font.size = FONT_SMALL_SIZE
+    _set_cn_font(hr, "宋体")
+
+    # ── 页脚 ──
+    footer = section.footer
+    footer.is_linked_to_previous = False
+    fp = footer.paragraphs[0]
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    from docx.oxml import OxmlElement
+    # 页码域代码
+    run_page = fp.add_run()
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType', 'begin')
+    run_page._r.append(fldChar1)
+    instrText = OxmlElement('w:instrText')
+    instrText.set('{http://schemas.openxmlformats.org/word}space', 'preserve')
+    instrText.text = ' PAGE '
+    run_page._r.append(instrText)
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType', 'end')
+    run_page._r.append(fldChar2)
+    fp.add_run(" / ").font.size = FONT_SMALL_SIZE
+    run_total = fp.add_run()
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType', 'begin')
+    run_total._r.append(fldChar3)
+    instrText2 = OxmlElement('w:instrText')
+    instrText2.set('{http://schemas.openxmlformats.org/word}space', 'preserve')
+    instrText2.text = ' NUMPAGES '
+    run_total._r.append(instrText2)
+    fldChar4 = OxmlElement('w:fldChar')
+    fldChar4.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType', 'end')
+    run_total._r.append(fldChar4)
+
+    # ── 大标题 — 黑体二号居中加粗 ──
     title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_para.paragraph_format.space_after = Pt(2)
-    run = title_para.add_run(paper.title or "")
-    run.bold = True
-    run.font.size = Pt(20)
+    title_para.paragraph_format.space_after = Pt(4)
+    run_t = title_para.add_run(paper.title or "")
+    run_t.bold = True
+    run_t.font.size = FONT_TITLE_SIZE
+    _set_cn_font(run_t, "黑体")
 
-    # Subtitle
+    # 副标题
     if paper.subtitle:
         sub_para = doc.add_paragraph()
         sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        sub_para.add_run(paper.subtitle).font.size = Pt(10)
+        sub_para.paragraph_format.space_after = Pt(2)
+        run_s = sub_para.add_run(paper.subtitle)
+        run_s.font.size = FONT_SECTION_SIZE
+        _set_cn_font(run_s)
 
-    # Info line — 与打印页一致: 学科 | 年级 | 总分: X分 | 时长: X分钟
+    # 信息行
     info_parts = []
-    if paper.subject:
-        info_parts.append(paper.subject)
+    if paper.subject: info_parts.append(paper.subject)
     if paper.grade_level and isinstance(paper.grade_level, dict):
         grades = paper.grade_level.get("grades", [])
-        if grades:
-            info_parts.append(', '.join(grades))
+        if grades: info_parts.append(', '.join(grades))
     info_parts.append(f"总分: {paper.total_score}分")
-    if paper.duration_minutes:
-        info_parts.append(f"时长: {paper.duration_minutes}分钟")
-    info_para = doc.add_paragraph()
-    info_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    info_para.add_run(" | ".join([p for p in info_parts if p])).font.size = Pt(10)
+    if paper.duration_minutes: info_parts.append(f"时长: {paper.duration_minutes}分钟")
+    if info_parts:
+        info_para = doc.add_paragraph()
+        info_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        info_para.paragraph_format.space_after = Pt(4)
+        run_i = info_para.add_run(" | ".join([p for p in info_parts if p]))
+        run_i.font.size = FONT_SMALL_SIZE
+        _set_cn_font(run_i)
 
-    # Notes
+    # 注意事项
     if paper.instructions:
-        doc.add_paragraph()
         note_para = doc.add_paragraph()
-        run = note_para.add_run(f"注意事项：{paper.instructions}")
-        run.font.size = Pt(9)
-        run.font.color.rgb = RGBColor(100, 100, 100)
+        note_para.paragraph_format.space_after = Pt(4)
+        run_n = note_para.add_run(f"注意事项：{paper.instructions}")
+        run_n.font.size = FONT_SMALL_SIZE
+        _set_cn_font(run_n)
 
-    doc.add_paragraph()
+    _add_divider(doc)
 
-    # ── Questions ──
+    # ── 题型内容 ──
     type_order = ["FILL_BLANK", "SINGLE_CHOICE", "MULTIPLE_CHOICE", "SUBJECTIVE"]
 
-    if getattr(paper, 'show_units', True):
-        # 按单元分组 → 单元内按题型
+    if getattr(paper, 'show_units', False):
         unit_groups: dict[str, list] = {}
         for q in questions:
             un = q.get("unit_name", "")
             unit_groups.setdefault(un, []).append(q)
         for uname, uqs in unit_groups.items():
-            # Unit header
             u_header = doc.add_paragraph()
+            u_header.paragraph_format.space_before = Pt(6)
             u_score = sum(q['score'] for q in uqs)
-            run = u_header.add_run(f"{uname}（共{len(uqs)}题，{u_score}分）")
-            run.bold = True
-            run.font.size = Pt(14)
-            doc.add_paragraph()
+            run_u = u_header.add_run(f"{uname}（共{len(uqs)}题，{u_score}分）")
+            run_u.bold = True
+            run_u.font.size = FONT_SECTION_SIZE
+            _set_cn_font(run_u, "黑体")
             _write_type_sections(doc, uqs, type_order, Cm, Pt, RGBColor)
     else:
         _write_type_sections(doc, questions, type_order, Cm, Pt, RGBColor)
