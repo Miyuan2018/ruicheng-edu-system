@@ -59,6 +59,7 @@ class ExamPaper(Base):
     instructions = Column(Text, nullable=True)
     show_units = Column(Boolean, nullable=False, default=True)  # 预览/打印/导出时是否显示单元名
     per_unit_timer = Column(Boolean, nullable=False, default=False)  # 是否逐单元计时
+    template_type = Column(String(30), nullable=False, default='generic', server_default='generic')  # 试卷语义模板: knowledge_block | question_type | difficulty_progression | volume | generic
     difficulty_ratio = Column(JSONB, nullable=True)  # {EASY: 20, MEDIUM: 50, HARD: 30}
     knowledge_node_ids = Column(JSONB, nullable=True)  # ["uuid1", "uuid2"]
     created_by = Column(UUID(as_uuid=True), ForeignKey("admins.id"), nullable=False, index=True)
