@@ -54,10 +54,6 @@ export default function StructureStep() {
 
   const handleModeChange = (mode: 'type' | 'unit') => {
     updateMeta({ show_units: mode === 'unit' });
-    // 切到按题型且空单元时，自动创建快速预设
-    if (mode === 'type' && units.length === 0) {
-      addQuickUnits('byType');
-    }
     setDirty(true);
   };
 
