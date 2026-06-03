@@ -105,7 +105,7 @@ export default function PrintPreviewPage() {
   if (paper.duration_minutes != null) subParts.push('时长: ' + paper.duration_minutes + '分钟');
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', serif", fontSize: 14 }}>
+    <div style={{ maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', sans-serif", fontSize: 14 }}>
       {/* Title */}
       <div style={{ textAlign: 'center', marginBottom: 4 }}>
         <h1 style={{ fontSize: 22, margin: 0, letterSpacing: 2 }}>{paper.title}</h1>

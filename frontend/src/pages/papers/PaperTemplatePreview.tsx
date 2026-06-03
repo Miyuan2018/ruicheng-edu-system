@@ -228,7 +228,7 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
     const totalQs = units.reduce((s, u) => s + (u.questions?.length || 0), 0);
 
     return (
-      <div style={{ padding: '16px 24px', background: '#fff', maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', serif" }}>
+      <div style={{ padding: '16px 24px', background: '#fff', maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', sans-serif" }}>
         {titleBlock}
         {notesBlock}
         {unitContent}
@@ -241,7 +241,7 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
 
   // 无单元数据时返回空
   return (
-    <div style={{ padding: '16px 24px', background: '#fff', maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', serif" }}>
+    <div style={{ padding: '16px 24px', background: '#fff', maxWidth: 800, margin: '0 auto', fontFamily: "'Times New Roman', 'Noto Serif CJK SC', sans-serif" }}>
       {titleBlock}
       {notesBlock}
       <div style={{ padding: 40, textAlign: 'center', color: '#ccc', fontSize: 13 }}>暂无试卷内容</div>

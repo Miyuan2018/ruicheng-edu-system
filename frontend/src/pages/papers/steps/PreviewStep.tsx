@@ -176,7 +176,7 @@ export default function PreviewStep() {
         margin: '0 auto',
         padding: '24px 32px',
         boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
-        fontFamily: "'Times New Roman', 'Noto Serif CJK SC', serif",
+        fontFamily: "'Times New Roman', 'Noto Serif CJK SC', sans-serif",
         fontSize: 14,
       }}>
         {/* Title */}
