@@ -14,6 +14,7 @@ interface PaperEditorState {
   autoSelectReports: AutoSelectReport[];
   generateReport: GenerateReport | null;
   pendingDraft: any | null;
+  draftId: string | null;  // V4.4: 草稿记录 ID，用于精确删除
 
   // Actions
   initNew: () => void;
@@ -49,8 +50,8 @@ interface PaperEditorState {
   saveAll: () => Promise<void>;
   setDirty: (dirty: boolean) => void;
   setUnitQuestions: (uid: string, questions: ExamPaperUnitQuestion[]) => void;
-  regenerateAll: (paperId: string) => Promise<void>;
-  fillGaps: (paperId: string) => Promise<void>;
+  regenerateAll: () => Promise<void>;
+  fillGaps: () => Promise<void>;
   syncScoresFromConfig: () => void;
   reset: () => void;
   setGenerateReport: (report: GenerateReport | null) => void;
@@ -122,8 +123,9 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   autoSelectReports: [],
   generateReport: null,
   pendingDraft: null,
+  draftId: null,
 
-  initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null }),
+  initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null }),
 
   loadDraft: async (id: string) => {
     set({ loading: true });
@@ -398,12 +400,13 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     set({ paper: { ...paper, units: newUnits }, dirty: true });
   },
 
-  regenerateAll: async (paperId: string) => {
+  regenerateAll: async () => {
     set({ loading: true });
     try {
       const paper = get().paper;
       if (!paper) return;
-      const resp = await paperApi.autoGenerate(paperId, {
+      const resp = await paperApi.autoGeneratePaperless({
+        subject: paper.subject,
         difficulty_ratio: paper.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 },
         knowledge_node_ids: paper.knowledge_node_ids || [],
         existing_question_ids: [],
@@ -442,7 +445,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     }
   },
 
-  fillGaps: async (paperId: string) => {
+  fillGaps: async () => {
     const { paper } = get();
     if (!paper) return;
     const allExistingIds: string[] = [];
@@ -460,7 +463,8 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
 
     set({ loading: true });
     try {
-      const resp = await paperApi.autoGenerate(paperId, {
+      const resp = await paperApi.autoGeneratePaperless({
+        subject: paper.subject,
         difficulty_ratio: paper.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 },
         knowledge_node_ids: paper.knowledge_node_ids || [],
         existing_question_ids: allExistingIds,
@@ -583,10 +587,23 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     if (!paper || !dirty) return;
     set({ saving: true });
     try {
-      // 新建试卷：先在主表创建记录获取 id，再存草稿
+      const resp = await draftApi.save(paper.id || null, paper);
+      const respData = resp?.data;
+      const newDraftId = typeof respData === 'object' && respData !== null ? (respData as any).id : undefined;
+      set({ saving: false, dirty: false, lastSaved: new Date(), draftId: newDraftId || null });
+    } catch {
+      set({ saving: false });
+    }
+  },
+
+  saveAll: async () => {
+    const { paper, draftId } = get();
+    if (!paper) return;
+    set({ saving: true });
+    try {
+      // 阶段 1：新建时先创建主表记录拿 id
       let pid = paper.id;
       if (!pid) {
-        // grade_level 必须有效（grades 不能为空数组）
         const gl = (paper.grade_level && paper.grade_level.grades?.length > 0)
           ? paper.grade_level
           : { scope: 'grade', grades: ['G8'] };
@@ -599,18 +616,8 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
         pid = resp.data?.id || resp.data;
         set({ paper: { ...get().paper, id: pid } });
       }
-      await draftApi.save(pid, paper);
-      set({ saving: false, dirty: false, lastSaved: new Date() });
-    } catch {
-      set({ saving: false });
-    }
-  },
 
-  saveAll: async () => {
-    const { paper } = get();
-    if (!paper || !paper.id) return;
-    set({ saving: true });
-    try {
+      // 阶段 2：写主表
       const cleanPaper = {
         ...paper,
         units: paper.units.map(u => ({
@@ -627,16 +634,20 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
           })),
         })),
       };
-      await paperApi.saveAll(paper.id, cleanPaper);
-      // 保存成功后清理对应草稿
-      try {
-        const draftsResp = await draftApi.getByPaper(paper.id);
-        const drafts = Array.isArray(draftsResp?.data) ? draftsResp.data : [];
-        for (const d of drafts) {
-          await draftApi.delete(d.id).catch(() => {});
-        }
-      } catch {}
-      set({ saving: false, dirty: false, lastSaved: new Date() });
+      await paperApi.saveAll(pid, cleanPaper);
+
+      // 阶段 3：按 draftId 精确删除草稿，兜底按 paper_id
+      if (draftId) {
+        await draftApi.delete(draftId).catch(() => {});
+      } else {
+        try {
+          const draftsResp = await draftApi.getByPaper(pid);
+          const drafts = Array.isArray(draftsResp?.data) ? draftsResp.data : [];
+          for (const d of drafts) await draftApi.delete(d.id).catch(() => {});
+        } catch {}
+      }
+
+      set({ saving: false, dirty: false, lastSaved: new Date(), draftId: null });
     } catch (e) {
       set({ saving: false });
       throw e;
@@ -645,5 +656,5 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
 
   setDirty: (dirty) => set({ dirty }),
   setGenerateReport: (report) => set({ generateReport: report ? { constraint_dashboard: report.constraint_dashboard } : null }),
-  reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null }),
+  reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null }),
 }));
