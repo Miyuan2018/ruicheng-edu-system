@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { Card, Button, Select, InputNumber, Tag, Popconfirm, Space, Radio } from 'antd';
+import { Card, Button, Select, InputNumber, Tag, Popconfirm, Space } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
-import type { QuestionConfigItem } from '../../../types/paper';
+import type { TemplateType } from '../../../types/paper';
 
 const QTYPE_OPTIONS = [
   { value: 'SINGLE_CHOICE', label: '单选题' },
@@ -11,64 +11,61 @@ const QTYPE_OPTIONS = [
   { value: 'SUBJECTIVE', label: '解答题' },
 ];
 
-type RowItem = {
-  unitId: string;
-  unitName: string;
-  unitTime: number | null | undefined;
-  cfg: QuestionConfigItem;
-  cfgIdx: number;
+const TEMPLATE_OPTIONS: { value: TemplateType; label: string; desc: string }[] = [
+  { value: 'knowledge_block', label: 'A 知识模块', desc: '单元标题显示 / 卡片编辑 / 题号跨单元连续 / 单元间可选分页' },
+  { value: 'question_type', label: 'B 题型', desc: '无单元标题 / 平表编辑 / 不分页 / 仅整卷计时' },
+  { value: 'difficulty_progression', label: 'C 难度递进', desc: '难度标签(⭐) / 逐层计时+解锁 / 层级间分隔' },
+  { value: 'volume', label: 'D 卷别', desc: '卷别标题 / 强制分页 / 两卷独立计时 / 不可回退' },
+  { value: 'generic', label: 'E 通用', desc: '单元标题显示 / 自由构建 / 灵活出卷' },
+];
+
+const FIXED_UNIT_COUNT: Partial<Record<TemplateType, number>> = {
+  question_type: 1,
+  volume: 2,
 };
 
 export default function StructureStep() {
   const {
     paper, updateMeta, addUnit, updateUnit, removeUnit,
-    updateTypeConfig, addTypeConfig, removeTypeConfig, moveTypeConfig,
-    addQuickUnits, setDirty,
+    updateTypeConfig, addTypeConfig, removeTypeConfig,
+    setTemplate, setDirty,
   } = usePaperEditorStore();
 
   const units = paper?.units || [];
   const targetTotal = paper?.total_score || 0;
-  const showUnits = paper?.show_units ?? false;
+  const templateType = (paper?.template_type || 'generic') as TemplateType;
   const perUnitTimer = paper?.per_unit_timer ?? false;
+  const isNewPaper = !paper?.id;
+  const fixedCount = FIXED_UNIT_COUNT[templateType];
+  const isFlatView = templateType === 'question_type';
 
-  // Flatten to rows
-  const rows: RowItem[] = useMemo(() => {
-    const result: RowItem[] = [];
-    units.forEach((u) => {
-      (u.question_config || []).forEach((cfg, idx) => {
-        result.push({ unitId: u.id || '', unitName: u.name, unitTime: u.time_limit_minutes, cfg, cfgIdx: idx });
-      });
-    });
-    // 按 _sortKey 稳定排序，行不随单元移动
-    result.sort((a, b) => ((a.cfg as any)._sortKey || 0) - ((b.cfg as any)._sortKey || 0));
-    return result;
-  }, [units]);
-
+  // Computed totals
   const computedTotal = useMemo(() =>
-    rows.reduce((s, r) => s + (r.cfg.count || 0) * (r.cfg.score_per_question || 0), 0),
-    [rows],
+    units.reduce((sum, u) =>
+      sum + (u.question_config || []).reduce((s, c) => s + (c.count || 0) * (c.score_per_question || 0), 0), 0),
+    [units],
   );
   const totalQuestions = useMemo(() =>
-    rows.reduce((s, r) => s + (r.cfg.count || 0), 0),
-    [rows],
+    units.reduce((sum, u) =>
+      sum + (u.question_config || []).reduce((s, c) => s + (c.count || 0), 0), 0),
+    [units],
   );
   const scoreOk = targetTotal > 0 && computedTotal === targetTotal;
 
-  const handleModeChange = (mode: 'type' | 'unit') => {
-    updateMeta({ show_units: mode === 'unit' });
-    setDirty(true);
+  // Handlers
+  const handleTemplateChange = (v: TemplateType) => {
+    setTemplate(v);
   };
 
   const addTypeToUnit = (unitId: string) => {
     addTypeConfig(unitId, {
-      question_type: 'SINGLE_CHOICE',
-      count: 0,
-      score_per_question: 5,
+      question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5,
     });
     setDirty(true);
   };
 
   const addNewUnit = () => {
+    if (fixedCount !== undefined && units.length >= fixedCount) return;
     addUnit({
       name: '新单元',
       question_config: [{ question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 }],
@@ -77,30 +74,6 @@ export default function StructureStep() {
   };
 
   const updateRow = (unitId: string, cfgIdx: number, field: string, value: any) => {
-    // 按题型模式：改题型 → 行移到同名单元，_sortKey 保序
-    if (field === 'question_type' && !showUnits) {
-      const st = usePaperEditorStore.getState();
-      const curUnits = st.paper?.units || [];
-      const cfg = (curUnits.find(u => u.id === unitId)?.question_config || [])[cfgIdx];
-      if (cfg && cfg.question_type !== value) {
-        const newTypeLabel = QTYPE_OPTIONS.find(o => o.value === value)?.label || value;
-        let targetUid = curUnits.find(u => u.name === newTypeLabel)?.id;
-        if (!targetUid) {
-          addUnit({ name: newTypeLabel, question_config: [] });
-          targetUid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === newTypeLabel)?.id || '';
-        }
-        if (targetUid && targetUid !== unitId) {
-          // 保留 sortKey
-          const sortKey = (cfg as any)._sortKey || Date.now();
-          moveTypeConfig(unitId, cfgIdx, targetUid);
-          const st2 = usePaperEditorStore.getState();
-          const tgtCfg = st2.paper?.units?.find(u => u.id === targetUid)?.question_config || [];
-          updateTypeConfig(targetUid, tgtCfg.length - 1, { question_type: value, _sortKey: sortKey } as any);
-          setDirty(true);
-          return;
-        }
-      }
-    }
     updateTypeConfig(unitId, cfgIdx, { [field]: value });
     setDirty(true);
   };
@@ -115,60 +88,51 @@ export default function StructureStep() {
     setDirty(true);
   };
 
-  // Group rows by unit for unit mode
-  const unitGroups = useMemo(() => {
-    const groups: { unitId: string; unitName: string; unitTime: number | null | undefined; rows: RowItem[] }[] = [];
-    const seen = new Set<string>();
-    rows.forEach((r) => {
-      if (!seen.has(r.unitId)) {
-        seen.add(r.unitId);
-        groups.push({
-          unitId: r.unitId,
-          unitName: r.unitName,
-          unitTime: r.unitTime,
-          rows: rows.filter(x => x.unitId === r.unitId),
-        });
-      }
-    });
-    return groups;
-  }, [rows]);
-
   const totalUnitTime = perUnitTimer
     ? units.reduce((sum, u) => sum + (u.time_limit_minutes || 0), 0)
     : null;
 
   return (
     <div>
-      {/* Mode toggle */}
+      {/* Zone 1: Template Selector */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: 16, padding: '8px 12px', background: '#f8f9fa', borderRadius: 8,
+        background: '#fff', borderRadius: 8, padding: '12px 16px',
+        border: '1px solid #f0f0f0', marginBottom: 16,
       }}>
-        <Radio.Group
-          value={showUnits ? 'unit' : 'type'}
-          onChange={(e) => handleModeChange(e.target.value)}
-          optionType="button" buttonStyle="solid" size="small"
-        >
-          <Radio.Button value="type">按题型分组</Radio.Button>
-          <Radio.Button value="unit">按单元分区</Radio.Button>
-        </Radio.Group>
-        {showUnits && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 13 }}>
-            <label style={{ color: '#666', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input
-                type="checkbox"
-                checked={perUnitTimer}
-                onChange={(e) => updateMeta({ per_unit_timer: e.target.checked })}
-                style={{ margin: 0 }}
-              />
-              逐单元计时
-            </label>
-          </div>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#333' }}>
+          试卷格式模板
+          <span style={{ fontWeight: 400, color: '#999', fontSize: 12, marginLeft: 8 }}>
+            — 决定纸质排版和在线答题方式{!isNewPaper ? '（编辑模式不可变更）' : ''}
+          </span>
+        </div>
+
+        {isNewPaper ? (
+          <Space size={6} wrap>
+            {TEMPLATE_OPTIONS.map((t) => (
+              <Button
+                key={t.value}
+                type={templateType === t.value ? 'primary' : 'default'}
+                size="small"
+                onClick={() => handleTemplateChange(t.value)}
+              >
+                {t.label}
+              </Button>
+            ))}
+          </Space>
+        ) : (
+          <Tag color="blue" style={{ fontSize: 13, padding: '4px 12px' }}>
+            {TEMPLATE_OPTIONS.find(t => t.value === templateType)?.label || 'E 通用'}
+          </Tag>
         )}
+
+        <div style={{ fontSize: 11, color: '#999', marginTop: 6 }}>
+          {TEMPLATE_OPTIONS.find(t => t.value === templateType)?.desc}
+        </div>
       </div>
 
-      {!showUnits ? (
-        /* ── 按题型模式：平表 ── */
+      {/* Zone 2: Editing Area */}
+      {isFlatView ? (
+        /* Flat table for Template B (question_type) */
         <Card size="small" styles={{ body: { padding: 0 } }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -181,35 +145,36 @@ export default function StructureStep() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const subtotal = (row.cfg.count || 0) * (row.cfg.score_per_question || 0);
+              {(units[0]?.question_config || []).map((cfg: any, idx: number) => {
+                const subtotal = (cfg.count || 0) * (cfg.score_per_question || 0);
                 return (
-                  <tr key={`${row.unitId}-${row.cfgIdx}`} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
                     <td style={{ padding: '8px 12px' }}>
                       <Select
                         size="small" variant="borderless" style={{ width: '100%' }}
-                        value={row.cfg.question_type}
-                        onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'question_type', v)}
+                        value={cfg.question_type}
+                        onChange={(v) => updateRow(units[0].id!, idx, 'question_type', v)}
                         options={QTYPE_OPTIONS}
                       />
                     </td>
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                       <InputNumber size="small" variant="borderless" style={{ width: 80 }}
-                        min={0} max={200} value={row.cfg.count}
-                        onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'count', v || 0)} />
+                        min={0} max={200} value={cfg.count}
+                        onChange={(v) => updateRow(units[0].id!, idx, 'count', v || 0)} />
                     </td>
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                       <InputNumber size="small" variant="borderless" style={{ width: 80 }}
-                        min={1} max={100} value={row.cfg.score_per_question}
-                        onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'score_per_question', v || 1)}
+                        min={1} max={100} value={cfg.score_per_question}
+                        onChange={(v) => updateRow(units[0].id!, idx, 'score_per_question', v || 1)}
                         suffix="分" />
                     </td>
                     <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 500 }}>
                       <Tag color="blue">{subtotal} 分</Tag>
                     </td>
                     <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                      <Popconfirm title="删除此行？" onConfirm={() => deleteRow(row.unitId, row.cfgIdx)}>
-                        <Button size="small" danger type="text" icon={<DeleteOutlined />} disabled={rows.length <= 1} />
+                      <Popconfirm title="删除此行？" onConfirm={() => deleteRow(units[0].id!, idx)}>
+                        <Button size="small" danger type="text" icon={<DeleteOutlined />}
+                          disabled={(units[0]?.question_config || []).length <= 1} />
                       </Popconfirm>
                     </td>
                   </tr>
@@ -232,44 +197,53 @@ export default function StructureStep() {
               </tr>
             </tfoot>
           </table>
+          <div style={{ padding: '8px 12px' }}>
+            <Button size="small" type="dashed" icon={<PlusOutlined />}
+              onClick={() => addTypeToUnit(units[0]?.id || '')} block>
+              添加题型
+            </Button>
+          </div>
         </Card>
       ) : (
-        /* ── 按单元模式：卡片嵌套 ── */
+        /* Card view for Templates A/C/D/E */
         <div>
-          {unitGroups.map((group) => {
-            const unitScore = group.rows.reduce((s, r) => s + (r.cfg.count || 0) * (r.cfg.score_per_question || 0), 0);
-            const unitQCount = group.rows.reduce((s, r) => s + (r.cfg.count || 0), 0);
+          {units.map((unit) => {
+            const configs = unit.question_config || [];
+            const unitScore = configs.reduce((s: number, c: any) => s + (c.count || 0) * (c.score_per_question || 0), 0);
+            const unitQCount = configs.reduce((s: number, c: any) => s + (c.count || 0), 0);
+            const canDeleteUnit = !fixedCount || units.length > fixedCount;
             return (
               <Card
-                key={group.unitId}
+                key={unit.id}
                 size="small"
                 style={{ marginBottom: 12 }}
                 title={
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
-                      style={{ border: 'none', outline: 'none', background: 'transparent', fontWeight: 600, fontSize: 14, width: 120 }}
-                      value={group.unitName}
-                      onChange={(e) => updateUnitMeta(group.unitId, 'name', e.target.value)}
+                      style={{ border: 'none', outline: 'none', background: 'transparent', fontWeight: 600, fontSize: 14, width: 160 }}
+                      value={unit.name}
+                      onChange={(e) => updateUnitMeta(unit.id!, 'name', e.target.value)}
                       placeholder="单元名称"
                     />
                     {perUnitTimer && (
-                      <span style={{ fontSize: 12, color: '#999', marginLeft: 8 }}>
+                      <span style={{ fontSize: 12, color: '#999' }}>
                         限时
                         <InputNumber size="small" variant="borderless" style={{ width: 60 }}
-                          min={0} max={300} value={group.unitTime || undefined}
-                          onChange={(v) => updateUnitMeta(group.unitId, 'time_limit_minutes', v || null)}
-                          placeholder="不限"
-                        />
+                          min={0} max={300} value={unit.time_limit_minutes || undefined}
+                          onChange={(v) => updateUnitMeta(unit.id!, 'time_limit_minutes', v || null)}
+                          placeholder="不限" />
                         分钟
                       </span>
                     )}
-                    <Tag style={{ marginLeft: 12 }}>{unitQCount}题 {unitScore}分</Tag>
+                    <Tag style={{ marginLeft: 8 }}>{unitQCount}题 {unitScore}分</Tag>
                   </div>
                 }
                 extra={
-                  <Popconfirm title="删除此单元？" onConfirm={() => removeUnit(group.unitId)}>
-                    <Button size="small" danger type="text" disabled={unitGroups.length <= 1}>删除</Button>
-                  </Popconfirm>
+                  canDeleteUnit ? (
+                    <Popconfirm title="删除此单元？" onConfirm={() => removeUnit(unit.id!)}>
+                      <Button size="small" danger type="text">删除</Button>
+                    </Popconfirm>
+                  ) : null
                 }
               >
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -283,35 +257,35 @@ export default function StructureStep() {
                     </tr>
                   </thead>
                   <tbody>
-                    {group.rows.map((row) => {
-                      const subtotal = (row.cfg.count || 0) * (row.cfg.score_per_question || 0);
+                    {configs.map((cfg: any, idx: number) => {
+                      const subtotal = (cfg.count || 0) * (cfg.score_per_question || 0);
                       return (
-                        <tr key={`${row.unitId}-${row.cfgIdx}`} style={{ borderBottom: '1px solid #fafafa' }}>
+                        <tr key={idx} style={{ borderBottom: '1px solid #fafafa' }}>
                           <td style={{ padding: '6px 8px' }}>
                             <Select size="small" variant="borderless" style={{ width: '100%' }}
-                              value={row.cfg.question_type}
-                              onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'question_type', v)}
+                              value={cfg.question_type}
+                              onChange={(v) => updateRow(unit.id!, idx, 'question_type', v)}
                               options={QTYPE_OPTIONS} />
                           </td>
                           <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                             <InputNumber size="small" variant="borderless" style={{ width: 70 }}
-                              min={0} max={200} value={row.cfg.count}
-                              onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'count', v || 0)} />
+                              min={0} max={200} value={cfg.count}
+                              onChange={(v) => updateRow(unit.id!, idx, 'count', v || 0)} />
                           </td>
                           <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                             <InputNumber size="small" variant="borderless" style={{ width: 70 }}
-                              min={1} max={100} value={row.cfg.score_per_question}
-                              onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'score_per_question', v || 1)}
+                              min={1} max={100} value={cfg.score_per_question}
+                              onChange={(v) => updateRow(unit.id!, idx, 'score_per_question', v || 1)}
                               suffix="分" />
                           </td>
                           <td style={{ padding: '6px 8px', textAlign: 'center', color: '#1890ff' }}>{subtotal} 分</td>
                           <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                             <Popconfirm title="删除此行？"
-                              onConfirm={() => deleteRow(row.unitId, row.cfgIdx)}
-                              disabled={group.rows.length <= 1}>
+                              onConfirm={() => deleteRow(unit.id!, idx)}
+                              disabled={configs.length <= 1}>
                               <Button size="small" danger type="text"
                                 icon={<DeleteOutlined />}
-                                disabled={group.rows.length <= 1} />
+                                disabled={configs.length <= 1} />
                             </Popconfirm>
                           </td>
                         </tr>
@@ -321,36 +295,34 @@ export default function StructureStep() {
                 </table>
                 <div style={{ marginTop: 8 }}>
                   <Button size="small" type="dashed" icon={<PlusOutlined />}
-                    onClick={() => addTypeToUnit(group.unitId)} block>
+                    onClick={() => addTypeToUnit(unit.id!)} block>
                     添加题型
                   </Button>
                 </div>
               </Card>
             );
           })}
-          <Button type="dashed" icon={<PlusOutlined />} onClick={addNewUnit} block style={{ marginTop: 8 }}>
-            添加单元
-          </Button>
+          {(!fixedCount || units.length < fixedCount) && (
+            <Button type="dashed" icon={<PlusOutlined />} onClick={addNewUnit} block style={{ marginTop: 8 }}>
+              添加单元
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Footer */}
+      {/* Zone 3: Summary Bar */}
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {!showUnits && (
-          <Button size="small" icon={<PlusOutlined />} onClick={() => {
-            // 为该题型创建同名单元（如已有则复用）
-            const typeLabel = '单选题';
-            let uid = units.find(u => u.name === typeLabel)?.id;
-            if (!uid) {
-              addUnit({ name: typeLabel, question_config: [] });
-              uid = usePaperEditorStore.getState().paper?.units?.find(u => u.name === typeLabel)?.id || '';
-            }
-            if (uid) addTypeConfig(uid, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5, _sortKey: Date.now() });
-            setDirty(true);
-          }}>
-            添加题型
-          </Button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={perUnitTimer}
+              onChange={(e) => updateMeta({ per_unit_timer: e.target.checked })}
+              style={{ margin: 0 }}
+            />
+            逐单元计时
+          </label>
+        </div>
         {!scoreOk && targetTotal > 0 && (
           <Tag color="error">
             结构总分（{computedTotal}）≠ 目标总分（{targetTotal}），差 {Math.abs(computedTotal - targetTotal)} 分
