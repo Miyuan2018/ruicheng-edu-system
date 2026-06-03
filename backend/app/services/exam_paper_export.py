@@ -148,7 +148,17 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
         section_idx += 1
         run = header.add_run(f"{num}、{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）")
         run.bold = True
-        run.font.size = Pt(13)
+        run.font.size = Pt(14)
+        # 底部分割线，与打印预览 borderBottom 一致
+        from docx.oxml import OxmlElement
+        pPr = header._p.get_or_add_pPr()
+        pBdr = OxmlElement('w:pBdr')
+        bottom = OxmlElement('w:bottom')
+        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'single')
+        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '12')
+        bottom.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', '333333')
+        pBdr.append(bottom)
+        pPr.append(pBdr)
         for q in tqs:
             _write_question_word(doc, q, t, Cm, Pt)
 
@@ -156,7 +166,7 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
 def _write_question_word(doc, q, t, Cm, Pt):
     """写入单道题目（Word）"""
     q_para = doc.add_paragraph()
-    q_para.add_run(f"{q['index']}. {q['title']}（{q['score']}分）").font.size = Pt(11)
+    q_para.add_run(f"{q['index']}. {q['title']}（{q['score']}分）").font.size = Pt(12)
     if q["options"] and len(q["options"]) > 0:
         for opt in q["options"]:
             opt_para = doc.add_paragraph()
@@ -172,12 +182,10 @@ def _write_question_word(doc, q, t, Cm, Pt):
                     line = f"{pm.group(1)}. {pm.group(2)}"
                 opt_para.add_run(line).font.size = Pt(10)
     if t == "FILL_BLANK":
-        blank_para = doc.add_paragraph()
-        blank_para.add_run("_" * 40).font.size = Pt(10)
+        doc.add_paragraph()
     if t == "SUBJECTIVE":
-        for _ in range(3):
-            space_para = doc.add_paragraph()
-            space_para.add_run("_" * 60).font.size = Pt(10)
+        for _ in range(4):
+            doc.add_paragraph()
     doc.add_paragraph()
 
 
@@ -202,7 +210,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = title_para.add_run(paper.title or "")
     run.bold = True
-    run.font.size = Pt(18)
+    run.font.size = Pt(20)
 
     # Subtitle
     if paper.subtitle:
@@ -308,14 +316,9 @@ def _write_type_sections_pdf(pdf, qs, type_order):
                         pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(1)
             if t == "FILL_BLANK":
-                pdf.cell(10, 6, "")
-                pdf.cell(0, 6, "_" * 40, new_x="LMARGIN", new_y="NEXT")
-                pdf.ln(2)
+                pdf.ln(6)
             if t == "SUBJECTIVE":
-                for _ in range(3):
-                    pdf.cell(10, 8, "")
-                    pdf.cell(0, 8, "_" * 50, new_x="LMARGIN", new_y="NEXT")
-                pdf.ln(2)
+                pdf.ln(10)
             pdf.ln(2)
 
 
@@ -331,21 +334,22 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     # Load CJK font
     # 优先加载 CJK 字体（含中文字形），Times New Roman 无中文不能排第一
     CJK_PATHS = [
+        "/usr/share/fonts/truetype/arphic-gbsn00lp/gbsn00lp.ttf",
+        "/usr/share/fonts/truetype/arphic-gkai00mp/gkai00mp.ttf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/arphic/uming.ttc",
     ]
     font_loaded = False
     for fp in CJK_PATHS:
         try:
-            pdf.add_font("CJK", "", fp, uni=True)
+            pdf.add_font("CJK", "", fp)
             font_loaded = True
             break
         except Exception:
             continue
     if not font_loaded:
         try:
-            pdf.add_font("CJK", "", "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf", uni=True)
+            pdf.add_font("CJK", "", "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf")
             font_loaded = True
         except Exception:
             pass

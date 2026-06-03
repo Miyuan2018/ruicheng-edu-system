@@ -153,7 +153,10 @@ export default function PaperListPage() {
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = 'paper.' + (format === 'word' ? 'docx' : 'pdf');
+      // 从 Content-Disposition 提取文件名，兜底 paper.docx/pdf
+      const disp = resp.headers?.['content-disposition'];
+      const fnMatch = disp?.match(/filename\*?=(?:utf-8''|"')?(.+?)(?:;|"|$)/);
+      a.download = fnMatch ? decodeURIComponent(fnMatch[1]) : 'paper.' + (format === 'word' ? 'docx' : 'pdf');
       a.click();
       URL.revokeObjectURL(blobUrl);
       message.success('导出成功');
