@@ -570,7 +570,19 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     if (!paper || !dirty) return;
     set({ saving: true });
     try {
-      await draftApi.save(paper.id || null, paper);
+      // 新建试卷：先在主表创建记录获取 id，再存草稿
+      let pid = paper.id;
+      if (!pid) {
+        const resp = await paperApi.create({
+          title: paper.title || '未命名试卷',
+          subject: paper.subject,
+          grade_level: paper.grade_level,
+          status: 'READY',
+        });
+        pid = resp.data?.id || resp.data;
+        set({ paper: { ...get().paper, id: pid } });
+      }
+      await draftApi.save(pid, paper);
       set({ saving: false, dirty: false, lastSaved: new Date() });
     } catch {
       set({ saving: false });
