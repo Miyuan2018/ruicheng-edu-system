@@ -70,12 +70,13 @@ export default function PaperPreviewDrawer({ open, paperId, onClose }: PaperPrev
     );
   } else {
     const grades = paper.grade_level?.grades?.join(', ') || '';
-    const subParts: string[] = [];
-    if (paper.subject) subParts.push(paper.subject);
-    if (grades) subParts.push(grades);
-    subParts.push('总分: ' + (paper.total_score ?? 0) + '分');
-    if (paper.duration_minutes != null) subParts.push('时长: ' + paper.duration_minutes + '分钟');
-    const subtitle = paper.subtitle || subParts.join(' | ');
+    const infoParts: string[] = [];
+    if (paper.subject) infoParts.push(paper.subject);
+    if (grades) infoParts.push(grades);
+    infoParts.push('总分: ' + (paper.total_score ?? 0) + '分');
+    if (paper.duration_minutes != null) infoParts.push('时长: ' + paper.duration_minutes + '分钟');
+    const infoLine = infoParts.join(' | ');
+    const subtitle = paper.subtitle ? paper.subtitle + ' | ' + infoLine : infoLine;
 
     body = (
       <PaperTemplatePreview
