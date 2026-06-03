@@ -51,4 +51,20 @@ export const paperApi = {
   // Questions pool
   getQuestions: (params?: any) => apiClient.get('/questions', { params }),
   getSubjects: () => apiClient.get('/subjects/all'),
+
+  // V4.4 Paperless 端点
+  autoGeneratePaperless: (data: {
+    subject: string;
+    difficulty_ratio: Record<string, number>;
+    knowledge_node_ids: string[];
+    existing_question_ids?: string[];
+    type_configs: any[];
+  }) => apiClient.post('/exam-papers/auto-generate', data),
+
+  swapQuestionPaperless: (questionId: string, data: {
+    subject?: string;
+    grade_level?: any;
+    knowledge_node_ids?: string[];
+    exclude_ids?: string[];
+  }) => apiClient.post(`/questions/${questionId}/swap`, data),
 };
