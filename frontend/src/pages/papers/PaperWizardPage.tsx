@@ -8,7 +8,7 @@ import StructureStep from './steps/StructureStep';
 import RecommendStep from './steps/RecommendStep';
 import PreviewFinalizeStep from './steps/PreviewFinalizeStep';
 
-const STEP_TITLES = ['基本信息', '试卷结构', '选题', '预览入库'];
+const STEP_TITLES = ['基本信息', '试卷结构', '选题', '预览保存'];
 
 export default function PaperWizardPage() {
   const navigate = useNavigate();

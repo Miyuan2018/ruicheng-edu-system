@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Button, message, Collapse, Tag, Tabs, Space, Tooltip } from 'antd';
-import {
-  PrinterOutlined, FileWordOutlined, FilePdfOutlined, CheckCircleOutlined,
-} from '@ant-design/icons';
+import { Card, Button, message, Collapse, Tag, Tabs, Space } from 'antd';
+import { CheckCircleOutlined } from '@ant-design/icons';
 import apiClient from '../../../api/client';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { useReferenceValues, toLabelMap, toColorMap } from '../../../hooks/useReferenceValues';
@@ -67,32 +65,6 @@ export default function PreviewFinalizeStep() {
       message.info('已取消修改');
       navigate('/papers');
     } catch { message.error('操作失败'); }
-  };
-
-  const handleExport = async (format: 'word' | 'pdf') => {
-    if (!paper?.id) { message.warning('请先保存试卷'); return; }
-    try {
-      const { saveAll: doSave } = usePaperEditorStore.getState();
-      if (paper.units.length > 0) await doSave();
-      const api = (await import('../../../api/client')).default;
-      const resp = await api.get(`/exam-papers/${paper.id}/export/${format}`, { responseType: 'blob' });
-      const blobUrl = URL.createObjectURL(resp.data);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `paper.${format === 'word' ? 'docx' : 'pdf'}`;
-      a.click();
-      URL.revokeObjectURL(blobUrl);
-      message.success('导出成功');
-    } catch { message.error('导出失败'); }
-  };
-
-  const handlePrint = () => {
-    if (!paper?.id) { message.warning('请先保存试卷'); return; }
-    if (paper.units.length > 0) {
-      const { saveAll: doSave } = usePaperEditorStore.getState();
-      doSave();
-    }
-    window.open(`/print-preview?paperId=${paper.id}`, '_blank', 'width=900,height=700');
   };
 
   // ── Finalize Tab ──
@@ -338,7 +310,7 @@ export default function PreviewFinalizeStep() {
   );
 
   const tabItems = [
-    { key: 'finalize', label: '入库设置', children: finalizeTab },
+    { key: 'finalize', label: '保存设置', children: finalizeTab },
     { key: 'preview', label: '试卷预览', children: previewTab },
   ];
 
@@ -356,11 +328,6 @@ export default function PreviewFinalizeStep() {
           {paper?.id && (
             <Button size="large" danger onClick={handleCancelEdit}>取消修改</Button>
           )}
-        </Space>
-        <Space>
-          <Tooltip title="导出 Word"><Button icon={<FileWordOutlined />} onClick={() => handleExport('word')}>导出 Word</Button></Tooltip>
-          <Tooltip title="导出 PDF"><Button icon={<FilePdfOutlined />} onClick={() => handleExport('pdf')}>导出 PDF</Button></Tooltip>
-          <Tooltip title="打印"><Button icon={<PrinterOutlined />} onClick={handlePrint}>打印</Button></Tooltip>
         </Space>
       </div>
 
