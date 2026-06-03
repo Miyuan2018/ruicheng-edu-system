@@ -66,9 +66,14 @@ const newEmptyPaper = (): PaperDraft => ({
   subtitle: '',
   instructions: '',
   description: '',
-  show_units: false,
+  show_units: true,
   per_unit_timer: false,
-  units: [],
+  units: [{
+    name: '默认单元',
+    position: 1,
+    question_config: [{ question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 4 }],
+    time_limit_minutes: null,
+  }],
   knowledge_node_ids: [],
 });
 
