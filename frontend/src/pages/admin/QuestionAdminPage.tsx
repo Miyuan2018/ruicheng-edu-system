@@ -286,7 +286,11 @@ export default function QuestionAdminPage() {
 
   const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
   const pageDiffMap = useMemo(() => toLabelMap(diffs), [diffs]);
-  const pageSourceMap = useMemo(() => toColorMap(['SCRAPED', 'LLM_GENERATED', 'MANUAL']), []);
+  const pageSourceMap: Record<string, { color: string; label: string }> = {
+    SCRAPED: { color: 'orange', label: '网络抓取' },
+    LLM_GENERATED: { color: 'purple', label: 'LLM生成' },
+    MANUAL: { color: 'blue', label: '手工创建' },
+  };
 
   const tabItems = [
     {
@@ -506,7 +510,7 @@ export default function QuestionAdminPage() {
                 <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
                   <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.title?.substring(0, 120)}</div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <Tag color={toColorMap(diffs)[q.difficulty]?.color || 'default'} style={{ fontSize: 10 }}>{pageDiffMap[q.difficulty] || q.difficulty}</Tag>
+                    <Tag color={(toColorMap(diffs || [])[q.difficulty] as any)?.color || 'default'} style={{ fontSize: 10 }}>{pageDiffMap[q.difficulty] || q.difficulty}</Tag>
                     <Tag color="blue" style={{ fontSize: 10 }}>{typeMap[q.question_type] || q.question_type}</Tag>
                     {q.score != null && <Tag color="orange" style={{ fontSize: 10 }}>{q.score}分</Tag>}
                     {(q.grade_level?.knowledge_points || []).slice(0, 2).map((kp: string, j: number) => (
@@ -515,7 +519,7 @@ export default function QuestionAdminPage() {
                     <Tag color={(pageSourceMap[q.source] as any)?.color || 'default'} style={{ fontSize: 10 }}>
                       {(pageSourceMap[q.source] as any)?.label || q.source}
                     </Tag>
-                    <Tag color={statusMap[q.review_status]?.color || 'default'} style={{ fontSize: 10 }}>{statusMap[q.review_status]?.label || q.review_status}</Tag>
+                    {(() => { const m = (statusMap as any)[q.review_status]; return m ? <Tag color={m.color} style={{ fontSize: 10 }}>{m.label}</Tag> : null; })()}
                   </div>
                 </div>
                 <span style={{ width: 90, fontSize: 11, color: '#999', textAlign: 'center', paddingTop: 2, flexShrink: 0 }}>
