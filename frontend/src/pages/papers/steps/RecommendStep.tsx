@@ -3,6 +3,7 @@ import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Dr
 import { SyncOutlined, SwapOutlined, DeleteOutlined, SearchOutlined, FilterOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { paperApi } from '../../../api/papers';
+import apiClient from '../../../api/client';
 import type { ExamPaperUnitQuestion, AlternativeQuestion } from '../../../types/paper';
 
 const DIFF_COLORS: Record<string, string> = { EASY: '#52c41a', MEDIUM: '#faad14', HARD: '#ff4d4f' };
@@ -16,7 +17,7 @@ export default function RecommendStep() {
     paper, generateReport,
     removeQuestionFromUnit, clearAllQuestions, setDirty,
     regenerateAll, fillGaps, replaceQuestion, syncScoresFromConfig, autoSave,
-    knowledgeNodes,
+    knowledgeNodes, setKnowledgeNodes,
   } = usePaperEditorStore();
 
   const hasAutoAdjusted = useRef(false);
@@ -84,7 +85,26 @@ export default function RecommendStep() {
   /** 从 store 获取最新 paper 状态，避免 async 闭包引用过期值 */
   const getLivePaper = () => usePaperEditorStore.getState().paper;
 
-  const openManualSelect = (questionId: string, unitId: string, questionType: string) => {
+  /** 加载知识树（如果 store 中为空则自动加载） */
+  const ensureKnowledgeTree = async () => {
+    const cur = usePaperEditorStore.getState().knowledgeNodes;
+    if (cur && cur.length > 0) return cur;
+    try {
+      const syllabiResp = await apiClient.get('/question-admin/syllabi');
+      const syllabi: any[] = syllabiResp.data || [];
+      const livePaper = getLivePaper();
+      // 优先匹配 paper subject 的考纲
+      const match = syllabi.find((s: any) => s.subject === livePaper?.subject)
+        || syllabi[0];
+      if (!match) return [];
+      const treeResp = await apiClient.get(`/knowledge-tree/syllabi/${match.id}/tree`);
+      const tree = treeResp.data?.tree || treeResp.data || [];
+      setKnowledgeNodes(tree);
+      return tree;
+    } catch { return []; }
+  };
+
+  const openManualSelect = async (questionId: string, unitId: string, questionType: string) => {
     setManualTarget({ questionId, unitId, questionType });
     setManualKeyword('');
     setManualResults([]);
@@ -111,8 +131,34 @@ export default function RecommendStep() {
       setFilterDifficulties(['EASY', 'MEDIUM', 'HARD']);
     }
 
-    // 自动填充知识点
-    const knIds = livePaper?.knowledge_node_ids || [];
+    // 确保知识树已加载
+    const tree = await ensureKnowledgeTree();
+
+    // 自动填充知识点 — 合并试卷 knowledge_node_ids + 被替换题目的知识点
+    const paperKnIds: string[] = livePaper?.knowledge_node_ids || [];
+    const questionKps: string[] = [];
+    const oldQ = unit?.questions?.find(q => q.question_id === questionId);
+    const qKps = oldQ?.question?.grade_level?.knowledge_points
+      || oldQ?.question?.knowledge_points
+      || [];
+    if (Array.isArray(qKps) && qKps.length > 0) {
+      // 从知识树中匹配文本标签 → UUID
+      const matchByTitle = (nodes: any[], target: string): string | null => {
+        for (const n of nodes) {
+          if (n.title === target) return n.key;
+          if (n.children) {
+            const found = matchByTitle(n.children, target);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      for (const kp of qKps) {
+        const key = matchByTitle(tree, kp);
+        if (key && !paperKnIds.includes(key)) questionKps.push(key);
+      }
+    }
+    const knIds = [...new Set([...paperKnIds, ...questionKps])];
     setFilterKnIds(knIds);
 
     // 初始搜索
@@ -479,11 +525,13 @@ export default function RecommendStep() {
                 allowClear
               />
               <TreeSelect
-                treeData={(knowledgeNodes || []).map((n: any) => ({
-                  value: n.key,
-                  title: n.title,
-                  children: n.children,
-                }))}
+                treeData={(function convertTree(nodes: any[]): any[] {
+                  return (nodes || []).map((n: any) => ({
+                    value: n.key,
+                    title: n.title,
+                    children: n.children ? convertTree(n.children) : undefined,
+                  }));
+                })(knowledgeNodes || [])}
                 placeholder="知识点"
                 treeCheckable
                 showCheckedStrategy={TreeSelect.SHOW_CHILD}

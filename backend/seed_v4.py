@@ -128,11 +128,20 @@ async def seed():
             if r.scalar_one_or_none():
                 continue
 
+            grade_map = {
+                "数学": (["G8"], ["实数", "代数式"]),
+                "物理": (["G8"], ["力与运动"]),
+                "化学": (["G9"], ["物质变化"]),
+                "语文": (["G7"], ["现代文阅读"]),
+                "英语": (["G7"], ["语法专题"]),
+            }
+            gm = grade_map.get(subject, (["G8"], []))
             q = Question(
                 title=title,
                 question_type=qtype,
                 difficulty=diff,
                 subject=subject,
+                grade_level={"scope": "grade", "grades": gm[0], "knowledge_points": gm[1]},
                 score=5,
                 correct_answer=answer,
                 source="MANUAL",

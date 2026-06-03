@@ -51,9 +51,11 @@ export default function BasicInfoStep() {
   }, [paper?.id]);
 
   const loadKnowledgeTree = async (sid: string) => {
-    if (!sid) { setKnowledgeNodes([]); return; }
+    if (!sid) { setKnowledgeNodes([]); storeSetKnowledgeNodes([]); return; }
     try {
       const resp = await apiClient.get(`/knowledge-tree/syllabi/${sid}/tree`);
+      const tree = resp.data.tree || resp.data || [];
+      // 从完整树中提取 POINT 节点用于本地 Select
       const points: any[] = [];
       const walk = (nodes: any[]) => {
         for (const n of nodes) {
@@ -61,9 +63,10 @@ export default function BasicInfoStep() {
           if (n.children) walk(n.children);
         }
       };
-      walk(resp.data.tree || resp.data || []);
+      walk(tree);
       setKnowledgeNodes(points);
-      storeSetKnowledgeNodes(points);
+      // 存完整树到 store，供其他 Step 的 TreeSelect 使用
+      storeSetKnowledgeNodes(tree);
     } catch { /* ignore */ }
   };
 
