@@ -684,7 +684,7 @@ function ReviewQuestionList({ onRefresh }: { onRefresh: () => void }) {
           { title: '难度', dataIndex: 'difficulty', width: 60, render: (t: string) => <Tag color={toColorMap(diffs)[t]?.color}>{diffMap[t] || t}</Tag> },
           { title: '来源', dataIndex: 'source', width: 70, render: (s: string) => { const m = sourceMap[s]; return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>; } },
           { title: '状态', dataIndex: 'review_status', width: 80, render: (s: string) => { const m = reviewStatusMap[s]; return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>; } },
-          { title: '时间', dataIndex: 'created_at', width: 100, render: (v: string) => (v || '').slice(0, 10) },
+          { title: '时间', dataIndex: 'created_at', width: 140, render: (v: string) => (v || '').slice(0, 16).replace('T', ' ') },
           {
             title: '操作', width: 120,
             render: (_: any, r: any) => (
@@ -815,7 +815,7 @@ function QuestionListBySource({ sourceFilter, title }: { sourceFilter: string, t
           { title: '难度', dataIndex: 'difficulty', width:60, render:(t:string)=><Tag color={toColorMap(diffs)[t]?.color}>{diffMap[t]||t}</Tag> },
           { title: '来源', dataIndex: 'source', width:80, render:(s:string)=>{const m=sourceMap[s];return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>;} },
           { title: '状态', dataIndex: 'review_status', width:80, render:(s:string)=>{const m=statusMap[s];return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>;} },
-          { title: '时间', dataIndex: 'created_at', width:100, render:(v:string)=>(v||'').slice(0,10) },
+          { title: '抓取时间', dataIndex: 'created_at', width:140, render:(v:string)=>(v||'').slice(0,16).replace('T',' ') },
           { title: '操作', width:100, render:(_:any, r:any) => (
             <Space size={2}>
               <Button size="small" type="link" icon={<EditOutlined />} onClick={() => { setEditQuestion(r); setEditOpen(true); }} />
