@@ -65,7 +65,7 @@ async def list_drafts(
     return result.scalars().all()
 
 
-@router.delete("/{draft_id}", status_code=204)
+@router.delete("/{draft_id}")
 async def delete_draft(
     draft_id: str,
     current_user=Depends(get_current_user),
@@ -74,6 +74,7 @@ async def delete_draft(
     """删除草稿"""
     _check_teacher_or_admin(current_user)
     try:
+        # 先验证所有权
         result = await db.execute(
             select(ExamPaperDraft).where(
                 ExamPaperDraft.id == draft_id,
@@ -83,13 +84,14 @@ async def delete_draft(
         draft = result.scalar_one_or_none()
         if not draft:
             raise HTTPException(404, detail="草稿不存在")
-        await db.delete(draft)
+        # 直接 SQL 删除，避免 ORM session 状态问题
+        from sqlalchemy import delete as sa_delete
+        await db.execute(sa_delete(ExamPaperDraft).where(ExamPaperDraft.id == draft_id))
         await db.commit()
+        return {"ok": True}
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        logger.exception(f'delete_draft failed: draft_id={draft_id} user_id={current_user.id}')
+        logger.exception(f'delete_draft failed: draft_id={draft_id}')
         await db.rollback()
         raise HTTPException(500, detail=f'{type(e).__name__}: {e}')
-    return None
