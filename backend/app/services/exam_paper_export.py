@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models.exam_paper import ExamPaper, ExamPaperUnit, ExamPaperUnitQuestion
+from docx.shared import Pt, Cm
 
 
 TYPE_LABELS = {
@@ -283,7 +284,7 @@ def _write_question_word(doc, q, t, Cm, Pt):
 async def export_word(exam_paper_id, db: AsyncSession):
     """Generate a Word document for the exam paper."""
     from docx import Document
-    from docx.shared import Pt, Cm, RGBColor
+    from docx.shared import RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     paper, questions = await load_paper_with_questions(exam_paper_id, db)
