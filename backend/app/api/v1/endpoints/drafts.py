@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.exam_paper_draft import ExamPaperDraft
@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 def _check_teacher_or_admin(user):
-    if user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+    if user.user_type not in ("TEACHER", "QUESTION_ADMIN"):
         raise HTTPException(403, detail="权限不足")
 
 
@@ -70,8 +70,15 @@ async def delete_draft(
 ):
     """删除草稿"""
     _check_teacher_or_admin(current_user)
-    await db.execute(
-        delete(ExamPaperDraft).where(ExamPaperDraft.id == draft_id)
+    result = await db.execute(
+        select(ExamPaperDraft).where(
+            ExamPaperDraft.id == draft_id,
+            ExamPaperDraft.user_id == current_user.id,
+        )
     )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(404, detail="草稿不存在")
+    await db.delete(draft)
     await db.commit()
     return None

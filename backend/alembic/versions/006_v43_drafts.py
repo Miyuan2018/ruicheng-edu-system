@@ -25,8 +25,8 @@ def upgrade():
         sa.Column('paper_id', UUID(as_uuid=True),
                   sa.ForeignKey('exam_papers.id'), nullable=True),
         sa.Column('data', JSONB, nullable=False),
-        sa.Column('created_at', sa.DateTime, server_default=sa.func.now()),
-        sa.Column('updated_at', sa.DateTime, server_default=sa.func.now()),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint('user_id', 'paper_id', name='uq_user_paper_draft'),
     )
     # Migrate existing DRAFT papers to READY
