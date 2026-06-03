@@ -29,6 +29,7 @@ from .encouragement_template import EncouragementTemplate
 from .reward_goal import RewardGoal
 from .celebration_event import CelebrationEvent
 from .question_recommendation import QuestionRecommendation
+from .exam_paper_draft import ExamPaperDraft
 
 __all__ = [
     "Role", "Parent", "ParentStudentLink", "Encouragement", "EncouragementTemplate", "RewardGoal", "CelebrationEvent",
@@ -40,4 +41,5 @@ __all__ = [
     "MlModel", "Notification", "ExamPaper", "LlmConfig", "Syllabus", "QuestionTask", "KnowledgeNode", "Subject", "SysAdmin", "Admin", "Student",
     "QuestionType", "DifficultyLevel", "GradeLevel", "PaperStatus", "ErrorType", "QuestionSource", "Province",
     "ExamPaperUnit", "ExamPaperUnitQuestion", "QuestionKnowledgeNode",
+    "ExamPaperDraft",
 ]

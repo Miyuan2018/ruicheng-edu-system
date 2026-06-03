@@ -52,7 +52,7 @@ class ExamPaper(Base):
     description = Column(Text, nullable=True)
     subject = Column(String(50), nullable=True, index=True)
     grade_level = Column(JSONB, nullable=True)  # {scope, grades[], chapter?}
-    status = Column(String(20), nullable=False, default='DRAFT')  # DRAFT, PUBLISHED, ARCHIVED
+    status = Column(String(20), nullable=False, default='READY')  # READY, PUBLISHED, ARCHIVED
     total_score = Column(Integer, nullable=False, default=0)
     duration_minutes = Column(Integer, nullable=True)  # Total exam duration in minutes
     subtitle = Column(String(200), nullable=True)
@@ -74,7 +74,7 @@ class ExamPaper(Base):
     __table_args__ = (
         CheckConstraint("total_score >= 0", name='check_exam_papers_total_score_non_negative'),
         CheckConstraint("duration_minutes IS NULL OR duration_minutes >= 0", name='check_exam_papers_duration_non_negative'),
-        CheckConstraint("status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')", name='check_exam_papers_status'),
+        CheckConstraint("status IN ('READY', 'PUBLISHED', 'ARCHIVED')", name='check_exam_papers_status'),
     )
 
     def __repr__(self):
