@@ -1,0 +1,420 @@
+<h2>五种模板纵向对比</h2>
+<p class="subtitle">每个模板：数据模型 → Step2编辑视图 → 纸质格式 → 在线答题</p>
+
+<!-- ═══════════ 模板 A: 知识模块 ═══════════ -->
+<div class="section">
+  <h3 style="color:#1890ff;">A — 知识模块</h3>
+  <div class="split">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">数据模型</div>
+      <div class="mockup-body" style="font-family:monospace;font-size:11px;padding:12px;">
+        单元数: <b>可增减</b> (默认1)<br>
+        单元名显示: <b>是</b><br><br>
+        单元1: name="勾股定理" ⏱20min<br>
+        &nbsp;&nbsp;├ 单选 ×5 4分/题 = 20分<br>
+        &nbsp;&nbsp;├ 填空 ×4 5分/题 = 20分<br>
+        &nbsp;&nbsp;└ 解答 ×2 10分/题 = 20分<br>
+        单元2: name="实数运算"<br>
+        &nbsp;&nbsp;├ 单选 ×3 4分/题 = 12分<br>
+        &nbsp;&nbsp;└ 填空 ×4 4分/题 = 16分<br>
+        单元3: name="几何证明" ⏱30min<br>
+        &nbsp;&nbsp;└ 解答 ×1 12分/题 = 12分
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">Step2 编辑视图</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>卡片式</b>，每个单元一张卡片：<br><br>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 勾股定理</b> ⏱20min | 60分<br>
+          <span style="color:#666;">单选×5 4分 | 填空×4 5分 | 解答×2 10分</span><br>
+          <span style="color:#999;">[+题型] [删单元]</span>
+        </div>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 实数运算</b> | 28分<br>
+          <span style="color:#666;">单选×3 4分 | 填空×4 4分</span>
+        </div>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 几何证明</b> ⏱30min | 12分<br>
+          <span style="color:#666;">解答×1 12分</span>
+        </div>
+        <span style="color:#1890ff;">+ 添加单元</span>
+      </div>
+    </div>
+  </div>
+  <div class="split" style="margin-top:8px;">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">纸质格式</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>═══ 一、勾股定理 (60分 ⏱20分钟) ═══</b><br>
+        &nbsp;&nbsp;<b>1. 单选题</b> 每题4分 共5题 20分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;1. 在直角△ABC中...<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;2. ...<br>
+        &nbsp;&nbsp;<b>2. 填空题</b> 每题5分 共4题 20分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;6. ...<br>
+        &nbsp;&nbsp;<b>3. 解答题</b> 每题10分 共2题 20分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;10. ...<br>
+        ── 分页 ──<br>
+        <b>═══ 二、实数运算 (28分) ═══</b><br>
+        &nbsp;&nbsp;<b>1. 单选题</b> 每题4分 共3题 12分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;12. ...<br>
+        &nbsp;&nbsp;<b>2. 填空题</b> 每题4分 共4题 16分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;15. ...
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">在线答题</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>逐模块计时</b><br><br>
+        勾股定理 ⏱20min → 到时自动提交<br>
+        → 进入实数运算(不限时)<br>
+        → 进入几何证明 ⏱30min<br><br>
+        已提交的模块锁定不可回退<br>
+        不限时模块可自由切换<br><br>
+        <span style="color:#999;">题号跨模块连续 (1-19)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="border:1px solid #e8e8e8;margin:20px 0;">
+
+<!-- ═══════════ 模板 B: 题型 ═══════════ -->
+<div class="section">
+  <h3 style="color:#52c41a;">B — 题型（当前"按题型分组"）</h3>
+  <div class="split">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">数据模型</div>
+      <div class="mockup-body" style="font-family:monospace;font-size:11px;padding:12px;">
+        单元数: <b>固定 1</b><br>
+        单元名显示: <b>否</b><br><br>
+        单元1: name=""<br>
+        &nbsp;&nbsp;├ 单选 ×10 4分/题 = 40分<br>
+        &nbsp;&nbsp;├ 填空 ×5 4分/题 = 20分<br>
+        &nbsp;&nbsp;├ 多选 ×5 6分/题 = 30分<br>
+        &nbsp;&nbsp;└ 解答 ×1 10分/题 = 10分
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">Step2 编辑视图</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>平表式</b>，纯表格：<br><br>
+        <table style="width:100%;font-size:11px;border-collapse:collapse;">
+          <tr style="border-bottom:1px solid #e8e8e8;color:#666;"><th style="text-align:left;">题型</th><th>题数</th><th>分/题</th><th>小计</th></tr>
+          <tr><td>单选题</td><td style="text-align:center;">10</td><td style="text-align:center;">4</td><td style="text-align:center;color:#1890ff;">40</td></tr>
+          <tr><td>填空题</td><td style="text-align:center;">5</td><td style="text-align:center;">4</td><td style="text-align:center;color:#1890ff;">20</td></tr>
+          <tr><td>多选题</td><td style="text-align:center;">5</td><td style="text-align:center;">6</td><td style="text-align:center;color:#1890ff;">30</td></tr>
+          <tr><td>解答题</td><td style="text-align:center;">1</td><td style="text-align:center;">10</td><td style="text-align:center;color:#1890ff;">10</td></tr>
+          <tr style="border-top:2px solid #e8e8e8;font-weight:600;"><td>合计21题</td><td></td><td></td><td style="color:#52c41a;">100分</td></tr>
+        </table>
+        <span style="color:#1890ff;font-size:11px;">+ 添加题型</span>
+      </div>
+    </div>
+  </div>
+  <div class="split" style="margin-top:8px;">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">纸质格式</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>无单元标题</b>，直接按题型排版：<br><br>
+        <b>一、单选题</b> 每题4分 共10题 40分<br>
+        &nbsp;&nbsp;1. 在直角△ABC中...<br>
+        &nbsp;&nbsp;2. ...<br>
+        &nbsp;&nbsp;...<br>
+        <b>二、填空题</b> 每题4分 共5题 20分<br>
+        &nbsp;&nbsp;11. ...<br>
+        &nbsp;&nbsp;...<br>
+        <b>三、多选题</b> 每题6分 共5题 30分<br>
+        &nbsp;&nbsp;16. ...<br>
+        <b>四、解答题</b> 每题10分 共1题 10分<br>
+        &nbsp;&nbsp;21. ...<br><br>
+        <span style="color:#999;">连续排版，不分页<br>最简洁的传统试卷格式</span>
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">在线答题</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>仅整卷计时</b><br><br>
+        所有题目在同一页面<br>
+        学生自由上下滚动<br>
+        整卷统一提交<br><br>
+        <span style="color:#999;">最简单，无单元约束</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="border:1px solid #e8e8e8;margin:20px 0;">
+
+<!-- ═══════════ 模板 C: 难度递进 ═══════════ -->
+<div class="section">
+  <h3 style="color:#fa8c16;">C — 难度递进</h3>
+  <div class="split">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">数据模型</div>
+      <div class="mockup-body" style="font-family:monospace;font-size:11px;padding:12px;">
+        单元数: <b>可增减</b> (默认3)<br>
+        单元名显示: <b>是</b>（含难度标签）<br><br>
+        单元1: name="⭐ 基础巩固" ⏱15min<br>
+        &nbsp;&nbsp;├ 单选 ×6 3分/题 = 18分<br>
+        &nbsp;&nbsp;├ 填空 ×4 3分/题 = 12分<br>
+        &nbsp;&nbsp;└ 多选 ×2 5分/题 = 10分<br>
+        单元2: name="⭐⭐ 能力提升" ⏱20min<br>
+        &nbsp;&nbsp;├ 单选 ×4 4分/题 = 16分<br>
+        &nbsp;&nbsp;├ 多选 ×2 6分/题 = 12分<br>
+        &nbsp;&nbsp;└ 解答 ×1 12分/题 = 12分<br>
+        单元3: name="⭐⭐⭐ 拓展挑战" ⏱25min<br>
+        &nbsp;&nbsp;└ 解答 ×2 10分/题 = 20分
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">Step2 编辑视图</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>卡片式</b>，同 A 模板：<br><br>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 ⭐ 基础巩固</b> ⏱15min | 40分<br>
+          <span style="color:#666;">单选×6 3分 | 填空×4 3分 | 多选×2 5分</span>
+        </div>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 ⭐⭐ 能力提升</b> ⏱20min | 40分<br>
+          <span style="color:#666;">单选×4 4分 | 多选×2 6分 | 解答×1 12分</span>
+        </div>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 ⭐⭐⭐ 拓展挑战</b> ⏱25min | 20分<br>
+          <span style="color:#666;">解答×2 10分</span>
+        </div>
+        <span style="color:#1890ff;">+ 添加层级</span>
+      </div>
+    </div>
+  </div>
+  <div class="split" style="margin-top:8px;">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">纸质格式</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>显示难度标签</b>：<br><br>
+        <b>═══ ⭐ 基础巩固 (40分 ⏱15分钟) ═══</b><br>
+        &nbsp;&nbsp;<b>1. 单选题</b> 每题3分 共6题 18分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;1. ...<br>
+        &nbsp;&nbsp;<b>2. 填空题</b> 每题3分 共4题 12分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;7. ...<br>
+        &nbsp;&nbsp;<b>3. 多选题</b> 每题5分 共2题 10分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;11. ...<br>
+        ── 分页 ──<br>
+        <b>═══ ⭐⭐ 能力提升 (40分 ⏱20分钟) ═══</b><br>
+        &nbsp;&nbsp;...
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">在线答题</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>逐层计时 + 解锁</b><br><br>
+        基础巩固 ⏱15min<br>
+        → 提交后才能进入能力提升<br>
+        → 提交后才能进入拓展挑战<br><br>
+        层级递进，不可跳级<br>
+        已提交层级不可回退<br><br>
+        <span style="color:#999;">适合分层测试/闯关模式</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="border:1px solid #e8e8e8;margin:20px 0;">
+
+<!-- ═══════════ 模板 D: 卷别 ═══════════ -->
+<div class="section">
+  <h3 style="color:#722ed1;">D — 卷别</h3>
+  <div class="split">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">数据模型</div>
+      <div class="mockup-body" style="font-family:monospace;font-size:11px;padding:12px;">
+        单元数: <b>固定 2</b><br>
+        单元名显示: <b>是</b><br><br>
+        单元1: name="第I卷(选择题)" ⏱30min<br>
+        &nbsp;&nbsp;├ 单选 ×10 2分/题 = 20分<br>
+        &nbsp;&nbsp;└ 多选 ×5 4分/题 = 20分<br>
+        单元2: name="第II卷(非选择题)" ⏱60min<br>
+        &nbsp;&nbsp;├ 填空 ×5 4分/题 = 20分<br>
+        &nbsp;&nbsp;└ 解答 ×4 10分/题 = 40分
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">Step2 编辑视图</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>卡片式</b>，单元数固定不可增减：<br><br>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 第I卷(选择题)</b> ⏱30min | 40分<br>
+          <span style="color:#666;">单选×10 2分 | 多选×5 4分</span><br>
+          <span style="color:#999;">[+题型] [×不可删除]</span>
+        </div>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 第II卷(非选择题)</b> ⏱60min | 60分<br>
+          <span style="color:#666;">填空×5 4分 | 解答×4 10分</span><br>
+          <span style="color:#999;">[+题型] [×不可删除]</span>
+        </div>
+        <span style="color:#999;">单元数固定，不可增减</span>
+      </div>
+    </div>
+  </div>
+  <div class="split" style="margin-top:8px;">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">纸质格式</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>卷别标题 + 强制分页 + 独立题号</b>：<br><br>
+        <b>══════ 第I卷 选择题 (40分) ══════</b><br>
+        &nbsp;&nbsp;一、单选题 每题2分 共10题 20分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;1. ...<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;...<br>
+        &nbsp;&nbsp;二、多选题 每题4分 共5题 20分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;11. ...<br>
+        ── 新页 ──<br>
+        <b>══════ 第II卷 非选择题 (60分) ══════</b><br>
+        &nbsp;&nbsp;三、填空题 每题4分 共5题 20分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;1. ... (独立题号)<br>
+        &nbsp;&nbsp;四、解答题 每题10分 共4题 40分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;6. ...
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">在线答题</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>两卷独立计时，不可回退</b><br><br>
+        第I卷 ⏱30min → 到时自动提交<br>
+        → 进入第II卷 ⏱60min<br>
+        → 提交第II卷 = 交卷<br><br>
+        I卷提交后不可回退<br>
+        标准中高考模式<br><br>
+        <span style="color:#999;">题号可每卷独立或跨卷连续</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="border:1px solid #e8e8e8;margin:20px 0;">
+
+<!-- ═══════════ 模板 E: 通用 ═══════════ -->
+<div class="section">
+  <h3 style="color:#666;">E — 通用</h3>
+  <div class="split">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">数据模型</div>
+      <div class="mockup-body" style="font-family:monospace;font-size:11px;padding:12px;">
+        单元数: <b>可增减</b> (默认1)<br>
+        单元名显示: <b>是</b><br><br>
+        单元1: name="未命名单元"<br>
+        &nbsp;&nbsp;(空题型列表)<br><br>
+        <span style="color:#999;">完全自由，教师自行定义<br>什么都可以改</span>
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">Step2 编辑视图</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>同 A/C 的卡片式</b>：<br><br>
+        <div style="border:1px solid #d9d9d9;border-radius:4px;padding:6px;margin-bottom:4px;">
+          <b>📦 未命名单元</b> | 0分<br>
+          <span style="color:#999;">暂无题型</span><br>
+          <span style="color:#1890ff;">[+题型]</span>
+        </div>
+        <span style="color:#1890ff;">+ 添加单元</span><br><br>
+        <span style="color:#999;">起步最简单，逐步构建</span>
+      </div>
+    </div>
+  </div>
+  <div class="split" style="margin-top:8px;">
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">纸质格式</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        类似 A，显示单元名：<br><br>
+        <b>═══ 单元名 (分数 ⏱限时) ═══</b><br>
+        &nbsp;&nbsp;<b>1. 题型</b> 每题X分 共N题 Y分<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;...<br>
+        ── 分隔线 ──<br>
+        <b>═══ 下一单元 ═══</b><br>
+        &nbsp;&nbsp;...<br><br>
+        <span style="color:#999;">无预设约束<br>与当前"按单元分区"一致</span>
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;">
+      <div class="mockup-header">在线答题</div>
+      <div class="mockup-body" style="font-size:11px;padding:12px;">
+        <b>取决于教师设置</b><br><br>
+        不限时 → 自由答题<br>
+        设限时 → 逐单元计时<br><br>
+        全由教师决定<br>系统不做预设<br><br>
+        <span style="color:#999;">最灵活，但需要教师自己规划</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="border:1px solid #e8e8e8;margin:20px 0;">
+
+<!-- ═══════════ 汇总对比 ═══════════ -->
+<div class="section">
+  <h3>五模板汇总</h3>
+  <table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <tr style="border-bottom:2px solid #e0e0e0;background:#f5f5f5;">
+      <th style="padding:8px;"></th>
+      <th style="padding:8px;text-align:center;">A 知识模块</th>
+      <th style="padding:8px;text-align:center;">B 题型</th>
+      <th style="padding:8px;text-align:center;">C 难度递进</th>
+      <th style="padding:8px;text-align:center;">D 卷别</th>
+      <th style="padding:8px;text-align:center;">E 通用</th>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:8px;">单元数</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">可增减</td>
+      <td style="padding:8px;text-align:center;color:#ff4d4f;">固定1</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">可增减(默认3)</td>
+      <td style="padding:8px;text-align:center;color:#ff4d4f;">固定2</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">可增减</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;background:#fafafa;">
+      <td style="padding:8px;">单元名显示</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">显示</td>
+      <td style="padding:8px;text-align:center;color:#ff4d4f;">隐藏</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">显示+难度标签</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">显示</td>
+      <td style="padding:8px;text-align:center;color:#52c41a;">显示</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:8px;">编辑视图</td>
+      <td style="padding:8px;text-align:center;">卡片</td>
+      <td style="padding:8px;text-align:center;"><b>平表</b></td>
+      <td style="padding:8px;text-align:center;">卡片</td>
+      <td style="padding:8px;text-align:center;">卡片</td>
+      <td style="padding:8px;text-align:center;">卡片</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;background:#fafafa;">
+      <td style="padding:8px;">题号</td>
+      <td style="padding:8px;text-align:center;">跨单元连续</td>
+      <td style="padding:8px;text-align:center;">全局连续</td>
+      <td style="padding:8px;text-align:center;">跨单元连续</td>
+      <td style="padding:8px;text-align:center;">每卷独立/连续</td>
+      <td style="padding:8px;text-align:center;">跨单元连续</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:8px;">分页</td>
+      <td style="padding:8px;text-align:center;">单元间可选</td>
+      <td style="padding:8px;text-align:center;">不分页</td>
+      <td style="padding:8px;text-align:center;">层级间可选</td>
+      <td style="padding:8px;text-align:center;">卷间强制</td>
+      <td style="padding:8px;text-align:center;">单元间可选</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;background:#fafafa;">
+      <td style="padding:8px;">在线答题</td>
+      <td style="padding:8px;text-align:center;">逐模块计时</td>
+      <td style="padding:8px;text-align:center;">仅整卷</td>
+      <td style="padding:8px;text-align:center;">逐层+解锁</td>
+      <td style="padding:8px;text-align:center;">两卷独立</td>
+      <td style="padding:8px;text-align:center;">自由</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:8px;">典型场景</td>
+      <td style="padding:8px;text-align:center;">单元测验</td>
+      <td style="padding:8px;text-align:center;">标准考试</td>
+      <td style="padding:8px;text-align:center;">分层测试</td>
+      <td style="padding:8px;text-align:center;">中考/高考</td>
+      <td style="padding:8px;text-align:center;">灵活出卷</td>
+    </tr>
+  </table>
+</div>
