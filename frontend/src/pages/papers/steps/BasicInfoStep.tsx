@@ -162,6 +162,54 @@ export default function BasicInfoStep() {
           </Col>
         </Row>
 
+        <Divider style={{ margin: '4px 0 12px 0' }} />
+
+        {/* 难度比值 — 智能选题时按此比例分配题数 */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#333' }}>
+            难度比值 <span style={{ fontWeight: 400, color: '#999', fontSize: 12 }}>— 智能选题时按此比例分配题数</span>
+          </div>
+          <Row gutter={12}>
+            {(['EASY', 'MEDIUM', 'HARD'] as const).map((d) => {
+              const colors: Record<string, string> = { EASY: '#52c41a', MEDIUM: '#faad14', HARD: '#ff4d4f' };
+              const bgColors: Record<string, string> = { EASY: '#f6ffed', MEDIUM: '#fffbe6', HARD: '#fff2f0' };
+              const borderColors: Record<string, string> = { EASY: '#b7eb8f', MEDIUM: '#ffe58f', HARD: '#ffccc7' };
+              const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
+              const diffRatio = paper?.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 };
+              return (
+                <Col span={8} key={d}>
+                  <div style={{
+                    background: bgColors[d], border: `2px solid ${borderColors[d]}`,
+                    borderRadius: 8, padding: '8px 12px', textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 12, color: colors[d], marginBottom: 2 }}>{labels[d]}</div>
+                    <InputNumber
+                      size="small" variant="borderless"
+                      style={{ fontSize: 20, fontWeight: 700, color: colors[d], textAlign: 'center', width: '100%' }}
+                      value={diffRatio[d]}
+                      min={0} max={100}
+                      onChange={(v) => {
+                        const newRatio = { ...diffRatio, [d]: v || 0 };
+                        updateMeta({ difficulty_ratio: newRatio });
+                      }}
+                      suffix={<span style={{ fontSize: 14, color: colors[d] }}>%</span>}
+                    />
+                  </div>
+                </Col>
+              );
+            })}
+          </Row>
+          {(() => {
+            const dr = paper?.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 };
+            const total = (dr.EASY || 0) + (dr.MEDIUM || 0) + (dr.HARD || 0);
+            return (
+              <div style={{ fontSize: 11, textAlign: 'center', marginTop: 6, color: total === 100 ? '#52c41a' : '#ff4d4f' }}>
+                {total === 100 ? '✓ 合计 100%' : `⚠ 合计 ${total}%（需为100%）`}
+              </div>
+            );
+          })()}
+        </div>
+
         {/* 高级设置 */}
         <Collapse
           size="small"
