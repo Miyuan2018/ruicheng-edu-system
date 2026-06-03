@@ -135,11 +135,15 @@ export default function PrintPreviewPage() {
             </h3>
             {qs.map((q) => {
               globalIndex++;
-              // 使用后端已规范化的 options，而非重新解析原始 correct_answer
-              const rawOptions: any[] | null = q.options || null;
-              const options = rawOptions;
+              // 优先用后端规范化的options，兜底解析correct_answer
+              let options: any[] = q.options || [];
+              if (options.length === 0 && q.correct_answer) {
+                try {
+                  const parsed = JSON.parse(q.correct_answer);
+                  options = Array.isArray(parsed?.options) ? parsed.options : [];
+                } catch {}
+              }
 
-              // 后端已规范化 options + 裁剪题干，直接使用
               let displayTitle = q.title || '';
               const isChoice = q.question_type === 'SINGLE_CHOICE' || q.question_type === 'MULTIPLE_CHOICE';
 
@@ -155,7 +159,7 @@ export default function PrintPreviewPage() {
                       {options.map((opt: any, idx: number) => {
                         let label: string, text: string;
                         if (typeof opt === 'string') {
-                          const m = opt.match(/^([A-D])[.．、）\)]\s*(.*)/);
+                          const m = opt.match(/^([A-H])[.．、）\)]\s*(.*)/);
                           label = m ? m[1] : String.fromCharCode(65 + idx);
                           text = m ? m[2] : opt;
                         } else {

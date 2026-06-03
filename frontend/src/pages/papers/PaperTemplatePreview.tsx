@@ -88,7 +88,7 @@ export default function PaperTemplatePreview(props: PaperTemplatePreviewProps) {
           {options.map((opt: any, idx: number) => {
             let label: string, text: string;
             if (typeof opt === 'string') {
-              const m = opt.match(/^([A-D])[.．、）\)]\s*(.*)/);
+              const m = opt.match(/^([A-H])[.．、）\)]\s*(.*)/);
               label = m ? m[1] : String.fromCharCode(65 + idx);
               text = m ? m[2] : opt;
             } else {
