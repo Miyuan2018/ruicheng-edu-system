@@ -126,6 +126,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   generateReport: null,
   pendingDraft: null,
   draftId: null,
+  knowledgeNodes: [],
 
   initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null, knowledgeNodes: [] }),
 
@@ -671,5 +672,5 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   setDirty: (dirty) => set({ dirty }),
   setKnowledgeNodes: (knowledgeNodes) => set({ knowledgeNodes }),
   setGenerateReport: (report) => set({ generateReport: report ? { constraint_dashboard: report.constraint_dashboard } : null }),
-  reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null }),
+  reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null, knowledgeNodes: [] }),
 }));

@@ -479,7 +479,7 @@ export default function RecommendStep() {
                 allowClear
               />
               <TreeSelect
-                treeData={knowledgeNodes.map((n: any) => ({
+                treeData={(knowledgeNodes || []).map((n: any) => ({
                   value: n.key,
                   title: n.title,
                   children: n.children,
