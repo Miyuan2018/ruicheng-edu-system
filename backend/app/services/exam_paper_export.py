@@ -426,9 +426,47 @@ async def export_word(exam_paper_id, db: AsyncSession):
     )
 
 
+def _write_q_pdf(pdf, q, t):
+    """写入单道题目（PDF）"""
+    is_choice = t in ("SINGLE_CHOICE", "MULTIPLE_CHOICE")
+    num_str = f"{q['index']}、"
+    pdf.set_font("CJK", "B", 12)
+    pdf.cell(8, 7, num_str)
+    pdf.set_font("CJK", "", 10.5)
+    title_line = f"{q['title']}（{q['score']}分）"
+    pdf.multi_cell(0, 7, title_line)
+    pdf.ln(1)
+    if is_choice and q["options"] and len(q["options"]) > 0:
+        pdf.set_font("CJK", "", 10.5)
+        for opt in q["options"]:
+            if isinstance(opt, dict):
+                label = opt.get('label', '')
+                text = opt.get('text', '')
+                pdf.cell(8, 6, "")
+                pdf.cell(0, 6, f"{label}、{text}", new_x="LMARGIN", new_y="NEXT")
+            else:
+                line = str(opt)
+                pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', line)
+                label = pm.group(1) if pm else ''
+                text = pm.group(2) if pm else line
+                pdf.cell(8, 6, "")
+                pdf.cell(0, 6, f"{label}、{text}", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+    elif t == "SUBJECTIVE":
+        pdf.set_draw_color(0)
+        pdf.set_line_width(0.1)
+        x, y = pdf.get_x() + 10, pdf.get_y()
+        pdf.rect(x, y, 170, 50)
+        pdf.set_xy(x + 2, y + 2)
+        pdf.set_font("CJK", "", 10.5)
+        pdf.cell(0, 6, "答:", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+    elif t == "FILL_BLANK":
+        pdf.ln(4)
+
 def _write_type_sections_pdf(pdf, qs, type_order):
     """写入题型分区（PDF）"""
-    grouped: dict[str, list] = {}
+    grouped = {}
     for q in qs:
         grouped.setdefault(q["question_type"], []).append(q)
     num_labels = ['一', '二', '三', '四', '五', '六', '七', '八']
@@ -441,34 +479,17 @@ def _write_type_sections_pdf(pdf, qs, type_order):
         per_q = tqs[0]['score'] if tqs else 0
         num = num_labels[section_idx] if section_idx < len(num_labels) else str(section_idx + 1)
         section_idx += 1
-        pdf.set_font("CJK", "", 13)
-        pdf.cell(0, 10, f"{num}、{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(2)
+        pdf.set_font("CJK", "B", 14)
+        header_text = f"{num}、{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）"
+        pdf.cell(0, 10, header_text, new_x="LMARGIN", new_y="NEXT")
+        y = pdf.get_y()
+        pdf.set_draw_color(0)
+        pdf.set_line_width(0.1)
+        pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+        pdf.ln(3)
         for q in tqs:
-            pdf.set_font("CJK", "", 11)
-            pdf.multi_cell(0, 7, f"{q['index']}. {q['title']}（{q['score']}分）")
-            pdf.ln(1)
-            if q["options"] and len(q["options"]) > 0:
-                pdf.set_font("CJK", "", 10)
-                for opt in q["options"]:
-                    pdf.cell(10, 6, "")
-                    if isinstance(opt, dict):
-                        label = opt.get('label', '')
-                        text = opt.get('text', '')
-                        pdf.cell(0, 6, f"{label}. {text}" if text else label, new_x="LMARGIN", new_y="NEXT")
-                    else:
-                        line = str(opt)
-                        pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', line)
-                        if pm and pm.group(2):
-                            line = f"{pm.group(1)}. {pm.group(2)}"
-                        pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
-                pdf.ln(1)
-            if t == "FILL_BLANK":
-                pdf.ln(6)
-            if t == "SUBJECTIVE":
-                pdf.ln(10)
-            pdf.ln(2)
-
+            _write_q_pdf(pdf, q, t)
+        pdf.ln(2)
 
 async def export_pdf(exam_paper_id, db: AsyncSession):
     """Generate a PDF for the exam paper."""
@@ -476,73 +497,71 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
 
     paper, questions = await load_paper_with_questions(exam_paper_id, db)
 
-    pdf = FPDF()
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.set_auto_page_break(True, 25)
     pdf.add_page()
+    pdf.set_left_margin(30)
+    pdf.set_right_margin(20)
+    pdf.set_top_margin(25)
 
-    # Load CJK font
-    # 优先加载 CJK 字体（含中文字形），Times New Roman 无中文不能排第一
     CJK_PATHS = [
         "/usr/share/fonts/truetype/arphic-gbsn00lp/gbsn00lp.ttf",
         "/usr/share/fonts/truetype/arphic-gkai00mp/gkai00mp.ttf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
     ]
     font_loaded = False
     for fp in CJK_PATHS:
         try:
             pdf.add_font("CJK", "", fp)
+            pdf.add_font("CJK", "B", fp)
             font_loaded = True
             break
         except Exception:
             continue
     if not font_loaded:
-        try:
-            pdf.add_font("CJK", "", "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf")
-            font_loaded = True
-        except Exception:
-            pass
-    if not font_loaded:
         pdf.set_font("Helvetica", "", 12)
 
-    # Title
-    pdf.set_font("CJK", "", 18)
-    pdf.cell(0, 12, paper.title or "", new_x="LMARGIN", new_y="NEXT", align="C")
+    def footer():
+        pdf.set_y(-20)
+        pdf.set_font("CJK", "", 9)
+        pdf.cell(0, 10, f"第{pdf.page_no()}页", align="C")
+    pdf.footer = footer
 
-    # Subtitle
+    pdf.set_font("CJK", "B", 22)
+    pdf.cell(0, 14, paper.title or "", new_x="LMARGIN", new_y="NEXT", align="C")
     if paper.subtitle:
-        pdf.set_font("CJK", "", 10)
-        pdf.cell(0, 8, paper.subtitle, new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(4)
+        pdf.set_font("CJK", "", 14)
+        pdf.cell(0, 10, paper.subtitle, new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(2)
 
-    # Info line
-    pdf.set_font("CJK", "", 10)
+    pdf.set_font("CJK", "", 9)
     info_parts = []
-    if paper.subject:
-        info_parts.append(paper.subject)
+    if paper.subject: info_parts.append(paper.subject)
     if paper.grade_level and isinstance(paper.grade_level, dict):
         grades = paper.grade_level.get("grades", [])
-        if grades:
-            info_parts.append(', '.join(grades))
+        if grades: info_parts.append(', '.join(grades))
     info_parts.append(f"总分: {paper.total_score}分")
-    if paper.duration_minutes:
-        info_parts.append(f"时长: {paper.duration_minutes}分钟")
-    pdf.cell(
-        0, 8, " | ".join([p for p in info_parts if p]), new_x="LMARGIN", new_y="NEXT", align="C"
-    )
-    pdf.ln(6)
+    if paper.duration_minutes: info_parts.append(f"时长: {paper.duration_minutes}分钟")
+    if info_parts:
+        pdf.cell(0, 8, " | ".join([p for p in info_parts if p]), new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.ln(2)
+
+    y = pdf.get_y()
+    pdf.set_draw_color(0)
+    pdf.set_line_width(0.1)
+    pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+    pdf.ln(4)
 
     type_order = ["FILL_BLANK", "SINGLE_CHOICE", "MULTIPLE_CHOICE", "SUBJECTIVE"]
-
-    if getattr(paper, 'show_units', True):
-        unit_groups: dict[str, list] = {}
+    if getattr(paper, 'show_units', False):
+        unit_groups = {}
         for q in questions:
-            un = q.get("unit_name", "")
-            unit_groups.setdefault(un, []).append(q)
+            unit_groups.setdefault(q.get("unit_name", ""), []).append(q)
         for uname, uqs in unit_groups.items():
-            pdf.set_font("CJK", "", 14)
+            pdf.set_font("CJK", "B", 14)
             u_score = sum(q['score'] for q in uqs)
             pdf.cell(0, 10, f"{uname}（共{len(uqs)}题，{u_score}分）", new_x="LMARGIN", new_y="NEXT")
-            pdf.ln(4)
+            pdf.ln(2)
             _write_type_sections_pdf(pdf, uqs, type_order)
     else:
         _write_type_sections_pdf(pdf, questions, type_order)
@@ -550,12 +569,9 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     buf = io.BytesIO()
     pdf.output(buf)
     buf.seek(0)
-
     safe_name = quote((paper.title or "exam_paper") + ".pdf")
     return StreamingResponse(
         buf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename*=utf-8''{safe_name}"
-        },
+        headers={"Content-Disposition": f"attachment; filename*=utf-8''{safe_name}"},
     )
