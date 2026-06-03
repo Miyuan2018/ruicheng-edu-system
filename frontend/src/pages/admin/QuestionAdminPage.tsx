@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Card, Table, Button, Form, Input, Select, InputNumber, Row, Col, Popconfirm,
   Tabs, Tag, Space, message, Typography, Badge, Alert, Divider, Pagination,
-  Radio, Empty, TreeSelect
+  Radio, Empty, TreeSelect, Progress, Spin
 } from 'antd';
 import {
   RobotOutlined, GlobalOutlined,
@@ -135,69 +135,77 @@ export default function QuestionAdminPage() {
   const [scrapeTaskCount, setScrapeTaskCount] = useState(1);
   const [scrapeResults, setScrapeResults] = useState<any[]>([]);
   const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
+
   const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
   const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
+  const handleScrapeDelete = async (id: string) => {
+    try { await apiClient.delete('/questions/' + id); message.success('已删除'); loadScrapeResults(); }
+    catch { message.error('删除失败'); }
+  };
 
   const loadScrapeResults = () => {
     setScrapeResultsLoading(true);
     apiClient.get('/questions', { params: { source: 'SCRAPED', limit: 50 } })
-      .then(({ data }: any) => { const r = data||{}; setScrapeResults(r.items||(Array.isArray(r)?r:[])); })
-      .catch(() => {}).finally(() => setScrapeResultsLoading(false));
+      .then(({ data }: any) => {
+        const resp = data || {};
+        setScrapeResults(resp.items || (Array.isArray(resp) ? resp : []));
+      }).catch(() => {}).finally(() => setScrapeResultsLoading(false));
   };
-  const handleScrapeDelete = async (id: string) => {
-    try { await apiClient.delete('/questions/'+id); message.success('已删除'); loadScrapeResults(); }
-    catch { message.error('删除失败'); }
-  };
-  useEffect(() => { loadScrapeResults(); }, []); // eslint-disable-line
 
+  // 加载知识树用于知识点选择
   useEffect(() => {
     apiClient.get('/question-admin/syllabi').then((resp: any) => {
       const syllabi: any[] = resp.data || [];
       if (syllabi.length > 0) {
         apiClient.get(`/knowledge-tree/syllabi/${syllabi[0].id}/tree`).then((treeResp: any) => {
-          setScrapeKnNodes(treeResp.data?.tree || treeResp.data || []);
+          const tree = treeResp.data?.tree || treeResp.data || [];
+          setScrapeKnNodes(tree);
         }).catch(() => {});
       }
     }).catch(() => {});
   }, []);
+  useEffect(() => { loadScrapeResults(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [scrapeConditions, setScrapeConditions] = useState(
-    '知识点: \n学科: 数学\n年级: G8\n难度: MEDIUM\n题型: SINGLE_CHOICE\n数量: 3'
-  );
+  const updateScrapeConditions = () => {
+    const v = scrapeForm.getFieldsValue();
+    const kps = Array.isArray(v.knowledge_points) ? v.knowledge_points : (v.knowledge_points ? [v.knowledge_points] : []);
+    const gls = Array.isArray(v.grade_levels) ? v.grade_levels : (v.grade_levels ? [v.grade_levels] : ['G8']);
+    const qts = Array.isArray(v.question_types) ? v.question_types : (v.question_types ? [v.question_types] : ['SINGLE_CHOICE']);
+    const n = kps.length * gls.length * qts.length;
+    setScrapeTaskCount(n || 1);
+  };
+
   const handleScrape = async (values: any) => {
+    // 从 TreeSelect UUID 提取 title 作为知识点名称
+    const chosenIds: string[] = Array.isArray(values.knowledge_points) ? values.knowledge_points : (values.knowledge_points ? [values.knowledge_points] : []);
+    const findTitle = (nodes: any[], id: string): string | null => {
+      for (const n of nodes) {
+        if (n.key === id) return n.title;
+        if (n.children) { const f = findTitle(n.children, id); if (f) return f; }
+      }
+      return null;
+    };
+    const kpNames = chosenIds.map(id => findTitle(scrapeKnNodes, id)).filter(Boolean);
+
+    const params: any = {
+      knowledge_points: kpNames.join(',') || values.knowledge_points,
+      grade_levels: (values.grade_levels || ['G8']).join(','),
+      question_types: (values.question_types || ['SINGLE_CHOICE']).join(','),
+      count: values.count || 5,
+      subject: values.subject || '数学',
+      difficulty: values.difficulty || 'MEDIUM',
+    };
+
     setScraping(true); setTaskProgress(null);
     try {
-      const chosenIds: string[] = Array.isArray(values.knowledge_points) ? values.knowledge_points : [];
-      const findTitle = (nodes: any[], id: string): string | null => {
-        for (const n of nodes) { if (n.key === id) return n.title; if (n.children) { const f = findTitle(n.children, id); if (f) return f; } }
-        return null;
-      };
-      const kpNames = chosenIds.map((id: string) => findTitle(scrapeKnNodes, id)).filter(Boolean) as string[];
-      const params = {
-        knowledge_points: kpNames.join(',') || (Array.isArray(values.knowledge_points) ? values.knowledge_points.join(',') : ''),
-        grade_levels: (values.grade_levels || ['G8']).join(','),
-        question_types: (values.question_types || ['SINGLE_CHOICE']).join(','),
-        count: values.count || 5,
-        subject: values.subject || '数学',
-        difficulty: values.difficulty || 'MEDIUM',
-      };
       const { data } = await apiClient.post('/question-admin/scrape', null, { params });
       setTaskProgress(data);
       if (data.ok) {
-        if (data.async) {
-          message.success(data.message || '已提交异步抓取任务');
-        } else {
-          message.success('抓取完成: ' + (data.count || 0) + '道试题已入库');
-          loadPendingQuestions();
-          loadScrapeResults();
-        }
+        message.success(`抓取完成: ${data.count || 0} 道试题已入库（${data.tasks || 1} 个任务）`);
+        loadPendingQuestions();
+        loadScrapeResults();
       } else {
-        const errMsg = data.error || '抓取失败';
-        if (data.search_params) {
-          message.error(`未找到试题：${Object.entries(data.search_params).map(([k,v]) => `${k}=${v}`).join(', ')}`);
-        } else {
-          message.error(errMsg);
-        }
+        message.error(data.error || '抓取失败');
       }
     } catch (e: any) {
       const body = e?.response?.data;
@@ -205,24 +213,14 @@ export default function QuestionAdminPage() {
       if (typeof detail === 'string' && detail.length > 0) {
         message.error(detail);
       } else if (e?.code === 'ERR_NETWORK') {
-        message.error('网络连接失败，请检查后端服务和网络');
+        message.error('网络连接失败');
       } else if (e?.code === 'ECONNABORTED') {
-        message.error('抓取请求超时，请减少数量后重试');
+        message.error('抓取请求超时');
       } else {
-        message.error('抓取失败，请检查网络连接后重试');
+        message.error('抓取失败，请检查网络');
       }
     }
     finally { setScraping(false); }
-  };
-
-  const updateScrapeConditions = () => {
-    const v = scrapeForm.getFieldsValue();
-    const kps = Array.isArray(v.knowledge_points) ? v.knowledge_points : [];
-    const gls = Array.isArray(v.grade_levels) ? v.grade_levels : ['G8'];
-    const qts = Array.isArray(v.question_types) ? v.question_types : ['SINGLE_CHOICE'];
-    const n = kps.length * gls.length * qts.length;
-    setScrapeTaskCount(n || 1);
-    setScrapeConditions(`将拆分 ${n || 1} 个任务 | ${kps.length||0}知识点 × ${gls.length}年级 × ${qts.length}题型 × ${v.count||5}道`);
   };
 
   // Dedup handlers
@@ -288,11 +286,16 @@ export default function QuestionAdminPage() {
 
   const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
   const pageDiffMap = useMemo(() => toLabelMap(diffs), [diffs]);
-  const SOURCE_COLORS: Record<string, {color:string;label:string}> = {
-    SCRAPED:{color:'orange',label:'网络抓取'}, LLM_GENERATED:{color:'purple',label:'LLM生成'}, MANUAL:{color:'blue',label:'手工创建'},
+  const SCRAPE_SOURCE_MAP: Record<string, { color: string; label: string }> = {
+    SCRAPED: { color: 'orange', label: '网络抓取' },
+    LLM_GENERATED: { color: 'purple', label: 'LLM生成' },
+    MANUAL: { color: 'blue', label: '手工创建' },
   };
-  const STATUS_COLORS: Record<string, {color:string;label:string}> = {
-    PENDING:{color:'orange',label:'待审核'}, APPROVED:{color:'green',label:'已通过'}, REJECTED:{color:'red',label:'已驳回'}, NEEDS_REVIEW:{color:'gold',label:'待复审'},
+  const REVIEW_STATUS_MAP: Record<string, { color: string; label: string }> = {
+    PENDING: { color: 'orange', label: '待审核' },
+    APPROVED: { color: 'green', label: '已通过' },
+    REJECTED: { color: 'red', label: '已驳回' },
+    NEEDS_REVIEW: { color: 'gold', label: '待复审' },
   };
 
   const tabItems = [
@@ -434,84 +437,74 @@ export default function QuestionAdminPage() {
       key: 'scrape',
       label: <span><GlobalOutlined />网络抓取</span>,
       children: (<>
-        <Card title="按知识点网上抓取试题" size="small" styles={{ body: { padding: '12px 16px' } }}>
-          <Row gutter={16}>
-            <Col span={16}>
-              <Form form={scrapeForm} onFinish={handleScrape} layout="horizontal" size="small"
-                onValuesChange={updateScrapeConditions}
-                labelCol={{ style: { width: 50, fontSize: 12 } }}
-                initialValues={{ subject: '数学', grade_levels: ['G8'], difficulty: 'MEDIUM', question_types: ['SINGLE_CHOICE'], count: 5 }}>
-                <Row gutter={8} style={{ marginBottom: 2 }}>
-                  <Col span={12}>
-                    <Form.Item name="subject" label="学科" style={{ marginBottom: 0 }}>
-                      <Select size="small" options={subjectOptions} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="grade_levels" label="年级" style={{ marginBottom: 0 }}>
-                      <Select mode="multiple" size="small" options={toSelectOptions(grades)} style={{ width: '100%' }} maxTagCount={2} allowClear />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={8} style={{ marginBottom: 2 }}>
-                  <Col span={24}>
-                    <Form.Item name="knowledge_points" label="知识点" rules={[{ required: true, message: '请选择知识点' }]} style={{ marginBottom: 0 }}>
-                      <TreeSelect treeData={(function cnv(nodes: any[]): any[] { return (nodes||[]).map((n:any)=>({value:n.key,title:n.title,children:n.children?cnv(n.children):undefined})); })(scrapeKnNodes)}
-                        placeholder="选择知识点" treeCheckable showCheckedStrategy={TreeSelect.SHOW_CHILD} allowClear maxTagCount={3} size="small" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={8} style={{ marginBottom: 2 }}>
-                  <Col span={12}>
-                    <Form.Item name="difficulty" label="难度" style={{ marginBottom: 0 }}>
-                      <Select size="small" options={toSelectOptions(diffs)} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="question_types" label="题型" style={{ marginBottom: 0 }}>
-                      <Select mode="multiple" size="small" options={toSelectOptions(qtypes)} style={{ width: '100%' }} maxTagCount={2} allowClear />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <Row gutter={8}>
-                  <Col span={12}>
-                    <Form.Item name="count" label="数量" style={{ marginBottom: 0 }}>
-                      <InputNumber size="small" min={1} max={50} style={{ width: '100%' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item style={{ marginBottom: 0 }}>
-                      <Button type="primary" htmlType="submit" icon={<GlobalOutlined />} loading={scraping} size="small" block>
-                        开始抓取{scraping ? '(抓取中...)' : ''}
-                      </Button>
-                    </Form.Item>
-                  </Col>
-                </Row>
-              </Form>
-              {scraping && (
-                <div style={{ display:'flex',alignItems:'center',padding:'2px 12px',background:'linear-gradient(135deg,#667eea22,#764ba222)',borderRadius:4,border:'1px solid #667eea44',height:24,marginTop:8,animation:'breathe 1.8s ease-in-out infinite'}}>
-                  <div style={{ width:8,height:8,borderRadius:'50%',background:'#667eea',marginRight:8,boxShadow:'0 0 8px #667eea88',animation:'pulse 0.8s ease-in-out infinite'}} />
-                  <Text style={{ color:'#667eea',fontSize:12 }}>正在抓取网络试题，请稍候...</Text>
-                </div>
-              )}
-              {taskProgress && !taskProgress.ok && <Alert style={{ marginTop:8,padding:'2px 12px',fontSize:12 }} type="error" message={taskProgress.error} />}
-            </Col>
-            <Col span={8}>
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>搜索条件预览</div>
-              <Input.TextArea rows={9} size="small" style={{ fontFamily: 'monospace', fontSize: 10 }}
-                value={scrapeConditions} readOnly />
-              {taskProgress && (
-                <div style={{ marginTop: 4 }}>
-                  {taskProgress.ok ? <Tag color="green">成功入库 {taskProgress.count} 道</Tag> : <Tag color="red">抓取失败</Tag>}
-                </div>
-              )}
-            </Col>
-          </Row>
+        {/* 搜索条件栏 — 单行 */}
+        <Card size="small" styles={{ body: { padding: '12px 16px' } }}>
+          <Form form={scrapeForm} onFinish={handleScrape} size="small"
+            onValuesChange={updateScrapeConditions}
+            initialValues={{ subject: '数学', grade_levels: ['G8'], difficulty: 'MEDIUM', question_types: ['SINGLE_CHOICE'], count: 5 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Form.Item name="subject" style={{ marginBottom: 0, minWidth: 80 }}>
+                <Select options={subjectOptions} placeholder="学科" style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="grade_levels" style={{ marginBottom: 0, minWidth: 120 }}>
+                <Select mode="multiple" options={toSelectOptions(grades)} placeholder="年级" maxTagCount={2} allowClear style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="knowledge_points" rules={[{ required: true, message: '请选择知识点' }]} style={{ marginBottom: 0, minWidth: 200, flex: 1 }}>
+                <TreeSelect
+                  treeData={(function convertTree(nodes: any[]): any[] {
+                    return (nodes || []).map((n: any) => ({
+                      value: n.key, title: n.title,
+                      children: n.children ? convertTree(n.children) : undefined,
+                    }));
+                  })(scrapeKnNodes)}
+                  placeholder="选择知识点" treeCheckable showCheckedStrategy={TreeSelect.SHOW_CHILD}
+                  allowClear maxTagCount={3} style={{ width: '100%' }}
+                />
+              </Form.Item>
+              <Form.Item name="difficulty" style={{ marginBottom: 0, minWidth: 80 }}>
+                <Select options={toSelectOptions(diffs)} placeholder="难度" style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="question_types" style={{ marginBottom: 0, minWidth: 110 }}>
+                <Select mode="multiple" options={toSelectOptions(qtypes)} placeholder="题型" maxTagCount={2} allowClear style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="count" style={{ marginBottom: 0, width: 52 }}>
+                <InputNumber min={1} max={20} placeholder="数量" style={{ width: '100%' }} />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" icon={<GlobalOutlined />} loading={scraping}>开始抓取</Button>
+            </div>
+          </Form>
+
+          {/* 任务预览条 */}
+          <div style={{ marginTop: 10, padding: '6px 10px', background: '#f6f8fa', borderRadius: 6, fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span>将拆分 <b style={{ color: '#1677ff' }}>{scrapeTaskCount}</b> 个任务</span>
+            <span style={{ color: '#ddd' }}>|</span>
+            <span>预计入库 ≤ <b>{(() => { const v = scrapeForm.getFieldsValue(); return (v.count || 5) * scrapeTaskCount * 3; })()}</b> 道</span>
+            <span style={{ color: '#ddd' }}>|</span>
+            <span>DDG → 百度 → LLM</span>
+          </div>
+
+          {/* 进度条 */}
+          {scraping && (
+            <div style={{ marginTop: 8 }}>
+              <Progress percent={Math.round(Math.random() * 80 + 10)} status="active" size="small" strokeColor="#1677ff"
+                format={() => <span style={{ fontSize: 11 }}>抓取中...</span>} />
+            </div>
+          )}
+
+          {/* 结果汇总 */}
+          {taskProgress && (
+            <div style={{ marginTop: 8 }}>
+              {taskProgress.ok
+                ? <Tag color="green">成功入库 {taskProgress.count} 道试题（{taskProgress.tasks || 1} 个任务）</Tag>
+                : <Alert style={{ padding: '2px 12px', fontSize: 12 }} type="error" message={taskProgress.error || '抓取失败'} />
+              }
+            </div>
+          )}
         </Card>
-        <Card size="small" title={<span>抓取结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {scrapeResults.length} 道</span></span>}
-          style={{marginTop:16}}>
+
+        <Card size="small" title={<span>抓取结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {scrapeResults.length} 道</span></span>} style={{marginTop:16}}>
           <Spin spinning={scrapeResultsLoading}>
-            {scrapeResults.length===0 && !scrapeResultsLoading && <Empty description="暂无抓取结果" />}
+            {scrapeResults.length===0 && !scrapeResultsLoading && <Empty description="暂无抓取结果"/>}
             {scrapeResults.map((q:any,i:number)=>(
               <div key={q.id} style={{display:'flex',alignItems:'flex-start',padding:'10px 12px',borderBottom:i<scrapeResults.length-1?'1px solid #f5f5f5':'none'}}>
                 <span style={{width:28,color:'#999',fontSize:12,paddingTop:2,flexShrink:0}}>{i+1}</span>
@@ -522,8 +515,8 @@ export default function QuestionAdminPage() {
                     <Tag color="blue" style={{fontSize:10}}>{typeMap[q.question_type]||q.question_type}</Tag>
                     {q.score!=null && <Tag color="orange" style={{fontSize:10}}>{q.score}分</Tag>}
                     {(q.grade_level?.knowledge_points||[]).slice(0,2).map((kp:string,j:number)=>(<Tag key={j} color="purple" style={{fontSize:10}}>{kp}</Tag>))}
-                    <Tag color={SOURCE_COLORS[q.source]?.color||'default'} style={{fontSize:10}}>{SOURCE_COLORS[q.source]?.label||q.source}</Tag>
-                    <Tag color={STATUS_COLORS[q.review_status]?.color||'default'} style={{fontSize:10}}>{STATUS_COLORS[q.review_status]?.label||q.review_status}</Tag>
+                    <Tag color={SCRAPE_SOURCE_MAP[q.source]?.color||'default'} style={{fontSize:10}}>{SCRAPE_SOURCE_MAP[q.source]?.label||q.source}</Tag>
+                    <Tag color={REVIEW_STATUS_MAP[q.review_status]?.color||'default'} style={{fontSize:10}}>{REVIEW_STATUS_MAP[q.review_status]?.label||q.review_status}</Tag>
                   </div>
                 </div>
                 <span style={{width:90,fontSize:11,color:'#999',textAlign:'center',paddingTop:2,flexShrink:0}}>{(q.created_at||'').slice(5,16).replace('T',' ')}</span>
@@ -540,7 +533,7 @@ export default function QuestionAdminPage() {
         {scrapeEditOpen && scrapeEditQ && (
           <QuestionEditModal open={scrapeEditOpen} question={scrapeEditQ}
             onClose={()=>{setScrapeEditOpen(false);setScrapeEditQ(null);}}
-            onSuccess={()=>{setScrapeEditOpen(false);setScrapeEditQ(null);loadScrapeResults();}} />
+            onSuccess={()=>{setScrapeEditOpen(false);setScrapeEditQ(null);loadScrapeResults();}}/>
         )}
       </>),
     },
@@ -755,7 +748,7 @@ function ReviewQuestionList({ onRefresh }: { onRefresh: () => void }) {
           { title: '难度', dataIndex: 'difficulty', width: 60, render: (t: string) => <Tag color={toColorMap(diffs)[t]?.color}>{diffMap[t] || t}</Tag> },
           { title: '来源', dataIndex: 'source', width: 70, render: (s: string) => { const m = sourceMap[s]; return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>; } },
           { title: '状态', dataIndex: 'review_status', width: 80, render: (s: string) => { const m = reviewStatusMap[s]; return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>; } },
-          { title: '时间', dataIndex: 'created_at', width: 100, render: (v: string) => (v || '').slice(0, 10) },
+          { title: '时间', dataIndex: 'created_at', width: 140, render: (v: string) => (v || '').slice(0, 16).replace('T', ' ') },
           {
             title: '操作', width: 120,
             render: (_: any, r: any) => (
@@ -886,7 +879,7 @@ function QuestionListBySource({ sourceFilter, title }: { sourceFilter: string, t
           { title: '难度', dataIndex: 'difficulty', width:60, render:(t:string)=><Tag color={toColorMap(diffs)[t]?.color}>{diffMap[t]||t}</Tag> },
           { title: '来源', dataIndex: 'source', width:80, render:(s:string)=>{const m=sourceMap[s];return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>;} },
           { title: '状态', dataIndex: 'review_status', width:80, render:(s:string)=>{const m=statusMap[s];return m ? <Tag color={m.color}>{m.label}</Tag> : <Tag>{s}</Tag>;} },
-          { title: '时间', dataIndex: 'created_at', width:100, render:(v:string)=>(v||'').slice(0,10) },
+          { title: '抓取时间', dataIndex: 'created_at', width:140, render:(v:string)=>(v||'').slice(0,16).replace('T',' ') },
           { title: '操作', width:100, render:(_:any, r:any) => (
             <Space size={2}>
               <Button size="small" type="link" icon={<EditOutlined />} onClick={() => { setEditQuestion(r); setEditOpen(true); }} />
