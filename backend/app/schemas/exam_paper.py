@@ -158,7 +158,7 @@ class ExamPaperBase(BaseModel):
     title: str = Field(..., max_length=200)
     subtitle: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
-    status: str = Field(default="DRAFT", pattern="^(READY|PUBLISHED|ARCHIVED)$")
+    status: str = Field(default="READY", pattern="^(READY|PUBLISHED|ARCHIVED)$")
     subject: Optional[str] = Field(None, max_length=50)
     grade_level: Optional[GradeLevel] = None
     total_score: int = Field(default=0, ge=0)
