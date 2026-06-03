@@ -139,7 +139,7 @@ export default function QuestionAdminPage() {
   const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
   const [scrapePage, setScrapePage] = useState(1);
   const [scrapeTotal, setScrapeTotal] = useState(0);
-  const PAGE_SIZE = 20;
+  const PAGE_SIZE = 10;
 
   const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
   const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
@@ -182,8 +182,9 @@ export default function QuestionAdminPage() {
     setScrapeTaskCount(n || 1);
     const c = v.count || 5;
     const labels: Record<string,string> = {SINGLE_CHOICE:'单选题',MULTIPLE_CHOICE:'多选题',FILL_BLANK:'填空题',SUBJECTIVE:'解答题'};
+    const findName = (nodes: any[], id: string): string => { for (const n of nodes) { if (n.key===id) return n.title; if (n.children) { const f=findName(n.children,id); if (f) return f; } } return id; };
     setScrapeDetailText(kps.flatMap((kp:string) => gls.flatMap((gl:string) => qts.map((qt:string) =>
-      `知识点: ${kp} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
+      `知识点: ${findName(scrapeKnNodes, kp)} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
     ))).join('\n'));
     setScrapeDetailExpanded(false);
   };
@@ -572,10 +573,8 @@ export default function QuestionAdminPage() {
             ))}
           </Spin>
           {scrapeTotal > PAGE_SIZE && (
-            <div style={{textAlign:'center',padding:'8px 0'}}>
-              <Pagination size="small" current={scrapePage} pageSize={PAGE_SIZE} total={scrapeTotal}
-                onChange={(pg) => loadScrapeResults(pg)} showTotal={(t) => `共 ${t} 道`} />
-            </div>
+            <Pagination size="small" current={scrapePage} onChange={(p: number) => loadScrapeResults(p)}
+              pageSize={PAGE_SIZE} total={scrapeTotal} showSizeChanger={false} />
           )}
         </Card>
         {scrapeEditOpen && scrapeEditQ && (
