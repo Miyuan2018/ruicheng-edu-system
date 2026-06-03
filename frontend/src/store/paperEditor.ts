@@ -605,12 +605,18 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
     if (!paper) return;
     set({ saving: true });
     try {
+      // 归一化 grade_level.grades 为数组（防御旧版草稿数据中 grades 为字符串）
+      const normalizeGradeLevel = (gl: any) => {
+        if (!gl) return { scope: 'grade', grades: ['G8'] };
+        const raw = gl.grades;
+        const gradesArr = Array.isArray(raw) ? raw : (typeof raw === 'string' && raw ? [raw] : ['G8']);
+        return { ...gl, grades: gradesArr };
+      };
+
       // 阶段 1：新建时先创建主表记录拿 id
       let pid = paper.id;
       if (!pid) {
-        const gl = (paper.grade_level && paper.grade_level.grades?.length > 0)
-          ? paper.grade_level
-          : { scope: 'grade', grades: ['G8'] };
+        const gl = normalizeGradeLevel(paper.grade_level);
         const resp = await paperApi.create({
           title: paper.title || '未命名试卷',
           subject: paper.subject || '',
@@ -625,6 +631,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       const currentPaper = get().paper!;
       const cleanPaper = {
         ...currentPaper,
+        grade_level: normalizeGradeLevel(currentPaper.grade_level),
         units: currentPaper.units.map(u => ({
           name: u.name,
           description: u.description,
