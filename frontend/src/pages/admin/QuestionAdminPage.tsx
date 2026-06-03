@@ -103,7 +103,7 @@ export default function QuestionAdminPage() {
     setTaskProgress(null);
     try {
       const kpVal = values.knowledge_point;
-      const kpStr = Array.isArray(kpVal) ? kpVal.map((id:string)=>{const fn=(n:any[],i:string):string=>{for(const x of n){if(x.key===i)return x.title;if(x.children){const r=fn(x.children,i);if(r)return r;}}return i;};return fn(scrapeKnNodes,id);}).join(',') : (kpVal||'');
+      const kpStr = Array.isArray(kpVal) ? kpVal.map((id:string)=>{const m:Record<string,string>={};(function w(ns:any[]){for(const n of ns||[]){m[n.key]=n.title;if(n.children)w(n.children);}})(scrapeKnNodes);return m[id]||id;}).join(',') : (kpVal||'');
       const { data } = await apiClient.post('/question-admin/generate', null, {
         params: { ...values, knowledge_point: kpStr, model: llmProvider === 'deepseek' ? dsModel : selectedModel, provider: llmProvider }
       });
@@ -239,8 +239,10 @@ export default function QuestionAdminPage() {
     setScrapeTaskCount(n || 1);
     const c = v.count || 5;
     const labels: Record<string,string> = {SINGLE_CHOICE:'单选题',MULTIPLE_CHOICE:'多选题',FILL_BLANK:'填空题',SUBJECTIVE:'解答题'};
-    setScrapeDetailText(kps.flatMap((kp:string) => gls.flatMap((gl:string) => qts.map((qt:string) =>
-      `知识点: ${kp} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
+    const nameMap:Record<string,string>={};
+    (function walk(ns:any[]){for(const n of ns||[]){nameMap[n.key]=n.title;if(n.children)walk(n.children);}})(scrapeKnNodes);
+    setScrapeDetailText(kps.flatMap((kp:string)=>gls.flatMap((gl:string)=>qts.map((qt:string)=>
+      `知识点: ${nameMap[kp]||kp} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
     ))).join('\n'));
     setScrapeDetailExpanded(false);
   };
@@ -248,14 +250,7 @@ export default function QuestionAdminPage() {
   const handleScrape = async (values: any) => {
     // 从 TreeSelect UUID 提取 title 作为知识点名称
     const chosenIds: string[] = Array.isArray(values.knowledge_points) ? values.knowledge_points : (values.knowledge_points ? [values.knowledge_points] : []);
-    const findTitle = (nodes: any[], id: string): string | null => {
-      for (const n of nodes) {
-        if (n.key === id) return n.title;
-        if (n.children) { const f = findTitle(n.children, id); if (f) return f; }
-      }
-      return null;
-    };
-    const kpNames = chosenIds.map(id => findTitle(scrapeKnNodes, id)).filter(Boolean);
+    const kpNames = chosenIds.map((id:string)=>{const m:Record<string,string>={};(function w(ns:any[]){for(const n of ns||[]){m[n.key]=n.title;if(n.children)w(n.children);}})(scrapeKnNodes);return m[id];}).filter(Boolean);
 
     const params: any = {
       knowledge_points: kpNames.join(',') || values.knowledge_points,
@@ -389,7 +384,7 @@ export default function QuestionAdminPage() {
         {/* 生成条件栏 */}
         <Card size="small" style={{marginTop:8}} styles={{body:{padding:'12px 16px'}}}>
           <Form form={genForm} onFinish={handleGenerateQuestions} size="small"
-            onValuesChange={(_,all)=>{setPromptText(`知识点:${all.knowledge_point||'(未填)'} 难度:${all.difficulty||'MEDIUM'} 题型:${all.question_type||'SINGLE_CHOICE'} 数量:${all.count||3}道 年级:${all.grade_level||'G8'} 学科:${all.subject||'数学'}`);}}
+            onValuesChange={(_,all)=>{const m:Record<string,string>={};(function w(ns:any[]){for(const n of ns||[]){m[n.key]=n.title;if(n.children)w(n.children);}})(scrapeKnNodes);const kp=Array.isArray(all.knowledge_point)?all.knowledge_point.map((id:string)=>m[id]||id).join(','):(all.knowledge_point||'(未填)');const dl:Record<string,string>={EASY:'简单',MEDIUM:'中等',HARD:'困难'};const tl:Record<string,string>={SINGLE_CHOICE:'单选题',MULTIPLE_CHOICE:'多选题',FILL_BLANK:'填空题',SUBJECTIVE:'解答题'};const gl:Record<string,string>={G5:'五年级',G6:'六年级',G7:'七年级',G8:'八年级',G9:'九年级',G10:'高一',G11:'高二',G12:'高三'};setPromptText(`你是一位专业的教育题目生成专家。请根据以下要求生成试题，直接返回JSON数组。\n\n要求：\n- 知识点：${kp}\n- 难度：${dl[all.difficulty]||all.difficulty||'中等'}\n- 题型：${tl[all.question_type]||all.question_type||'单选题'}\n- 数量：${all.count||3}道\n- 年级：${gl[all.grade_level]||all.grade_level||'八年级'}\n- 学科：${all.subject||'数学'}\n\n返回格式：严格的JSON数组，不要markdown代码块。`);}}
             initialValues={{subject:'数学',grade_level:'G8',difficulty:'MEDIUM',question_type:'SINGLE_CHOICE',count:3}}>
             <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
               <Form.Item name="subject" style={{marginBottom:0,minWidth:80}}><Select size="small" options={subjectOptions} placeholder="学科"/></Form.Item>
@@ -405,7 +400,7 @@ export default function QuestionAdminPage() {
           </Form>
           <div style={{marginTop:8,padding:'6px 10px',background:'#fafbfc',borderRadius:6,fontSize:12,color:'#999',display:'flex',alignItems:'center',gap:8}}>
             <span>📝 提示词</span>
-            <span style={{flex:1,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis',color:'#bbb'}}>{promptText}</span>
+            <span style={{flex:1,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis',color:'#bbb'}}>{promptText.split('\n').filter((l:string)=>l.startsWith('- ')).join(' | ')}</span>
             <span style={{color:'#1677ff',cursor:'pointer',fontSize:11}} onClick={()=>setLlmPromptExpanded(!llmPromptExpanded)}>{llmPromptExpanded?'收起':'展开'}</span>
           </div>
           {llmPromptExpanded && <Input.TextArea rows={6} size="small" style={{fontFamily:'monospace',fontSize:11,marginTop:8}} value={promptText} onChange={e=>setPromptText(e.target.value)}/>}
@@ -560,12 +555,10 @@ export default function QuestionAdminPage() {
               <span>预计入库 ≤ <b>{(() => { const v = scrapeForm.getFieldsValue(); return (v.count || 5) * scrapeTaskCount * 3; })()}</b> 道</span>
               <span style={{ color: '#ddd' }}>|</span>
               <span>DDG → 百度 → LLM</span>
-              {scrapeDetailText && (
-                <span style={{ marginLeft: 'auto', color: '#1677ff', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  onClick={() => setScrapeDetailExpanded(!scrapeDetailExpanded)}>
-                  {scrapeDetailExpanded ? '收起 ▲' : '展开详情 ▸'}
-                </span>
-              )}
+              <span style={{ marginLeft: 'auto', color: '#1677ff', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                onClick={() => setScrapeDetailExpanded(!scrapeDetailExpanded)}>
+                {scrapeDetailExpanded ? '收起 ▲' : '展开详情 ▸'}
+              </span>
             </div>
             {scrapeDetailExpanded && (
               <div style={{ marginTop: 6, padding: '6px 8px', background: '#fff', borderRadius: 4, fontSize: 11, fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
