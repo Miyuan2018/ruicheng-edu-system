@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Card, Table, Button, Form, Input, Select, InputNumber, Row, Col, Popconfirm,
   Tabs, Tag, Space, message, Typography, Badge, Alert, Divider, Pagination,
-  Radio, Empty, TreeSelect, Progress, Spin
+  Radio, Empty, TreeSelect, Progress, Spin, Checkbox
 } from 'antd';
 import {
   RobotOutlined, GlobalOutlined,
@@ -135,11 +135,17 @@ export default function QuestionAdminPage() {
   const [scrapeTaskCount, setScrapeTaskCount] = useState(1);
   const [scrapeDetailExpanded, setScrapeDetailExpanded] = useState(false);
   const [scrapeDetailText, setScrapeDetailText] = useState('');
+  const [scrapeHelpOpen, setScrapeHelpOpen] = useState(false);
   const [scrapeResults, setScrapeResults] = useState<any[]>([]);
   const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
   const [scrapePage, setScrapePage] = useState(1);
   const [scrapeTotal, setScrapeTotal] = useState(0);
-  const PAGE_SIZE = 10;
+  const [scrapePageSize, setScrapePageSize] = useState(10);
+  const [scrapeTypeFilter, setScrapeTypeFilter] = useState<string|undefined>();
+  const [scrapeDiffFilter, setScrapeDiffFilter] = useState<string|undefined>();
+  const [scrapeStatusFilter, setScrapeStatusFilter] = useState<string|undefined>();
+  const [scrapeSearchInput, setScrapeSearchInput] = useState('');
+  const [scrapeSelectedIds, setScrapeSelectedIds] = useState<string[]>([]);
 
   const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
   const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
@@ -147,11 +153,35 @@ export default function QuestionAdminPage() {
     try { await apiClient.delete('/questions/' + id); message.success('已删除'); loadScrapeResults(); }
     catch { message.error('删除失败'); }
   };
+  const handleScrapeBatchDelete = async () => {
+    if (scrapeSelectedIds.length===0) { message.warning('请先选中试题'); return; }
+    try { await apiClient.post('/questions/batch-delete', scrapeSelectedIds);
+      message.success('已删除 '+scrapeSelectedIds.length+' 道'); setScrapeSelectedIds([]); loadScrapeResults(); }
+    catch { message.error('批量删除失败'); }
+  };
 
-  const loadScrapeResults = (pg = 1) => {
+  const loadScrapeResultsWithFilters = (pg = 1, ps = scrapePageSize, tf = scrapeTypeFilter, df = scrapeDiffFilter, sf = scrapeStatusFilter, kw = scrapeSearchInput) => {
+    setScrapeResultsLoading(true);
+    setScrapePage(pg); setScrapePageSize(ps);
+    setScrapeTypeFilter(tf); setScrapeDiffFilter(df); setScrapeStatusFilter(sf); setScrapeSearchInput(kw);
+    const params: any = { source: 'SCRAPED', limit: ps, skip: (pg-1)*ps };
+    if (tf) params.question_type = tf;
+    if (df) params.difficulty = df;
+    if (sf) params.review_status = sf;
+    if (kw) params.keyword = kw;
+    apiClient.get('/questions', { params })
+      .then(({ data }: any) => {
+        const resp = data || {};
+        setScrapeResults(resp.items || (Array.isArray(resp) ? resp : []));
+        setScrapeTotal(resp.total || 0);
+      }).catch(() => {}).finally(() => setScrapeResultsLoading(false));
+  };
+
+  const loadScrapeResults = (pg = 1, ps = scrapePageSize) => {
     setScrapeResultsLoading(true);
     setScrapePage(pg);
-    apiClient.get('/questions', { params: { source: 'SCRAPED', limit: PAGE_SIZE, skip: (pg-1)*PAGE_SIZE } })
+    setScrapePageSize(ps);
+    apiClient.get('/questions', { params: { source: 'SCRAPED', limit: ps, skip: (pg-1)*ps } })
       .then(({ data }: any) => {
         const resp = data || {};
         setScrapeResults(resp.items || (Array.isArray(resp) ? resp : []));
@@ -182,9 +212,8 @@ export default function QuestionAdminPage() {
     setScrapeTaskCount(n || 1);
     const c = v.count || 5;
     const labels: Record<string,string> = {SINGLE_CHOICE:'单选题',MULTIPLE_CHOICE:'多选题',FILL_BLANK:'填空题',SUBJECTIVE:'解答题'};
-    const findName = (nodes: any[], id: string): string => { for (const n of nodes) { if (n.key===id) return n.title; if (n.children) { const f=findName(n.children,id); if (f) return f; } } return id; };
     setScrapeDetailText(kps.flatMap((kp:string) => gls.flatMap((gl:string) => qts.map((qt:string) =>
-      `知识点: ${findName(scrapeKnNodes, kp)} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
+      `知识点: ${kp} → 年级: ${gl} → ${labels[qt]||qt} ×${c}`
     ))).join('\n'));
     setScrapeDetailExpanded(false);
   };
@@ -535,6 +564,21 @@ export default function QuestionAdminPage() {
 
         <Card size="small" title={<span>抓取结果 <span style={{fontWeight:400,color:'#999',fontSize:12}}>共 {scrapeResults.length} 道</span></span>}
           extra={<span style={{fontSize:11,color:'#999'}}>仅展示本次抓取 · 已在题库中</span>} style={{marginTop:16}}>
+          <div style={{marginBottom:8,display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+            <Input size="small" placeholder="搜索题目" style={{width:160}} value={scrapeSearchInput}
+              onChange={e=>setScrapeSearchInput(e.target.value)} onPressEnter={()=>loadScrapeResultsWithFilters(1,scrapePageSize,scrapeTypeFilter,scrapeDiffFilter,scrapeStatusFilter,scrapeSearchInput)} allowClear />
+            <Select size="small" placeholder="题型" allowClear style={{width:90}} value={scrapeTypeFilter}
+              onChange={v=>{setScrapeTypeFilter(v);loadScrapeResultsWithFilters(1,scrapePageSize,v,scrapeDiffFilter,scrapeStatusFilter,scrapeSearchInput);}} options={toSelectOptions(qtypes)} />
+            <Select size="small" placeholder="难度" allowClear style={{width:80}} value={scrapeDiffFilter}
+              onChange={v=>{setScrapeDiffFilter(v);loadScrapeResultsWithFilters(1,scrapePageSize,scrapeTypeFilter,v,scrapeStatusFilter,scrapeSearchInput);}} options={toSelectOptions(diffs)} />
+            <Select size="small" placeholder="状态" allowClear style={{width:80}} value={scrapeStatusFilter}
+              onChange={v=>{setScrapeStatusFilter(v);loadScrapeResultsWithFilters(1,scrapePageSize,scrapeTypeFilter,scrapeDiffFilter,v,scrapeSearchInput);}}
+              options={[{value:'PENDING',label:'待审核'},{value:'APPROVED',label:'已通过'},{value:'REJECTED',label:'已驳回'}]} />
+            <Button size="small" icon={<SearchOutlined/>} onClick={()=>loadScrapeResultsWithFilters(1,scrapePageSize,scrapeTypeFilter,scrapeDiffFilter,scrapeStatusFilter,scrapeSearchInput)}>查询</Button>
+            <Popconfirm title={'确定删除 '+scrapeSelectedIds.length+' 道?'} onConfirm={handleScrapeBatchDelete} disabled={scrapeSelectedIds.length===0}>
+              <Button size="small" danger icon={<DeleteOutlined/>} disabled={scrapeSelectedIds.length===0}>批量删除{scrapeSelectedIds.length>0?`(${scrapeSelectedIds.length})`:''}</Button>
+            </Popconfirm>
+          </div>
           <Spin spinning={scrapeResultsLoading}>
             {scrapeResults.length===0 && !scrapeResultsLoading && <Empty description="暂无抓取结果"/>}
             {scrapeResults.length > 0 && (
@@ -547,7 +591,9 @@ export default function QuestionAdminPage() {
               </div>
             )}
             {scrapeResults.map((q:any,i:number)=>(
-              <div key={q.id} style={{display:'flex',alignItems:'flex-start',padding:'10px 12px',borderBottom:i<scrapeResults.length-1?'1px solid #f5f5f5':'none'}}>
+              <div key={q.id} style={{display:'flex',alignItems:'flex-start',padding:'10px 12px',borderBottom:i<scrapeResults.length-1?'1px solid #f5f5f5':'none',background:scrapeSelectedIds.includes(q.id)?'#f0f5ff':undefined}}>
+                <Checkbox checked={scrapeSelectedIds.includes(q.id)} style={{marginRight:8,marginTop:4,flexShrink:0}}
+                  onChange={()=>setScrapeSelectedIds(scrapeSelectedIds.includes(q.id)?scrapeSelectedIds.filter(id=>id!==q.id):[...scrapeSelectedIds,q.id])} />
                 <span style={{width:28,color:'#999',fontSize:12,paddingTop:2,flexShrink:0}}>{i+1}</span>
                 <div style={{flex:1,minWidth:0,paddingRight:12}}>
                   <div style={{fontSize:13,lineHeight:1.5,marginBottom:4}}>{q.title?.substring(0,120)}</div>
@@ -572,16 +618,36 @@ export default function QuestionAdminPage() {
               </div>
             ))}
           </Spin>
-          {scrapeTotal > PAGE_SIZE && (
-            <Pagination size="small" current={scrapePage} onChange={(p: number) => loadScrapeResults(p)}
-              pageSize={PAGE_SIZE} total={scrapeTotal} showSizeChanger={false} />
-          )}
+          <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
+            <Pagination size="small" current={scrapePage}
+              onChange={(p: number) => loadScrapeResults(p)}
+              onShowSizeChange={(_: number, sz: number) => loadScrapeResults(1, sz)}
+              pageSize={scrapePageSize} total={scrapeTotal}
+              showSizeChanger showQuickJumper={false}
+              pageSizeOptions={['10','20','50']}
+              showTotal={(t) => `共 ${t} 条`} />
+          </div>
         </Card>
         {scrapeEditOpen && scrapeEditQ && (
           <QuestionEditModal open={scrapeEditOpen} question={scrapeEditQ}
             onClose={()=>{setScrapeEditOpen(false);setScrapeEditQ(null);}}
             onSuccess={()=>{setScrapeEditOpen(false);setScrapeEditQ(null);loadScrapeResults();}}/>
         )}
+
+        <Card size="small" title="页面结构说明" style={{marginTop:12}}
+          extra={<Button size="small" type="link" onClick={()=>setScrapeHelpOpen(!scrapeHelpOpen)}>{scrapeHelpOpen?'收起':'展开'}</Button>}>
+          {scrapeHelpOpen && (
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}><tbody>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600,width:80}}>搜索栏</td><td style={{padding:'6px 8px'}}>单行：学科、年级多选、知识点TreeSelect、难度、题型多选、数量 → 开始抓取</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>预览条</td><td style={{padding:'6px 8px'}}>拆分任务数 + 预计入库 + DDG→百度→LLM + 展开详情</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>进度条</td><td style={{padding:'6px 8px'}}>抓取中动画 + 任务数，完成后显示入库结果</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>结果列表</td><td style={{padding:'6px 8px'}}># · 标题+标签 · 时间 · 状态 · 编辑/删除(右)</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>分页</td><td style={{padding:'6px 8px'}}>右下角：共N条 + 页码 + 每页行数下拉</td></tr>
+              <tr style={{borderBottom:'1px solid #f0f0f0'}}><td style={{padding:'6px 8px',fontWeight:600}}>格式化</td><td style={{padding:'6px 8px'}}>LaTeX预处理 → 强化Prompt → JSON解析 → 重试 → JSON修复 → 字段校验</td></tr>
+              <tr><td style={{padding:'6px 8px',fontWeight:600}}>搜索源</td><td style={{padding:'6px 8px'}}>DDG(蓝) · 百度(橙) · LLM(红)</td></tr>
+            </tbody></table>
+          )}
+        </Card>
       </>),
     },
     {
