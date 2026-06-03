@@ -52,6 +52,8 @@ export interface QuestionBrief {
   review_status?: string;
 }
 
+export type TemplateType = 'knowledge_block' | 'question_type' | 'difficulty_progression' | 'volume' | 'generic';
+
 export interface PaperDraft {
   id?: string;
   title: string;
@@ -64,6 +66,7 @@ export interface PaperDraft {
   subtitle?: string;
   instructions?: string;
   description?: string;
+  template_type: TemplateType;
   show_units: boolean;
   per_unit_timer: boolean;
   units: ExamPaperUnit[];
@@ -89,6 +92,7 @@ export interface PaperListItem {
   status: string;
   unit_count?: number;
   question_count?: number;
+  template_type?: string;
   created_at?: string;
   updated_at?: string;
   created_by?: string;
