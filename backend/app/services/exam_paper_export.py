@@ -303,7 +303,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
     header.is_linked_to_previous = False
     hp = header.paragraphs[0]
     hp.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    hr = hp.add_run("普通高等学校招生全国统一考试")
+    hr = hp.add_run(paper.title or "")
     hr.bold = True
     hr.font.size = FONT_SMALL_SIZE
     _set_cn_font(hr, "宋体")
@@ -507,6 +507,12 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
             continue
     if not font_loaded:
         pdf.set_font("Helvetica", "", 12)
+
+    def header():
+        pdf.set_font("CJK", "", 9)
+        pdf.cell(0, 8, paper.title or "", align="L")
+        pdf.ln(4)
+    pdf.header = header
 
     def footer():
         pdf.set_y(-20)
