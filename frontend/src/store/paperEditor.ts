@@ -63,7 +63,7 @@ const newEmptyPaper = (): PaperDraft => ({
   duration_minutes: null,
   difficulty_ratio: { EASY: 20, MEDIUM: 50, HARD: 30 },
   total_score: 0,
-  status: 'DRAFT',
+  status: 'READY',
   subtitle: '',
   instructions: '',
   description: '',
@@ -573,10 +573,14 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       // 新建试卷：先在主表创建记录获取 id，再存草稿
       let pid = paper.id;
       if (!pid) {
+        // grade_level 必须有效（grades 不能为空数组）
+        const gl = paper.grade_level?.grades?.length > 0
+          ? paper.grade_level
+          : { scope: 'grade', grades: ['G7'] };
         const resp = await paperApi.create({
           title: paper.title || '未命名试卷',
-          subject: paper.subject,
-          grade_level: paper.grade_level,
+          subject: paper.subject || '',
+          grade_level: gl,
           status: 'READY',
         });
         pid = resp.data?.id || resp.data;
