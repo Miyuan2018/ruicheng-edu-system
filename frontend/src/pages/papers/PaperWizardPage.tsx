@@ -27,7 +27,7 @@ export default function PaperWizardPage() {
         try {
           const { draftApi } = await import('../../api/drafts');
           const resp = await draftApi.list();
-          const drafts = Array.isArray(resp) ? resp : (resp?.data || []);
+          const drafts = Array.isArray(resp?.data) ? resp.data : [];
           if (drafts.length > 0) {
             usePaperEditorStore.setState({ pendingDraft: drafts[0].data });
           }

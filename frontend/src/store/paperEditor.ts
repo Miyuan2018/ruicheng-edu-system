@@ -120,8 +120,13 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       let draftData = null;
       try {
         const draftsResp = await draftApi.getByPaper(id);
-        const drafts = Array.isArray(draftsResp) ? draftsResp : [];
+        const drafts = Array.isArray(draftsResp?.data) ? draftsResp.data : [];
         draftData = drafts.length > 0 ? drafts[0].data : null;
+        // 有草稿时直接恢复草稿数据，不从主表加载
+        if (draftData) {
+          set({ paper: draftData, pendingDraft: null, currentStep: 0, loading: false, dirty: false });
+          return;
+        }
       } catch {}
 
       const resp = await paperApi.preview(id);
@@ -577,7 +582,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       // 保存成功后清理对应草稿
       try {
         const draftsResp = await draftApi.getByPaper(paper.id);
-        const drafts = Array.isArray(draftsResp) ? draftsResp : [];
+        const drafts = Array.isArray(draftsResp?.data) ? draftsResp.data : [];
         for (const d of drafts) {
           await draftApi.delete(d.id).catch(() => {});
         }

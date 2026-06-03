@@ -102,7 +102,7 @@ export default function PaperListPage() {
     try {
       const { draftApi } = await import('../../api/drafts');
       const resp = await draftApi.getByPaper(paperId);
-      const drafts = Array.isArray(resp) ? resp : [];
+      const drafts = Array.isArray(resp?.data) ? resp.data : [];
       for (const d of drafts) {
         await draftApi.delete(d.id);
       }

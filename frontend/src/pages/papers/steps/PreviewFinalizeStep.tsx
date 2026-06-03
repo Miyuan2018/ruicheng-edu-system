@@ -62,7 +62,7 @@ export default function PreviewFinalizeStep() {
     try {
       const { draftApi } = await import('../../../api/drafts');
       const resp = await draftApi.getByPaper(paper.id);
-      const drafts = Array.isArray(resp) ? resp : [];
+      const drafts = Array.isArray(resp?.data) ? resp.data : [];
       for (const d of drafts) await draftApi.delete(d.id);
       message.info('已取消修改');
       navigate('/papers');
