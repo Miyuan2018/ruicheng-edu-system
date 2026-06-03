@@ -25,13 +25,21 @@ async def save_draft(
 ):
     """创建或覆盖草稿"""
     _check_teacher_or_admin(current_user)
-    existing = await db.execute(
-        select(ExamPaperDraft).where(
-            ExamPaperDraft.user_id == current_user.id,
-            ExamPaperDraft.paper_id == body.paper_id,
+    if body.paper_id:
+        existing = await db.execute(
+            select(ExamPaperDraft).where(
+                ExamPaperDraft.user_id == current_user.id,
+                ExamPaperDraft.paper_id == body.paper_id,
+            )
         )
-    )
-    draft = existing.scalar_one_or_none()
+    else:
+        existing = await db.execute(
+            select(ExamPaperDraft).where(
+                ExamPaperDraft.user_id == current_user.id,
+                ExamPaperDraft.paper_id.is_(None),
+            ).order_by(ExamPaperDraft.updated_at.desc()).limit(1)
+        )
+    draft = existing.scalar()
     if draft:
         draft.data = body.data
     else:
