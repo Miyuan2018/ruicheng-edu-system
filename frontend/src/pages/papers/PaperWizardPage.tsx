@@ -129,28 +129,26 @@ export default function PaperWizardPage() {
         message.warning('请至少添加一个题型');
         return;
       }
-      for (const unit of units) {
-        const configs = unit.question_config || [];
-        if (configs.length === 0) {
-          message.warning('存在未配置的题型行，请补充或删除');
+      // Collect all question_config across units (handles template B single-unit case)
+      const allConfigs = units.flatMap(u => u.question_config || []);
+      if (allConfigs.length === 0) {
+        message.warning('存在未配置的题型行，请补充或删除');
+        return;
+      }
+      for (const cfg of allConfigs) {
+        const label = TYPE_LABELS[cfg.question_type] || cfg.question_type;
+        if ((cfg.count || 0) <= 0) {
+          message.warning(`「${label}」题数不能为 0，请填写题数`);
           return;
         }
-        for (const cfg of configs) {
-          const label = TYPE_LABELS[cfg.question_type] || cfg.question_type;
-          if ((cfg.count || 0) <= 0) {
-            message.warning(`「${label}」题数不能为 0，请填写题数`);
-            return;
-          }
-          if ((cfg.score_per_question || 0) <= 0) {
-            message.warning(`「${label}」每题分值不能为 0，请填写分值`);
-            return;
-          }
+        if ((cfg.score_per_question || 0) <= 0) {
+          message.warning(`「${label}」每题分值不能为 0，请填写分值`);
+          return;
         }
       }
-      // 校验结构总分与试卷总分一致
-      const computedTotal = units.reduce(
-        (sum, u) => sum + (u.question_config || []).reduce((s, c) => s + (c.count || 0) * (c.score_per_question || 0), 0),
-        0,
+      // Validate total score matches
+      const computedTotal = allConfigs.reduce(
+        (sum, c) => sum + (c.count || 0) * (c.score_per_question || 0), 0,
       );
       const targetTotal = paper?.total_score || 0;
       if (targetTotal > 0 && computedTotal !== targetTotal) {
