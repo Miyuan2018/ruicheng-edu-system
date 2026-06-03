@@ -574,9 +574,9 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
       let pid = paper.id;
       if (!pid) {
         // grade_level 必须有效（grades 不能为空数组）
-        const gl = paper.grade_level?.grades?.length > 0
+        const gl = (paper.grade_level && paper.grade_level.grades?.length > 0)
           ? paper.grade_level
-          : { scope: 'grade', grades: ['G7'] };
+          : { scope: 'grade', grades: ['G8'] };
         const resp = await paperApi.create({
           title: paper.title || '未命名试卷',
           subject: paper.subject || '',

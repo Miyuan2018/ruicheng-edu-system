@@ -262,7 +262,7 @@ export default function RecommendStep() {
               const resp = await paperApi.create({
                 title: st.paper?.title || '未命名试卷',
                 subject: st.paper?.subject || '',
-                grade_level: st.paper?.grade_level?.grades?.length > 0 ? st.paper.grade_level : { scope: 'grade', grades: ['G7'] },
+                grade_level: (st.paper?.grade_level?.grades?.length > 0 ? st.paper.grade_level : { scope: 'grade', grades: ['G8'] }),
                 status: 'READY',
               });
               pid = resp.data?.id || resp.data;
