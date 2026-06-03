@@ -628,6 +628,7 @@ async def save_paper_all(
         "instructions",
         "show_units",
         "per_unit_timer",
+        "template_type",
         "difficulty_ratio",
         "knowledge_node_ids",
     ):
@@ -1650,6 +1651,7 @@ async def preview_exam_paper(
             "question_count": q_total,
             "show_units": paper.show_units,
             "per_unit_timer": paper.per_unit_timer,
+            "template_type": paper.template_type,
             "difficulty_ratio": paper.difficulty_ratio,
             "knowledge_node_ids": paper.knowledge_node_ids,
         },
