@@ -464,7 +464,7 @@ export default function RecommendStep() {
         onClose={() => setManualOpen(false)}
         width={640}
       >
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
           <Input.Search
             placeholder="搜索题目关键词..."
             value={manualKeyword}
@@ -478,23 +478,22 @@ export default function RecommendStep() {
             onSearch={(v) => fetchManualResults(manualTarget?.questionType || '', v)}
             enterButton={<><SearchOutlined /> 搜索</>}
             allowClear
+            style={{ flex: 1 }}
           />
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
           <Button
-            size="small"
             icon={<FilterOutlined />}
             onClick={() => setFilterExpanded(!filterExpanded)}
             type={filterExpanded ? 'primary' : 'default'}
           >
             筛选 {filterExpanded ? '▲' : '▼'}
           </Button>
-          {filterExpanded && (
-            <div style={{
-              background: '#fafafa', borderRadius: 6, padding: 10, marginTop: 8,
-              display: 'flex', gap: 8, flexWrap: 'wrap',
-            }}>
+        </div>
+
+        {filterExpanded && (
+          <div style={{
+            background: '#fafafa', borderRadius: 6, padding: 10, marginBottom: 12,
+            display: 'flex', gap: 8, flexWrap: 'wrap',
+          }}>
               <Select
                 mode="multiple"
                 placeholder="题型"
@@ -537,14 +536,13 @@ export default function RecommendStep() {
                 showCheckedStrategy={TreeSelect.SHOW_CHILD}
                 value={filterKnIds}
                 onChange={(v) => { setFilterKnIds(v); fetchManualResults(manualTarget?.questionType || '', manualKeyword, undefined, undefined, v); }}
-                style={{ minWidth: 150, flex: 1 }}
+                style={{ minWidth: 160, flex: 2 }}
                 size="small"
                 allowClear
                 maxTagCount={2}
               />
             </div>
-          )}
-        </div>
+        )}
 
         <Spin spinning={manualLoading}>
           {manualResults.length === 0 && !manualLoading && (
