@@ -54,6 +54,10 @@ export default function StructureStep() {
 
   const handleModeChange = (mode: 'type' | 'unit') => {
     updateMeta({ show_units: mode === 'unit' });
+    // 切到按题型且空单元时，自动创建快速预设
+    if (mode === 'type' && units.length === 0) {
+      addQuickUnits('byType');
+    }
     setDirty(true);
   };
 
@@ -359,7 +363,8 @@ export default function StructureStep() {
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {!showUnits && (
           <Button size="small" icon={<PlusOutlined />} onClick={() => {
-            addTypeConfig(units[0]?.id || '', { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
+            if (!units[0]?.id) return;
+            addTypeConfig(units[0].id, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
             setDirty(true);
           }}>
             添加题型
