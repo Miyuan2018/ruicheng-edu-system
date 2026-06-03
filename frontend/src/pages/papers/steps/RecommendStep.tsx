@@ -43,8 +43,9 @@ export default function RecommendStep() {
         setLoading(true);
         fillGaps(paper.id).then(() => {
           message.info('已自动补充缺口题目');
-        }).catch(() => {
-          message.error('自动补充缺口失败');
+        }).catch((e: any) => {
+          const detail = e?.response?.data?.detail || e?.message || '自动补充缺口失败';
+          message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
         }).finally(() => setLoading(false));
       }
     } else {
@@ -52,8 +53,9 @@ export default function RecommendStep() {
       setLoading(true);
       regenerateAll(paper.id).then(() => {
         message.success('已自动生成题目');
-      }).catch(() => {
-        message.error('自动选题失败');
+      }).catch((e: any) => {
+        const detail = e?.response?.data?.detail || e?.message || '自动选题失败';
+        message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }).finally(() => setLoading(false));
     }
     // Zustand actions 和 antd message 引用稳定，不需要加入依赖数组
