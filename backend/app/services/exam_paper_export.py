@@ -202,6 +202,9 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
         pPr.append(pBdr)
         for q in tqs:
             _write_question_word(doc, q, t, Cm, Pt)
+        # 题型间加倍行距
+        spacer = doc.add_paragraph()
+        spacer.paragraph_format.space_before = Pt(12)
 
 
 def _write_question_word(doc, q, t, Cm, Pt):
@@ -304,7 +307,6 @@ async def export_word(exam_paper_id, db: AsyncSession):
     hp = header.paragraphs[0]
     hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     hr = hp.add_run(paper.title or "")
-    hr.bold = True
     hr.font.size = FONT_SMALL_SIZE
     _set_cn_font(hr, "宋体")
 
@@ -339,7 +341,15 @@ async def export_word(exam_paper_id, db: AsyncSession):
     fldChar4.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fldCharType', 'end')
     run_total._r.append(fldChar4)
 
-    # 标题已在页眉中，正文只放信息行和副标题
+    # 大标题 — 黑体二号居中加粗
+    title_para = doc.add_paragraph()
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_para.paragraph_format.space_after = Pt(4)
+    run_t = title_para.add_run(paper.title or "")
+    run_t.bold = True
+    run_t.font.size = FONT_TITLE_SIZE
+    _set_cn_font(run_t, "黑体")
+
     if paper.subtitle:
         sub_para = doc.add_paragraph()
         sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -477,7 +487,7 @@ def _write_type_sections_pdf(pdf, qs, type_order):
         pdf.ln(3)
         for q in tqs:
             _write_q_pdf(pdf, q, t)
-        pdf.ln(2)
+        pdf.ln(6)
 
 async def export_pdf(exam_paper_id, db: AsyncSession):
     """Generate a PDF for the exam paper."""
