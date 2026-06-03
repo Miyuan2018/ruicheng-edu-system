@@ -36,7 +36,7 @@ def _normalize_options(title: str, options: list | None) -> tuple[str, list[dict
             parts = re.split(r'\s+(?=[A-H][.．、）\)])', stripped)
             full_opts = []
             for part in parts:
-                pm = re.match(r'^([A-H])[.．、）\)]\s*(.*)', part)
+                pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', part)
                 if pm:
                     full_opts.append({'label': pm.group(1), 'text': pm.group(2).strip()})
             if len(full_opts) == len(options):
@@ -47,7 +47,7 @@ def _normalize_options(title: str, options: list | None) -> tuple[str, list[dict
     if all(isinstance(o, str) for o in options):
         full_opts = []
         for o in options:
-            pm = re.match(r'^([A-H])[.．、）\)]\s*(.*)', o)
+            pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', o)
             if pm:
                 full_opts.append({'label': pm.group(1), 'text': pm.group(2)})
             else:
@@ -135,6 +135,8 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
     grouped: dict[str, list] = {}
     for q in qs:
         grouped.setdefault(q["question_type"], []).append(q)
+    num_labels = ['一', '二', '三', '四', '五', '六', '七', '八']
+    section_idx = 0
     for t in type_order:
         tqs = grouped.get(t, [])
         if not tqs:
@@ -142,9 +144,9 @@ def _write_type_sections(doc, qs, type_order, Cm, Pt, RGBColor):
         header = doc.add_paragraph()
         type_score = sum(q['score'] for q in tqs)
         per_q = tqs[0]['score'] if tqs else 0
-        run = header.add_run(f"{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）")
-        run.bold = True
-        run.font.size = Pt(13)
+        num = num_labels[section_idx] if section_idx < len(num_labels) else str(section_idx + 1)
+        section_idx += 1
+        run = header.add_run(f"{num}、{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）")
         run.bold = True
         run.font.size = Pt(13)
         for q in tqs:
@@ -165,7 +167,7 @@ def _write_question_word(doc, q, t, Cm, Pt):
                 opt_para.add_run(f"{label}. {text}" if text else label).font.size = Pt(10)
             else:
                 line = str(opt)
-                pm = re.match(r'^([A-H])[.︐，）\)]\s*(.*)', line)
+                pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', line)
                 if pm and pm.group(2):
                     line = f"{pm.group(1)}. {pm.group(2)}"
                 opt_para.add_run(line).font.size = Pt(10)
@@ -208,17 +210,17 @@ async def export_word(exam_paper_id, db: AsyncSession):
         sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         sub_para.add_run(paper.subtitle).font.size = Pt(10)
 
-    # Info line
+    # Info line — 与打印页一致: 学科 | 年级 | 总分: X分 | 时长: X分钟
     info_parts = []
     if paper.subject:
-        info_parts.append(f"学科：{paper.subject}")
+        info_parts.append(paper.subject)
     if paper.grade_level and isinstance(paper.grade_level, dict):
         grades = paper.grade_level.get("grades", [])
         if grades:
-            info_parts.append(f"年级：{', '.join(grades)}")
-    info_parts.append(f"总分：{paper.total_score}分")
+            info_parts.append(', '.join(grades))
+    info_parts.append(f"总分: {paper.total_score}分")
     if paper.duration_minutes:
-        info_parts.append(f"时长：{paper.duration_minutes}分钟")
+        info_parts.append(f"时长: {paper.duration_minutes}分钟")
     info_para = doc.add_paragraph()
     info_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     info_para.add_run(" | ".join(info_parts)).font.size = Pt(10)
@@ -273,15 +275,18 @@ def _write_type_sections_pdf(pdf, qs, type_order):
     grouped: dict[str, list] = {}
     for q in qs:
         grouped.setdefault(q["question_type"], []).append(q)
+    num_labels = ['一', '二', '三', '四', '五', '六', '七', '八']
+    section_idx = 0
     for t in type_order:
         tqs = grouped.get(t, [])
         if not tqs:
             continue
-        pdf.set_font("CJK", "", 13)
         type_score = sum(q['score'] for q in tqs)
         per_q = tqs[0]['score'] if tqs else 0
+        num = num_labels[section_idx] if section_idx < len(num_labels) else str(section_idx + 1)
+        section_idx += 1
         pdf.set_font("CJK", "", 13)
-        pdf.cell(0, 10, f"{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 10, f"{num}、{tqs[0]['type_label']}（每题{per_q}分，共{len(tqs)}题，合计{type_score}分）", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
         for q in tqs:
             pdf.set_font("CJK", "", 11)
@@ -297,7 +302,7 @@ def _write_type_sections_pdf(pdf, qs, type_order):
                         pdf.cell(0, 6, f"{label}. {text}" if text else label, new_x="LMARGIN", new_y="NEXT")
                     else:
                         line = str(opt)
-                        pm = re.match(r'^([A-H])[.．、）\)]\s*(.*)', line)
+                        pm = re.match(r'^([A-H])[.．、）)]\s*(.*)', line)
                         if pm and pm.group(2):
                             line = f"{pm.group(1)}. {pm.group(2)}"
                         pdf.cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
@@ -345,20 +350,25 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     # Title
     pdf.set_font("CJK", "", 18)
     pdf.cell(0, 12, paper.title or "", new_x="LMARGIN", new_y="NEXT", align="C")
+
+    # Subtitle
+    if paper.subtitle:
+        pdf.set_font("CJK", "", 10)
+        pdf.cell(0, 8, paper.subtitle, new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(4)
 
     # Info line
     pdf.set_font("CJK", "", 10)
     info_parts = []
     if paper.subject:
-        info_parts.append(f"学科：{paper.subject}")
+        info_parts.append(paper.subject)
     if paper.grade_level and isinstance(paper.grade_level, dict):
         grades = paper.grade_level.get("grades", [])
         if grades:
-            info_parts.append(f"年级：{', '.join(grades)}")
-    info_parts.append(f"总分：{paper.total_score}分")
+            info_parts.append(', '.join(grades))
+    info_parts.append(f"总分: {paper.total_score}分")
     if paper.duration_minutes:
-        info_parts.append(f"时长：{paper.duration_minutes}分钟")
+        info_parts.append(f"时长: {paper.duration_minutes}分钟")
     pdf.cell(
         0, 8, " | ".join(info_parts), new_x="LMARGIN", new_y="NEXT", align="C"
     )
