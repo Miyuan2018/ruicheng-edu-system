@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Steps, Button, Space, message, Spin, Tooltip } from 'antd';
+import { Steps, Button, Space, message, Spin, Tooltip, Modal } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../store/paperEditor';
 import BasicInfoStep from './steps/BasicInfoStep';
@@ -13,7 +13,7 @@ const STEP_TITLES = ['基本信息', '试卷结构', '选题', '预览入库'];
 export default function PaperWizardPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { paper, currentStep, loading, saving, dirty, initNew, loadDraft, setStep, autoSave, reset } = usePaperEditorStore();
+  const { paper, currentStep, loading, saving, dirty, pendingDraft, initNew, loadDraft, setStep, autoSave, reset } = usePaperEditorStore();
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -22,6 +22,18 @@ export default function PaperWizardPage() {
     if (id) {
       loadDraft(id);
     } else {
+      // 新建试卷：检查是否有未完成草稿
+      const checkDrafts = async () => {
+        try {
+          const { draftApi } = await import('../../api/drafts');
+          const resp = await draftApi.list();
+          const drafts = Array.isArray(resp) ? resp : (resp?.data || []);
+          if (drafts.length > 0) {
+            usePaperEditorStore.setState({ pendingDraft: drafts[0].data });
+          }
+        } catch {}
+      };
+      checkDrafts();
       initNew();
     }
     return () => {
@@ -260,6 +272,32 @@ export default function PaperWizardPage() {
         style={{ marginBottom: 24 }}
         items={STEP_TITLES.map((title) => ({ title }))}
       />
+
+      {/* 草稿恢复弹窗 */}
+      {pendingDraft && (
+        <Modal
+          title="发现未完成的试卷"
+          open={true}
+          onOk={() => {
+            const draft = pendingDraft;
+            usePaperEditorStore.setState({
+              paper: draft,
+              pendingDraft: null,
+              currentStep: 0,
+              dirty: false,
+            });
+            message.info('已恢复草稿');
+          }}
+          onCancel={() => {
+            usePaperEditorStore.setState({ pendingDraft: null });
+            message.info('已放弃草稿，开始新建');
+          }}
+          okText="继续编辑"
+          cancelText="重新开始"
+        >
+          <p>检测到上次未完成的试卷「{pendingDraft?.title || '未命名'}」，是否继续编辑？</p>
+        </Modal>
+      )}
 
       {/* Step content */}
       <div style={{ minHeight: 400 }}>
