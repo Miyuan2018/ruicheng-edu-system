@@ -36,13 +36,15 @@ apiClient.interceptors.response.use(
               `${e.loc?.join('.') || ''}: ${e.msg}`
             ).join('; '),
           };
-        } else if (typeof msg === 'string') {
+        } else if (typeof msg === 'string' && msg !== 'Internal Server Error') {
           error.response.data = { detail: msg };
         }
       }
-      // Fallback: 保持 detail 字段用于兼容
-      if (typeof body === 'object' && body.detail && typeof body.detail === 'string') {
-        error.response.data = { detail: body.detail };
+      // 兜底：把整个响应体 JSON 序列化作为错误消息
+      if (!error.response.data?.detail || error.response.data?.detail === '') {
+        try {
+          error.response.data = { detail: JSON.stringify(body) };
+        } catch {}
       }
     }
 
