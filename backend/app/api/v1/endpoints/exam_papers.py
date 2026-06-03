@@ -614,6 +614,9 @@ async def save_paper_all(
     ):
         val = getattr(data, field, None)
         if val is not None:
+            # Pydantic 对象需转为 dict，SQLAlchemy JSONB 列不接受 Pydantic model
+            if field == "grade_level" and hasattr(val, "model_dump"):
+                val = val.model_dump()
             setattr(paper, field, val)
 
     try:
