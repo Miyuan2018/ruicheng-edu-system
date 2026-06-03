@@ -15,7 +15,7 @@ export default function RecommendStep() {
   const {
     paper, generateReport,
     removeQuestionFromUnit, clearAllQuestions, setDirty,
-    regenerateAll, fillGaps, replaceQuestion, syncScoresFromConfig,
+    regenerateAll, fillGaps, replaceQuestion, syncScoresFromConfig, autoSave,
   } = usePaperEditorStore();
 
   const hasAutoAdjusted = useRef(false);
