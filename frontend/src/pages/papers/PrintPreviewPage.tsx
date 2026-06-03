@@ -166,7 +166,7 @@ export default function PrintPreviewPage() {
                           label = opt.label || opt.id || String.fromCharCode(65 + idx);
                           text = opt.text || opt.content || '';
                         }
-                        return <div key={label} style={{ marginBottom: 2 }}>{label + '. ' + text}</div>;
+                        return <div key={label} style={{ marginBottom: 2 }}>{label + '、' + text}</div>;
                       })}
                     </div>
                   )}
