@@ -310,14 +310,14 @@ export default function PreviewFinalizeStep() {
   );
 
   const tabItems = [
-    { key: 'finalize', label: '保存设置', children: finalizeTab },
+    { key: 'finalize', label: '试卷信息', children: finalizeTab },
     { key: 'preview', label: '试卷预览', children: previewTab },
   ];
 
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16 }}>
         <Space>
           <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSave}>
             保存
