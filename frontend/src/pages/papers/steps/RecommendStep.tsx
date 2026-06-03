@@ -255,10 +255,24 @@ export default function RecommendStep() {
         <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={async () => {
           let pid = paper?.id;
           if (!pid) {
-            await autoSave();
-            pid = usePaperEditorStore.getState().paper?.id;
+            // 强制保存：创建主表记录拿 id
+            const st = usePaperEditorStore.getState();
+            if (!st.paper?.title) { message.warning('请先填写试卷标题'); return; }
+            try {
+              const resp = await paperApi.create({
+                title: st.paper?.title || '未命名试卷',
+                subject: st.paper?.subject || '',
+                grade_level: st.paper?.grade_level?.grades?.length > 0 ? st.paper.grade_level : { scope: 'grade', grades: ['G7'] },
+                status: 'READY',
+              });
+              pid = resp.data?.id || resp.data;
+              usePaperEditorStore.setState({ paper: { ...st.paper, id: pid } });
+            } catch (e: any) {
+              message.error('创建试卷失败: ' + (e?.response?.data?.detail || e?.message || ''));
+              return;
+            }
           }
-          if (!pid) { message.warning('请先保存基本信息'); return; }
+          if (!pid) { message.warning('无法创建试卷，请重试'); return; }
           setLoading(true);
           clearAllQuestions();
           regenerateAll(pid).catch(() => message.error('选题失败')).finally(() => setLoading(false));
