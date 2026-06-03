@@ -363,8 +363,12 @@ export default function StructureStep() {
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {!showUnits && (
           <Button size="small" icon={<PlusOutlined />} onClick={() => {
-            if (!units[0]?.id) return;
-            addTypeConfig(units[0].id, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
+            let uid = units[0]?.id;
+            if (!uid) {
+              addUnit({ name: '单选题', question_config: [] });
+              uid = usePaperEditorStore.getState().paper?.units?.[0]?.id || '';
+            }
+            addTypeConfig(uid, { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
             setDirty(true);
           }}>
             添加题型

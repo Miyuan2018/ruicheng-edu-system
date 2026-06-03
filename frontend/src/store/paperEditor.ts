@@ -66,7 +66,7 @@ const newEmptyPaper = (): PaperDraft => ({
   subtitle: '',
   instructions: '',
   description: '',
-  show_units: true,
+  show_units: false,
   per_unit_timer: false,
   units: [],
   knowledge_node_ids: [],
