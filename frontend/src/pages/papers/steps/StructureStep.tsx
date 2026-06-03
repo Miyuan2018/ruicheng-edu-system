@@ -272,9 +272,6 @@ export default function StructureStep() {
           <Button type="dashed" icon={<PlusOutlined />} onClick={addNewUnit} block style={{ marginTop: 8 }}>
             添加单元
           </Button>
-        </div>
-      )}
-
       {/* Footer */}
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {!scoreOk && targetTotal > 0 && (
