@@ -390,86 +390,60 @@ async def get_question_stats(
 
 @router.post("/scrape")
 async def start_scrape(
-    knowledge_point: str, count: int = 10,
-    subject: str = "数学", grade_level: str = "G8",
-    difficulty: str = "MEDIUM", question_type: str = "SINGLE_CHOICE",
+    knowledge_points: str, count: int = 5,
+    subject: str = "数学", grade_levels: str = "G8",
+    difficulty: str = "MEDIUM", question_types: str = "SINGLE_CHOICE",
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if current_user.user_type not in ("QUESTION_ADMIN", "SYS_ADMIN", "TEACHER"):
         raise HTTPException(403, detail="仅题库管理员和教师可操作")
 
-    # Check Celery config for async dispatch
-    from app.services.config_service import load_config
-    celery_cfg = load_config().get("celery", {})
-    use_async = (
-        celery_cfg.get("enabled", False)
-        and count >= celery_cfg.get("async_threshold", 3)
-    )
+    kps = [k.strip() for k in knowledge_points.split(",") if k.strip()]
+    gls = [g.strip() for g in grade_levels.split(",") if g.strip()]
+    qts = [q.strip() for q in question_types.split(",") if q.strip()]
 
-    if use_async:
-        task = QuestionTask(
-            task_type="WEB_SCRAPE", status="PENDING", total_items=count,
-            parameters={"knowledge_point": knowledge_point, "subject": subject,
-                         "grade_level": grade_level, "difficulty": difficulty,
-                         "question_type": question_type, "count": count},
-            created_by=current_user.id,
-        )
-        db.add(task)
-        await db.commit()
-        await db.refresh(task)
+    tasks = [(kp, gl, qt) for kp in kps for gl in gls for qt in qts]
 
-        from app.tasks.llm_tasks import scrape_questions_task
-        scrape_questions_task.delay(
-            task_id=str(task.id),
-            knowledge_point=knowledge_point, subject=subject,
-            grade_level=grade_level, difficulty=difficulty,
-            question_type=question_type, count=count,
-            created_by=current_user.id,
-        )
-        return {"ok": True, "async": True, "task_id": str(task.id),
-                "message": f"已提交异步抓取任务 ({count}道题)"}
-
-    # Synchronous path (original)
     from app.services.scraper import search_questions as do_scrape
+    import asyncio
 
     try:
-        raw_results = await do_scrape(
-            knowledge_point=knowledge_point,
-            subject=subject,
-            grade_level=grade_level,
-            difficulty=difficulty,
-            question_type=question_type,
-            count=count,
+        batches = await asyncio.gather(
+            *[do_scrape(kp, subject, gl, difficulty, qt, count) for kp, gl, qt in tasks],
+            return_exceptions=True,
         )
     except Exception as e:
         import httpx, logging
         if isinstance(e, httpx.ConnectError):
-            return {"ok": False, "error": "网络搜索不可用：无法连接搜索引擎，请检查网络"}
+            return {"ok": False, "error": "网络搜索不可用：无法连接搜索引擎"}
         elif isinstance(e, httpx.TimeoutException):
-            return {"ok": False, "error": "网络搜索超时：搜索引擎响应过慢，请减少抓取数量后重试"}
+            return {"ok": False, "error": "网络搜索超时"}
         logging.getLogger(__name__).exception("scrape error")
         return {"ok": False, "error": f"抓取异常: {type(e).__name__}: {str(e)}"}
 
+    all_results = []
+    for b in batches:
+        if isinstance(b, list):
+            all_results.extend(b)
+
     # Auto-save to DB
     uid = current_user.id
-    kps = [kp.strip() for kp in knowledge_point.split(",") if kp.strip()]
-    grade_json = {"scope": "grade", "grades": [grade_level]}
+    grade_json = {"scope": "grade", "grades": gls}
     if kps:
         grade_json["chapter"] = kps[0]
         grade_json["knowledge_points"] = kps
 
     saved = 0
-    for q in raw_results:
-        ca = q.get("correct_answer", "")
+    for q in all_results:
         db.add(Question(
             title=q.get("title", ""),
-            question_type=q.get("question_type", question_type),
+            question_type=q.get("question_type", qts[0]),
             difficulty=q.get("difficulty", difficulty),
             subject=q.get("subject", subject),
             grade_level=grade_json,
             score=q.get("score", 5),
-            correct_answer=ca,
+            correct_answer=q.get("correct_answer", ""),
             explanation=q.get("explanation", ""),
             source="SCRAPED", review_status="PENDING",
             created_by=uid,
@@ -477,10 +451,10 @@ async def start_scrape(
         saved += 1
 
     await db.commit()
-    return {"ok": True, "count": saved,
-            "search_params": {"知识点": knowledge_point, "学科": subject,
-                               "年级": grade_level, "难度": difficulty,
-                               "题型": question_type, "数量": count},
+    return {"ok": True, "count": saved, "tasks": len(tasks),
+            "search_params": {"知识点": kps, "学科": subject,
+                               "年级": gls, "难度": difficulty,
+                               "题型": qts, "每任务数量": count},
             "error": None if saved > 0 else "未找到试题"}
 
 

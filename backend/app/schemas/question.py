@@ -70,3 +70,15 @@ class QuestionResponse(QuestionBase):
 
     class Config:
         from_attributes = True
+
+
+class ScrapedQuestion(BaseModel):
+    """网络抓取题目校验模型 — 逐字段验证 LLM 返回"""
+    title: str = Field(..., min_length=2, max_length=500)
+    question_type: str = Field(..., pattern="^(SINGLE_CHOICE|MULTIPLE_CHOICE|FILL_BLANK|SUBJECTIVE)$")
+    difficulty: str = Field(..., pattern="^(EASY|MEDIUM|HARD)$")
+    score: int = Field(default=5, ge=1)
+    correct_answer: str = Field(..., min_length=1)
+    explanation: str = Field(default="")
+    subject: str = Field(default="")
+    grade_level: str = Field(default="")

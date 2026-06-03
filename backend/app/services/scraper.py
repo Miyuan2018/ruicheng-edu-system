@@ -1,4 +1,4 @@
-"""Web scraper — search internet + LLM formatting = structured questions."""
+"""Web scraper — DuckDuckGo → Baidu → LLM fallback + LLM formatting = structured questions."""
 import re
 import json
 import httpx
@@ -13,60 +13,76 @@ async def search_questions(
     difficulty: str = "MEDIUM", question_type: str = "SINGLE_CHOICE",
     count: int = 5, provider: str = "deepseek",
 ) -> list[dict]:
-    """Search web + LLM formatting."""
+    """搜索网络 + LLM 格式化 → 结构化题目列表."""
 
     grade_label = GRADE_LABELS.get(grade_level, grade_level)
     type_label = TYPE_LABELS.get(question_type, "试题")
     query = f"{knowledge_point} {subject} {grade_label} {type_label}"
 
-    # Step 1: Web search
-    snippets = await _search_bing_text(query, min(count * 3, 15))
-    if len(snippets) < 3:
-        snippets += await _search_bing_text(f"{knowledge_point} {subject} 题目", 10)
-
+    # Step 1: 三级搜索回退
+    snippets = await _search_duckduckgo(query)
     if not snippets:
-        return []
+        snippets = await _search_baidu(query)
 
-    # Step 2: LLM formats snippets into questions
-    context = "\n".join(f"{i+1}. {s}" for i, s in enumerate(snippets[:15]))
-    prompt = f"""你是一位教育试题整理专家。从以下网络搜索结果中，提取并整理出{count}道关于"{knowledge_point}"的{subject}{grade_label}{type_label}，难度{difficulty}。
+    # Step 2: LaTeX 预处理
+    from app.utils.latex import format_latex
+    snippets = [format_latex(s) for s in snippets]
 
-网络搜索结果：
-{context}
+    # Step 3: LLM 格式化
+    if snippets:
+        context = "\n".join(f"{i+1}. {s}" for i, s in enumerate(snippets[:15]))
+    else:
+        context = f"请根据你的知识，生成{count}道关于{knowledge_point}的{subject}{grade_label}{type_label}题目。"
 
-要求：
-1. 每道题必须有明确的问题和正确答案
-2. 选择题必须包含A/B/C/D四个选项
-3. 直接返回JSON数组格式，不要任何其他文字：
-[
-  {{
-    "title": "题目内容",
-    "question_type": "{question_type}",
-    "difficulty": "{difficulty}",
-    "subject": "{subject}",
-    "grade_level": "{grade_level}",
-    "score": 5,
-    "correct_answer": {{选项JSON}},
-    "explanation": "解析说明"
-  }}
-]
-4. 至少生成{count}道题
-5. 如果搜索结果中题目信息不足，可根据知识点自行补充"""
+    prompt = _build_prompt(knowledge_point, subject, grade_label, type_label, difficulty, question_type, count, context)
 
     try:
-        return await _llm_format(prompt, count, question_type, difficulty, subject, grade_level, provider)
+        results = await _llm_format(prompt, count, question_type, difficulty, subject, grade_level, provider)
+        if not results:
+            results = await _llm_format(prompt, count, question_type, difficulty, subject, grade_level, provider)
+        return results
     except Exception:
         return []
 
 
-async def _search_bing_text(query: str, max_results: int = 10) -> list[str]:
-    """Search Bing and return text snippets."""
+def _build_prompt(kp: str, subject: str, grade_label: str, type_label: str,
+                  diff: str, qtype: str, count: int, context: str) -> str:
+    return f"""你是教育试题整理专家。根据以下材料，生成{count}道关于"{kp}"的{subject}{grade_label}{type_label}，难度{diff}。
+
+材料：
+{context}
+
+返回格式（严格JSON数组，无其他文字）：
+[
+  {{
+    "title": "题目标题",
+    "question_type": "{qtype}",
+    "difficulty": "{diff}",
+    "score": 5,
+    "correct_answer": "...",
+    "explanation": "解析说明"
+  }}
+]
+
+规则：
+1. title 必填且非空，长度 2-500
+2. question_type 必须是 SINGLE_CHOICE|MULTIPLE_CHOICE|FILL_BLANK|SUBJECTIVE 之一
+3. difficulty 必须是 EASY|MEDIUM|HARD 之一
+4. score 是正整数
+5. correct_answer 必填非空：选择题用"A"/["A","C"]，填空题用答案文本，解答题用关键词
+6. 至少{count}道题；材料不足可自行补充
+7. 数学表达式用 LaTeX 格式（如 x^{{2}}）"""
+
+
+# ─── 搜索源 ───────────────────────────────────────────────────
+
+async def _search_duckduckgo(query: str, max_results: int = 10) -> list[str]:
     snippets = []
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
             r = await client.get(
-                "https://www.bing.com/search",
-                params={"q": query, "setlang": "zh-Hans"},
+                "https://html.duckduckgo.com/html/",
+                params={"q": query},
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     "Accept-Language": "zh-CN,zh;q=0.9",
@@ -74,23 +90,43 @@ async def _search_bing_text(query: str, max_results: int = 10) -> list[str]:
             )
             if r.status_code == 200:
                 soup = BeautifulSoup(r.text, "html.parser")
-                for item in soup.select("li.b_algo")[:max_results]:
-                    text_parts = []
-                    h2 = item.select_one("h2")
-                    if h2: text_parts.append(h2.get_text(strip=True))
-                    p = item.select_one(".b_caption p, .b_lineclamp2")
-                    if p: text_parts.append(p.get_text(strip=True))
-                    snippet = " ".join(text_parts).strip()
-                    if len(snippet) > 20:
-                        snippets.append(snippet)
+                for item in soup.select(".result__body")[:max_results]:
+                    text = item.get_text(" ", strip=True)
+                    if len(text) > 20:
+                        snippets.append(text)
     except Exception:
         pass
     return snippets
 
 
+async def _search_baidu(query: str, max_results: int = 10) -> list[str]:
+    snippets = []
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
+            r = await client.get(
+                "https://www.baidu.com/s",
+                params={"wd": query, "rn": str(max_results)},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "zh-CN,zh;q=0.9",
+                },
+            )
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+                for item in soup.select("div.result, div.result-op")[:max_results]:
+                    text = item.get_text(" ", strip=True)
+                    if len(text) > 20:
+                        snippets.append(text)
+    except Exception:
+        pass
+    return snippets
+
+
+# ─── LLM 格式化 ────────────────────────────────────────────────
+
 async def _llm_format(prompt: str, count: int, qtype: str, diff: str,
                        subj: str, grade: str, provider: str) -> list[dict]:
-    """Call LLM to format scraped text into questions."""
     from app.services.config_service import load_config
     cfg = load_config()
     llm = cfg.get("llm", {})
@@ -128,144 +164,71 @@ async def _llm_format(prompt: str, count: int, qtype: str, diff: str,
 
 
 def _parse_questions(content: str, qtype: str, diff: str, subj: str, grade: str) -> list[dict]:
-    """Parse LLM response into question dicts."""
-    # Extract JSON array
-    match = re.search(r'\[.*\]', content, re.DOTALL)
+    # 1. 优先匹配 ```json 代码块
+    match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', content, re.DOTALL)
     if not match:
-        match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', content, re.DOTALL)
+        # 2. 正则提取数组
+        match = re.search(r'\[.*\]', content, re.DOTALL)
     if not match:
         return []
 
+    json_str = match.group(1) if match.lastindex else match.group()
+
+    # 3. JSON 解析 + 自动修复
     try:
-        data = json.loads(match.group(1) if match.lastindex else match.group())
+        data = json.loads(json_str)
     except json.JSONDecodeError:
-        return []
+        data = _repair_json(json_str)
+        if data is None:
+            return []
 
     if not isinstance(data, list):
         return []
 
+    # 4. 字段校验
+    VALID_TYPES = {"SINGLE_CHOICE", "MULTIPLE_CHOICE", "FILL_BLANK", "SUBJECTIVE"}
+    VALID_DIFFS = {"EASY", "MEDIUM", "HARD"}
+
     results = []
     for item in data:
-        ca = item.get("correct_answer", {})
+        title = str(item.get("title", "")).strip()
+        if not title or len(title) < 2:
+            continue
+        itype = item.get("question_type", qtype)
+        if itype not in VALID_TYPES:
+            itype = qtype
+        idiff = item.get("difficulty", diff)
+        if idiff not in VALID_DIFFS:
+            idiff = diff
+        score = item.get("score", 5)
+        if not isinstance(score, int) or score < 1:
+            score = 5
+        ca = item.get("correct_answer", "")
         if isinstance(ca, (dict, list)):
             ca = json.dumps(ca, ensure_ascii=False)
+        ca = str(ca).strip()
+        if not ca:
+            continue
         results.append({
-            "title": item.get("title", ""),
-            "question_type": item.get("question_type", qtype),
-            "difficulty": item.get("difficulty", diff),
+            "title": title,
+            "question_type": itype,
+            "difficulty": idiff,
             "subject": item.get("subject", subj),
             "grade_level": item.get("grade_level", grade),
-            "score": item.get("score", 5),
-            "correct_answer": ca or "",
-            "explanation": item.get("explanation", ""),
+            "score": score,
+            "correct_answer": ca,
+            "explanation": str(item.get("explanation", "")),
             "source_url": "web_scrape",
         })
     return results
 
 
-def _extract_question_from_text(
-    text: str, knowledge_point: str, subject: str,
-    grade_level: str, difficulty: str, question_type: str,
-    source_url: str = "",
-) -> dict | None:
-    """Try to parse a question from text."""
-    text = re.sub(r'<[^>]+>', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-
-    if len(text) < 10:
-        return None
-
-    # Look for choice patterns: A.xxx B.xxx C.xxx D.xxx
-    choice_pattern = re.compile(
-        r'(.+?)\s*[AＡ][.．、]\s*(.+?)\s*[BＢ][.．、]\s*(.+?)\s*[CＣ][.．、]\s*(.+?)\s*(?:[DＤ][.．、]\s*(.+?))?\s*(?:答案[：:]\s*([A-DＡ-Ｄ]))?'
-    )
-    match = choice_pattern.search(text)
-    if match:
-        groups = match.groups()
-        title = groups[0].strip()
-        options = []
-        labels = ['A', 'B', 'C', 'D']
-        for i in range(1, min(5, len(groups))):
-            if groups[i]:
-                options.append({"label": labels[i-1], "text": groups[i].strip()})
-        correct = groups[5] if len(groups) > 5 and groups[5] else ""
-        if len(title) > 6 and len(options) >= 2:
-            return _build_question(title, question_type, difficulty, subject, grade_level,
-                                   options, correct, source_url)
-
-    # Look for brackets/填空 pattern: ___ or （）
-    blank_pattern = re.compile(r'(.+?)[（(]\s*[）)]|(.+?)_{2,}|(.+?)____')
-    match = blank_pattern.search(text)
-    if match and question_type == "FILL_BLANK":
-        title = text[:200]
-        return _build_question(title, "FILL_BLANK", difficulty, subject, grade_level,
-                               None, ["(待校验)"], source_url)
-
-    # Fallback
-    return _build_question(text[:200], question_type, difficulty, subject, grade_level,
-                           None, ["(待校验)"], source_url)
-
-
-def _build_question(title, qtype, diff, subj, grade, options, answer, url):
-    ca = {"options": options, "correct_answer": answer} if options else {"options": None, "correct_answer": answer}
-    return {
-        "title": title,
-        "question_type": qtype,
-        "difficulty": diff,
-        "subject": subj,
-        "grade_level": grade,
-        "score": 5,
-        "correct_answer": json.dumps(ca, ensure_ascii=False),
-        "explanation": f"网络抓取: {url}",
-        "source_url": url,
-    }
-
-
-async def _search_bing(
-    query: str, knowledge_point: str, subject: str,
-    grade_level: str, difficulty: str, question_type: str,
-    count: int,
-) -> list[dict]:
-    """Search Bing and extract question snippets."""
-    results = []
-
+def _repair_json(json_str: str) -> list | None:
+    stripped = json_str.strip()
+    open_braces = stripped.count('{') - stripped.count('}')
+    open_brackets = stripped.count('[') - stripped.count(']')
+    repaired = stripped + '}' * max(0, open_braces) + ']' * max(0, open_brackets)
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as client:
-            r = await client.get(
-                "https://www.bing.com/search",
-                params={"q": query, "setlang": "zh-Hans", "cc": "cn"},
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept-Language": "zh-CN,zh;q=0.9",
-                },
-            )
-            if r.status_code != 200:
-                return results
-
-            soup = BeautifulSoup(r.text, "html.parser")
-
-            # Bing search result items
-            for item in soup.select("li.b_algo")[:count + 5]:
-                title_el = item.select_one("h2 a")
-                snippet_el = item.select_one(".b_caption p, .b_lineclamp2")
-                link_el = item.select_one("h2 a")
-
-                text = ""
-                if title_el:
-                    text += title_el.get_text(strip=True) + " "
-                if snippet_el:
-                    text += snippet_el.get_text(strip=True)
-
-                url = link_el.get("href", "") if link_el else ""
-
-                q = _extract_question_from_text(
-                    text, knowledge_point, subject, grade_level,
-                    difficulty, question_type, source_url=url,
-                )
-                if q and len(results) < count:
-                    results.append(q)
-
+        return json.loads(repaired)
     except Exception:
-        pass
-
-    return results
+        return None
