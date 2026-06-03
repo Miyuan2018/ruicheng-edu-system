@@ -38,6 +38,7 @@ export const paperApi = {
     difficulty_ratio: { EASY: number; MEDIUM: number; HARD: number };
     knowledge_node_ids: string[];
     existing_question_ids?: string[];
+    type_configs?: any[];
   }) => apiClient.post(`/exam-papers/${paperId}/auto-generate`, data),
 
   swapQuestion: (paperId: string, questionId: string) =>

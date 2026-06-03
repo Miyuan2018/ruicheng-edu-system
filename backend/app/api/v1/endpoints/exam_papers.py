@@ -1211,26 +1211,31 @@ async def auto_generate_paper(
     if not paper:
         raise HTTPException(404, detail="试卷不存在")
 
-    # 2. Get unit structure
-    units_result = await db.execute(
-        select(ExamPaperUnit).where(
-            ExamPaperUnit.exam_paper_id == paper_id
-        ).order_by(ExamPaperUnit.position)
-    )
-    units = units_result.scalars().all()
-    if not units:
-        raise HTTPException(400, detail="请先在试卷结构步骤设置题型")
-
-    # Build type configs from units
-    type_configs = []
-    for unit in units:
-        for cfg in (unit.question_config or []):
-            if cfg.get("count", 0) > 0:
-                type_configs.append({
-                    "question_type": cfg["question_type"],
-                    "count": cfg["count"],
-                    "score_per_question": cfg.get("score_per_question", 5),
-                })
+    # 2. Build type configs — 优先用前端直传（草稿表场景），兜底读DB
+    if request.type_configs:
+        type_configs = [{
+            "question_type": cfg["question_type"],
+            "count": cfg.get("count", 0),
+            "score_per_question": cfg.get("score_per_question", 5),
+        } for cfg in request.type_configs if cfg.get("count", 0) > 0]
+    else:
+        units_result = await db.execute(
+            select(ExamPaperUnit).where(
+                ExamPaperUnit.exam_paper_id == paper_id
+            ).order_by(ExamPaperUnit.position)
+        )
+        units = units_result.scalars().all()
+        if not units:
+            raise HTTPException(400, detail="请先在试卷结构步骤设置题型")
+        type_configs = []
+        for unit in units:
+            for cfg in (unit.question_config or []):
+                if cfg.get("count", 0) > 0:
+                    type_configs.append({
+                        "question_type": cfg["question_type"],
+                        "count": cfg["count"],
+                        "score_per_question": cfg.get("score_per_question", 5),
+                    })
 
     if not type_configs:
         raise HTTPException(400, detail="试卷结构中没有配置题型")

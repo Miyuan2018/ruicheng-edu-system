@@ -115,6 +115,7 @@ class AutoGenerateRequest(BaseModel):
     difficulty_ratio: dict[str, float] = Field(default={"EASY": 0.3, "MEDIUM": 0.5, "HARD": 0.2})
     knowledge_node_ids: list[str] = Field(default=[])
     existing_question_ids: list[str] = Field(default=[])
+    type_configs: list[dict] = Field(default=[])  # 前端直传，避免读DB（草稿表场景）
 
 
 class AlternativeQuestion(BaseModel):

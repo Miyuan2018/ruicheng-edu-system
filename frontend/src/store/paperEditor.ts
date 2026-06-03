@@ -82,6 +82,17 @@ const QUICK_PRESETS: Record<string, ExamPaperUnit[]> = {
   ],
 };
 
+/** 从 units 收集所有 count>0 的题型配置 */
+const collectTypeConfigs = (units: ExamPaperUnit[]) => {
+  const configs: any[] = [];
+  units.forEach(u => {
+    (u.question_config || []).forEach((cfg: any) => {
+      if (cfg.count > 0) configs.push({ question_type: cfg.question_type, count: cfg.count, score_per_question: cfg.score_per_question });
+    });
+  });
+  return configs;
+};
+
 /** 规范化选项列表：字符串→对象，纯字母补 text */
 function normalizeOpts(rawOptions: any[] | null | undefined): { label: string; text: string }[] {
   if (!rawOptions || !Array.isArray(rawOptions)) return [];
@@ -396,6 +407,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
         difficulty_ratio: paper.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 },
         knowledge_node_ids: paper.knowledge_node_ids || [],
         existing_question_ids: [],
+        type_configs: collectTypeConfigs(paper.units),
       });
       const data = resp.data;
       get().clearAllQuestions();
@@ -452,6 +464,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
         difficulty_ratio: paper.difficulty_ratio || { EASY: 20, MEDIUM: 50, HARD: 30 },
         knowledge_node_ids: paper.knowledge_node_ids || [],
         existing_question_ids: allExistingIds,
+        type_configs: collectTypeConfigs(paper.units),
       });
       const data = resp.data;
       const gapTypes = new Set(gaps.map(g => g.questionType));
