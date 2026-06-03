@@ -18,17 +18,6 @@ app = FastAPI(
 # Unified API response wrapper — wraps all /api/* responses in {code, message, data}
 app.add_middleware(ApiResponseMiddleware)
 
-# 全局异常兜底：未捕获的异常返回真实错误消息，而不是通用的 Internal Server Error
-from fastapi import Request
-from fastapi.responses import JSONResponse
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception(f'Unhandled exception: {request.method} {request.url.path}')
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f'{type(exc).__name__}: {exc}'},
-    )
-
 # Set up CORS middleware
 app.add_middleware(
     CORSMiddleware,

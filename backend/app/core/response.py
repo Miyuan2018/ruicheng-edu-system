@@ -90,11 +90,12 @@ class ApiResponseMiddleware:
 
         try:
             await self.app(scope, receive, send_wrapper)
-        except Exception:
+        except Exception as exc:
             logger.exception("Unhandled exception in ApiResponseMiddleware")
             if not response_started:
+                err_detail = f"{type(exc).__name__}: {exc}"
                 err_body = json.dumps(
-                    {"code": 500, "message": "Internal Server Error", "data": None},
+                    {"code": 500, "message": err_detail, "detail": err_detail, "data": None},
                     ensure_ascii=False,
                 ).encode("utf-8")
                 await _send_raw(send, 500, [(b"content-type", b"application/json")], err_body)
