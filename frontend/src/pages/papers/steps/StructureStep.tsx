@@ -89,56 +89,6 @@ export default function StructureStep() {
     setDirty(true);
   };
 
-  // Empty state
-  if (rows.length === 0 && paper?.show_units === undefined) {
-    return (
-      <Card>
-        <div style={{ textAlign: 'center', padding: 48 }}>
-          <div style={{ fontSize: 16, color: '#333', marginBottom: 8 }}>选择试卷组织方式</div>
-          <div style={{ fontSize: 13, color: '#999', marginBottom: 24 }}>后续可在页面顶部切换</div>
-          <Space size={16}>
-            <Card
-              size="small"
-              hoverable
-              style={{ width: 180, cursor: 'pointer', textAlign: 'center' }}
-              onClick={() => { updateMeta({ show_units: false }); addQuickUnits('byType'); setDirty(true); }}
-            >
-              <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>按题型分组</div>
-              <div style={{ fontSize: 12, color: '#999' }}>题号全卷连续，题型分区显示</div>
-            </Card>
-            <Card
-              size="small"
-              hoverable
-              style={{ width: 180, cursor: 'pointer', textAlign: 'center' }}
-              onClick={() => { updateMeta({ show_units: true }); addNewUnit(); setDirty(true); }}
-            >
-              <div style={{ fontSize: 24, marginBottom: 8 }}>📦</div>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>按单元分区</div>
-              <div style={{ fontSize: 12, color: '#999' }}>可命名单元，支持逐单元限时</div>
-            </Card>
-          </Space>
-        </div>
-      </Card>
-    );
-  }
-
-  if (rows.length === 0) {
-    return (
-      <Card size="small">
-        <div style={{ textAlign: 'center', padding: 32 }}>
-          <div style={{ fontSize: 14, color: '#999', marginBottom: 16 }}>尚未设置题型结构</div>
-          <Space>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { addQuickUnits('byType'); setDirty(true); }}>
-              按题型分组
-            </Button>
-            <Button icon={<PlusOutlined />} onClick={addNewUnit}>自定义添加</Button>
-          </Space>
-        </div>
-      </Card>
-    );
-  }
-
   // Group rows by unit for unit mode
   const unitGroups = useMemo(() => {
     const groups: { unitId: string; unitName: string; unitTime: number | null | undefined; rows: RowItem[] }[] = [];
