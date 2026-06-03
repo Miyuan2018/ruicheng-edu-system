@@ -116,6 +116,7 @@ class AutoGenerateRequest(BaseModel):
     knowledge_node_ids: list[str] = Field(default=[])
     existing_question_ids: list[str] = Field(default=[])
     type_configs: list[dict] = Field(default=[])  # 前端直传，避免读DB（草稿表场景）
+    subject: Optional[str] = None  # V4.4: paperless 场景前端直传
 
 
 class AlternativeQuestion(BaseModel):
@@ -151,6 +152,14 @@ class AutoGenerateResponse(BaseModel):
     constraint_dashboard: dict = Field(default={})
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SwapQuestionRequest(BaseModel):
+    """V4.4: paperless 换题请求，脱离 paper_id 依赖"""
+    subject: Optional[str] = None
+    grade_level: Optional[dict] = None
+    knowledge_node_ids: list[str] = Field(default=[])
+    exclude_ids: list[str] = Field(default=[])
 
 
 # ─── Paper CRUD ──────────────────────────────────────────────
