@@ -252,11 +252,16 @@ export default function RecommendStep() {
             <span style={{ fontSize: 13, color: '#999' }}>点击"一键选题"自动选题</span>
           )}
         </div>
-        <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={() => {
-          if (!paper?.id) { message.warning('请先保存基本信息'); return; }
+        <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={async () => {
+          let pid = paper?.id;
+          if (!pid) {
+            await autoSave();
+            pid = usePaperEditorStore.getState().paper?.id;
+          }
+          if (!pid) { message.warning('请先保存基本信息'); return; }
           setLoading(true);
           clearAllQuestions();
-          regenerateAll(paper.id).catch(() => message.error('选题失败')).finally(() => setLoading(false));
+          regenerateAll(pid).catch(() => message.error('选题失败')).finally(() => setLoading(false));
         }}>
           一键选题
         </Button>
