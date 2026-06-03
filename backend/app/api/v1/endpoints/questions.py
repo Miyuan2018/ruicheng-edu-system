@@ -1,10 +1,11 @@
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, and_, or_
+from sqlalchemy import select, update, delete, and_, or_, cast, String
 from app.db.session import get_db
 from app.models.question import Question
 
+from app.schemas.exam_paper import SwapQuestionRequest
 from app.schemas.question import QuestionCreate, QuestionResponse, QuestionUpdate
 from typing import List, Optional
 from app.core.security import get_current_user
@@ -202,6 +203,91 @@ async def export_questions(
             "source": q.source, "review_status": q.review_status,
         })
     return output
+
+
+@router.post("/{question_id}/swap")
+async def swap_question_paperless(
+    question_id: str,
+    request: SwapQuestionRequest,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """V4.4: 换题 — paperless 版本，逐级放宽约束链返回 top 3 备选题"""
+    if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅教师和题库管理员可换题")
+
+    result = await db.execute(select(Question).where(Question.id == question_id))
+    current = result.scalar_one_or_none()
+    if not current:
+        raise HTTPException(404, detail="题目不存在")
+
+    exclude_ids = set(request.exclude_ids)
+
+    async def _query_candidates(qtype, diff, used, subj=None, grades_val=None, kn_ids=None):
+        conds = [Question.is_active == True, Question.review_status == "APPROVED", Question.question_type == qtype]
+        if diff:
+            conds.append(Question.difficulty == diff)
+        if subj:
+            conds.append(Question.subject == subj)
+        if grades_val:
+            grade_conds = []
+            for g in grades_val:
+                grade_conds.append(cast(Question.grade_level["grades"].astext, String).contains(g))
+            if grade_conds:
+                conds.append(or_(*grade_conds))
+        if kn_ids:
+            try:
+                from app.models.knowledge_node import QuestionKnowledgeNode
+                kn_qids = await db.execute(
+                    select(QuestionKnowledgeNode.question_id).where(
+                        QuestionKnowledgeNode.knowledge_node_id.in_(kn_ids)
+                    )
+                )
+                kn_qid_set = {str(r[0]) for r in kn_qids.fetchall()}
+                if kn_qid_set:
+                    conds.append(Question.id.in_(kn_qid_set))
+            except Exception:
+                pass
+        r = await db.execute(select(Question).where(*conds))
+        return [q for q in r.scalars().all() if str(q.id) not in used]
+
+    subject = request.subject
+    grades = request.grade_level.get("grades", []) if isinstance(request.grade_level, dict) else []
+    kn_ids = request.knowledge_node_ids or []
+
+    candidates = []
+    # Level 1: 学科 + 年级 + 知识点
+    if not candidates and subject and grades and kn_ids:
+        candidates = await _query_candidates(
+            current.question_type, current.difficulty, exclude_ids,
+            subj=subject, grades_val=grades, kn_ids=kn_ids,
+        )
+    # Level 2: 学科 + 年级
+    if not candidates and subject and grades:
+        candidates = await _query_candidates(
+            current.question_type, current.difficulty, exclude_ids,
+            subj=subject, grades_val=grades,
+        )
+    # Level 3: 学科 + 题型 + 难度
+    if not candidates:
+        candidates = await _query_candidates(
+            current.question_type, current.difficulty, exclude_ids,
+            subj=subject,
+        )
+
+    if not candidates:
+        return {"alternatives": []}
+
+    alternatives = []
+    for q in candidates[:3]:
+        alternatives.append({
+            "question_id": str(q.id),
+            "title": (q.title or "")[:120],
+            "difficulty": q.difficulty or "",
+            "question_type": q.question_type or "",
+            "score": q.score or 0,
+        })
+    return {"alternatives": alternatives}
 
 
 @router.post("/deduplicate")
