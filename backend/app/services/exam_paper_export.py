@@ -223,7 +223,7 @@ async def export_word(exam_paper_id, db: AsyncSession):
         info_parts.append(f"时长: {paper.duration_minutes}分钟")
     info_para = doc.add_paragraph()
     info_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    info_para.add_run(" | ".join(info_parts)).font.size = Pt(10)
+    info_para.add_run(" | ".join([p for p in info_parts if p])).font.size = Pt(10)
 
     # Notes
     if paper.instructions:
@@ -375,7 +375,7 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     if paper.duration_minutes:
         info_parts.append(f"时长: {paper.duration_minutes}分钟")
     pdf.cell(
-        0, 8, " | ".join(info_parts), new_x="LMARGIN", new_y="NEXT", align="C"
+        0, 8, " | ".join([p for p in info_parts if p]), new_x="LMARGIN", new_y="NEXT", align="C"
     )
     pdf.ln(6)
 
