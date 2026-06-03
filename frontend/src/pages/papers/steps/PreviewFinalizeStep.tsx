@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Button, Radio, Checkbox, Input, message, Collapse, Tag, Tabs, Space, Tooltip } from 'antd';
+import { Card, Button, message, Collapse, Tag, Tabs, Space, Tooltip } from 'antd';
 import {
   PrinterOutlined, FileWordOutlined, FilePdfOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
@@ -17,57 +17,43 @@ export default function PreviewFinalizeStep() {
   const qtypeLabels = toLabelMap(qtypes);
 
   // Finalize state
-  const [publishMode, setPublishMode] = useState<'draft' | 'publish'>('draft');
-  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
-  const [publishNote, setPublishNote] = useState('');
+  const [selectedClasses] = useState<string[]>([]);
+  const [publishNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [classOptions, setClassOptions] = useState<{ value: string; label: string }[]>([]);
-  const [classLoading, setClassLoading] = useState(false);
 
   const units = paper?.units || [];
   const totalQuestions = units.reduce((sum, u) => sum + (u.questions?.length || 0), 0);
   const totalScore = units.reduce((sum, u) => sum + (u.questions || []).reduce((s, q) => s + (q.score || 0), 0), 0);
 
-  const loadClasses = async () => {
-    if (classOptions.length > 0) return;
-    setClassLoading(true);
-    try {
-      const resp = await apiClient.get('/classes');
-      const data = resp.data;
-      const items = Array.isArray(data) ? data : (data.items || data.data || []);
-      setClassOptions(items.map((c: any) => ({ value: c.id, label: c.name || c.class_name || c.id })));
-    } catch { /* */ } finally { setClassLoading(false); }
-  };
-
-  const handlePublishToggle = (v: 'draft' | 'publish') => {
-    setPublishMode(v);
-    if (v === 'publish') loadClasses();
-  };
-
-  const handleFinalize = async () => {
-    if (!paper?.id) {
-      message.warning('试卷尚未保存，请先保存草稿');
-      return;
-    }
+  const handleSave = async () => {
+    if (!paper?.id) { message.warning('请先完成前序步骤'); return; }
     setSubmitting(true);
     try {
       await saveAll();
-      if (publishMode === 'publish') {
-        await apiClient.post(`/exam-papers/${paper.id}/publish`, {
-          class_ids: selectedClasses,
-          note: publishNote || undefined,
-        });
-        message.success('试卷已发布并通知学生');
-      } else {
-        message.success('试卷已保存为草稿');
-      }
+      message.success('已保存');
       setDirty(false);
       setTimeout(() => navigate('/papers'), 500);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
-      const msg = typeof detail === 'string' ? detail
-        : err?.message || '保存失败，请检查网络连接后重试';
-      message.error(msg);
+      message.error(typeof detail === 'string' ? detail : '保存失败');
+    } finally { setSubmitting(false); }
+  };
+
+  const handleSaveAndPublish = async () => {
+    if (!paper?.id) { message.warning('请先完成前序步骤'); return; }
+    setSubmitting(true);
+    try {
+      await saveAll();
+      await apiClient.post(`/exam-papers/${paper.id}/publish`, {
+        class_ids: selectedClasses,
+        note: publishNote || undefined,
+      });
+      message.success('已保存并发布');
+      setDirty(false);
+      setTimeout(() => navigate('/papers'), 500);
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      message.error(typeof detail === 'string' ? detail : '保存失败');
     } finally { setSubmitting(false); }
   };
 
@@ -165,26 +151,6 @@ export default function PreviewFinalizeStep() {
           </Card>
         );
       })()}
-
-      <Card title="发布设置" style={{ marginBottom: 16 }}>
-        <Radio.Group value={publishMode} onChange={(e) => handlePublishToggle(e.target.value)}>
-          <Radio value="draft">存入草稿</Radio>
-          <Radio value="publish">立即发布</Radio>
-        </Radio.Group>
-        {publishMode === 'publish' && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>发布到班级</label>
-              <Checkbox.Group options={classOptions} value={selectedClasses} onChange={(v) => setSelectedClasses(v as string[])} />
-              {classLoading && <span style={{ marginLeft: 8, color: '#999', fontSize: 12 }}>加载中...</span>}
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 4, color: '#666', fontSize: 13 }}>发布说明（可选）</label>
-              <Input.TextArea rows={2} placeholder="通知学生时的附加说明..." value={publishNote} onChange={(e) => setPublishNote(e.target.value)} />
-            </div>
-          </div>
-        )}
-      </Card>
 
       <Card title="选题清单" size="small">
         {units.map((unit, uIdx) => {
@@ -368,9 +334,14 @@ export default function PreviewFinalizeStep() {
     <div>
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleFinalize}>
-          {publishMode === 'publish' ? '确认发布' : '确认入库'}
-        </Button>
+        <Space>
+          <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSave}>
+            保存
+          </Button>
+          <Button type="primary" size="large" ghost icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSaveAndPublish}>
+            保存并发布
+          </Button>
+        </Space>
         <Space>
           <Tooltip title="导出 Word"><Button icon={<FileWordOutlined />} onClick={() => handleExport('word')}>导出 Word</Button></Tooltip>
           <Tooltip title="导出 PDF"><Button icon={<FilePdfOutlined />} onClick={() => handleExport('pdf')}>导出 PDF</Button></Tooltip>
