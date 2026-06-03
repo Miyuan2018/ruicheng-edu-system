@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Card, Button, Select, InputNumber, Tag, Popconfirm, Space } from 'antd';
+import { Card, Button, Select, InputNumber, Tag, Popconfirm, Space, Radio } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import type { QuestionConfigItem } from '../../../types/paper';
@@ -23,11 +23,12 @@ export default function StructureStep() {
   const {
     paper, updateMeta, addUnit, updateUnit, removeUnit,
     updateTypeConfig, addTypeConfig, removeTypeConfig,
-    setDirty,
+    addQuickUnits, setDirty,
   } = usePaperEditorStore();
 
   const units = paper?.units || [];
   const targetTotal = paper?.total_score || 0;
+  const showUnits = paper?.show_units ?? false;
   const perUnitTimer = paper?.per_unit_timer ?? false;
 
   // Flatten to rows
@@ -50,6 +51,11 @@ export default function StructureStep() {
     [rows],
   );
   const scoreOk = targetTotal > 0 && computedTotal === targetTotal;
+
+  const handleModeChange = (mode: 'type' | 'unit') => {
+    updateMeta({ show_units: mode === 'unit' });
+    setDirty(true);
+  };
 
   const addTypeToUnit = (unitId: string) => {
     addTypeConfig(unitId, {
@@ -83,13 +89,51 @@ export default function StructureStep() {
     setDirty(true);
   };
 
-  // 空结构兜底（理论上不会出现，newEmptyPaper 已预设默认单元）
+  // Empty state
+  if (rows.length === 0 && paper?.show_units === undefined) {
+    return (
+      <Card>
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <div style={{ fontSize: 16, color: '#333', marginBottom: 8 }}>选择试卷组织方式</div>
+          <div style={{ fontSize: 13, color: '#999', marginBottom: 24 }}>后续可在页面顶部切换</div>
+          <Space size={16}>
+            <Card
+              size="small"
+              hoverable
+              style={{ width: 180, cursor: 'pointer', textAlign: 'center' }}
+              onClick={() => { updateMeta({ show_units: false }); addQuickUnits('byType'); setDirty(true); }}
+            >
+              <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>按题型分组</div>
+              <div style={{ fontSize: 12, color: '#999' }}>题号全卷连续，题型分区显示</div>
+            </Card>
+            <Card
+              size="small"
+              hoverable
+              style={{ width: 180, cursor: 'pointer', textAlign: 'center' }}
+              onClick={() => { updateMeta({ show_units: true }); addNewUnit(); setDirty(true); }}
+            >
+              <div style={{ fontSize: 24, marginBottom: 8 }}>📦</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>按单元分区</div>
+              <div style={{ fontSize: 12, color: '#999' }}>可命名单元，支持逐单元限时</div>
+            </Card>
+          </Space>
+        </div>
+      </Card>
+    );
+  }
+
   if (rows.length === 0) {
     return (
       <Card size="small">
         <div style={{ textAlign: 'center', padding: 32 }}>
           <div style={{ fontSize: 14, color: '#999', marginBottom: 16 }}>尚未设置题型结构</div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={addNewUnit}>添加单元</Button>
+          <Space>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { addQuickUnits('byType'); setDirty(true); }}>
+              按题型分组
+            </Button>
+            <Button icon={<PlusOutlined />} onClick={addNewUnit}>自定义添加</Button>
+          </Space>
         </div>
       </Card>
     );
@@ -167,16 +211,102 @@ export default function StructureStep() {
       </div>
 
       {/* Mode toggle */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <label style={{ color: '#666', display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
-          <input type="checkbox" checked={perUnitTimer}
-            onChange={(e) => updateMeta({ per_unit_timer: e.target.checked })}
-            style={{ margin: 0 }} />
-          逐单元计时
-        </label>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 16, padding: '8px 12px', background: '#f8f9fa', borderRadius: 8,
+      }}>
+        <Radio.Group
+          value={showUnits ? 'unit' : 'type'}
+          onChange={(e) => handleModeChange(e.target.value)}
+          optionType="button" buttonStyle="solid" size="small"
+        >
+          <Radio.Button value="type">按题型分组</Radio.Button>
+          <Radio.Button value="unit">按单元分区</Radio.Button>
+        </Radio.Group>
+        {showUnits && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 13 }}>
+            <label style={{ color: '#666', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={perUnitTimer}
+                onChange={(e) => updateMeta({ per_unit_timer: e.target.checked })}
+                style={{ margin: 0 }}
+              />
+              逐单元计时
+            </label>
+          </div>
+        )}
       </div>
 
-      {/* ── 单元卡片 ── */}
+      {!showUnits ? (
+        /* ── 按题型模式：平表 ── */
+        <Card size="small" styles={{ body: { padding: 0 } }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e8e8e8', fontSize: 13, color: '#666' }}>
+                <th style={{ padding: '10px 12px', textAlign: 'left', width: '30%' }}>题型</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: '20%' }}>题数</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: '20%' }}>卷面分/题</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: '20%' }}>小计</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: '10%' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const subtotal = (row.cfg.count || 0) * (row.cfg.score_per_question || 0);
+                return (
+                  <tr key={`${row.unitId}-${row.cfgIdx}`} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <td style={{ padding: '8px 12px' }}>
+                      <Select
+                        size="small" variant="borderless" style={{ width: '100%' }}
+                        value={row.cfg.question_type}
+                        onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'question_type', v)}
+                        options={QTYPE_OPTIONS}
+                      />
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <InputNumber size="small" variant="borderless" style={{ width: 80 }}
+                        min={0} max={200} value={row.cfg.count}
+                        onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'count', v || 0)} />
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <InputNumber size="small" variant="borderless" style={{ width: 80 }}
+                        min={1} max={100} value={row.cfg.score_per_question}
+                        onChange={(v) => updateRow(row.unitId, row.cfgIdx, 'score_per_question', v || 1)}
+                        suffix="分" />
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 500 }}>
+                      <Tag color="blue">{subtotal} 分</Tag>
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                      <Popconfirm title="删除此行？" onConfirm={() => deleteRow(row.unitId, row.cfgIdx)}>
+                        <Button size="small" danger type="text" icon={<DeleteOutlined />} disabled={rows.length <= 1} />
+                      </Popconfirm>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #e8e8e8', fontWeight: 600, background: '#fafafa' }}>
+                <td style={{ padding: '10px 12px' }}>合计 {totalQuestions} 题</td>
+                <td colSpan={2} />
+                <td style={{ padding: '10px 12px', textAlign: 'center', color: scoreOk ? '#52c41a' : '#ff4d4f' }}>
+                  {computedTotal} 分
+                  {!scoreOk && targetTotal > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 400, marginTop: 2 }}>
+                      目标 {targetTotal} 分，差 {Math.abs(computedTotal - targetTotal)} 分
+                    </div>
+                  )}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </Card>
+      ) : (
+        /* ── 按单元模式：卡片嵌套 ── */
+        <div>
           {unitGroups.map((group) => {
             const unitScore = group.rows.reduce((s, r) => s + (r.cfg.count || 0) * (r.cfg.score_per_question || 0), 0);
             const unitQCount = group.rows.reduce((s, r) => s + (r.cfg.count || 0), 0);
@@ -272,8 +402,19 @@ export default function StructureStep() {
           <Button type="dashed" icon={<PlusOutlined />} onClick={addNewUnit} block style={{ marginTop: 8 }}>
             添加单元
           </Button>
+        </div>
+      )}
+
       {/* Footer */}
       <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {!showUnits && (
+          <Button size="small" icon={<PlusOutlined />} onClick={() => {
+            addTypeConfig(units[0]?.id || '', { question_type: 'SINGLE_CHOICE', count: 0, score_per_question: 5 });
+            setDirty(true);
+          }}>
+            添加题型
+          </Button>
+        )}
         {!scoreOk && targetTotal > 0 && (
           <Tag color="error">
             结构总分（{computedTotal}）≠ 目标总分（{targetTotal}），差 {Math.abs(computedTotal - targetTotal)} 分
