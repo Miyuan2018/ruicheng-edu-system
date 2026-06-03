@@ -329,21 +329,26 @@ async def export_pdf(exam_paper_id, db: AsyncSession):
     pdf.add_page()
 
     # Load CJK font
-    FONT_PATHS = [
-        "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf",
+    # 优先加载 CJK 字体（含中文字形），Times New Roman 无中文不能排第一
+    CJK_PATHS = [
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
         "/usr/share/fonts/truetype/arphic/uming.ttc",
     ]
     font_loaded = False
-    for fp in FONT_PATHS:
+    for fp in CJK_PATHS:
         try:
             pdf.add_font("CJK", "", fp, uni=True)
-            pdf.set_font("CJK", "", 12)
             font_loaded = True
             break
         except Exception:
             continue
+    if not font_loaded:
+        try:
+            pdf.add_font("CJK", "", "/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf", uni=True)
+            font_loaded = True
+        except Exception:
+            pass
     if not font_loaded:
         pdf.set_font("Helvetica", "", 12)
 
