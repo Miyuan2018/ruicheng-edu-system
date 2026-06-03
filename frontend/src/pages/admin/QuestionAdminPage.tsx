@@ -136,6 +136,13 @@ export default function QuestionAdminPage() {
   const [scrapeResults, setScrapeResults] = useState<any[]>([]);
   const [scrapeResultsLoading, setScrapeResultsLoading] = useState(false);
 
+  const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
+  const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
+  const handleScrapeDelete = async (id: string) => {
+    try { await apiClient.delete('/questions/' + id); message.success('已删除'); loadScrapeResults(); }
+    catch { message.error('删除失败'); }
+  };
+
   const loadScrapeResults = () => {
     setScrapeResultsLoading(true);
     apiClient.get('/questions', { params: { source: 'SCRAPED', limit: 50 } })
@@ -143,13 +150,6 @@ export default function QuestionAdminPage() {
         const resp = data || {};
         setScrapeResults(resp.items || (Array.isArray(resp) ? resp : []));
       }).catch(() => {}).finally(() => setScrapeResultsLoading(false));
-  };
-  const [scrapeEditQ, setScrapeEditQ] = useState<any>(null);
-  const [scrapeEditOpen, setScrapeEditOpen] = useState(false);
-
-  const handleScrapeDelete = async (id: string) => {
-    try { await apiClient.delete('/questions/' + id); message.success('已删除'); loadScrapeResults(); }
-    catch { message.error('删除失败'); }
   };
 
   // 加载知识树用于知识点选择
@@ -286,10 +286,16 @@ export default function QuestionAdminPage() {
 
   const typeMap = useMemo(() => toLabelMap(qtypes), [qtypes]);
   const pageDiffMap = useMemo(() => toLabelMap(diffs), [diffs]);
-  const pageSourceMap: Record<string, { color: string; label: string }> = {
+  const SCRAPE_SOURCE_MAP: Record<string, { color: string; label: string }> = {
     SCRAPED: { color: 'orange', label: '网络抓取' },
     LLM_GENERATED: { color: 'purple', label: 'LLM生成' },
     MANUAL: { color: 'blue', label: '手工创建' },
+  };
+  const REVIEW_STATUS_MAP: Record<string, { color: string; label: string }> = {
+    PENDING: { color: 'orange', label: '待审核' },
+    APPROVED: { color: 'green', label: '已通过' },
+    REJECTED: { color: 'red', label: '已驳回' },
+    NEEDS_REVIEW: { color: 'gold', label: '待复审' },
   };
 
   const tabItems = [
@@ -496,7 +502,6 @@ export default function QuestionAdminPage() {
           )}
         </Card>
 
-        {/* 抓取结果卡片列表 */}
         <Card size="small" title={<span>抓取结果 <span style={{ fontWeight: 400, color: '#999', fontSize: 12 }}>共 {scrapeResults.length} 道</span></span>}
           style={{ marginTop: 16 }}>
           <Spin spinning={scrapeResultsLoading}>
@@ -510,16 +515,14 @@ export default function QuestionAdminPage() {
                 <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
                   <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>{q.title?.substring(0, 120)}</div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    <Tag color={(toColorMap(diffs || [])[q.difficulty] as any)?.color || 'default'} style={{ fontSize: 10 }}>{pageDiffMap[q.difficulty] || q.difficulty}</Tag>
+                    <Tag color={(toColorMap(diffs)[q.difficulty] as any)?.color || 'default'} style={{ fontSize: 10 }}>{pageDiffMap[q.difficulty] || q.difficulty}</Tag>
                     <Tag color="blue" style={{ fontSize: 10 }}>{typeMap[q.question_type] || q.question_type}</Tag>
                     {q.score != null && <Tag color="orange" style={{ fontSize: 10 }}>{q.score}分</Tag>}
                     {(q.grade_level?.knowledge_points || []).slice(0, 2).map((kp: string, j: number) => (
                       <Tag key={j} color="purple" style={{ fontSize: 10 }}>{kp}</Tag>
                     ))}
-                    <Tag color={(pageSourceMap[q.source] as any)?.color || 'default'} style={{ fontSize: 10 }}>
-                      {(pageSourceMap[q.source] as any)?.label || q.source}
-                    </Tag>
-                    {(() => { const m = (statusMap as any)[q.review_status]; return m ? <Tag color={m.color} style={{ fontSize: 10 }}>{m.label}</Tag> : null; })()}
+                    <Tag color={SCRAPE_SOURCE_MAP[q.source]?.color || 'default'} style={{ fontSize: 10 }}>{SCRAPE_SOURCE_MAP[q.source]?.label || q.source}</Tag>
+                    <Tag color={REVIEW_STATUS_MAP[q.review_status]?.color || 'default'} style={{ fontSize: 10 }}>{REVIEW_STATUS_MAP[q.review_status]?.label || q.review_status}</Tag>
                   </div>
                 </div>
                 <span style={{ width: 90, fontSize: 11, color: '#999', textAlign: 'center', paddingTop: 2, flexShrink: 0 }}>
@@ -536,7 +539,9 @@ export default function QuestionAdminPage() {
           </Spin>
         </Card>
         {scrapeEditOpen && scrapeEditQ && (
-          <QuestionEditModal open={scrapeEditOpen} question={scrapeEditQ} onClose={() => { setScrapeEditOpen(false); setScrapeEditQ(null); loadScrapeResults(); }} />
+          <QuestionEditModal open={scrapeEditOpen} question={scrapeEditQ}
+            onClose={() => { setScrapeEditOpen(false); setScrapeEditQ(null); }}
+            onSuccess={() => { setScrapeEditOpen(false); setScrapeEditQ(null); loadScrapeResults(); }} />
         )}
       </>),
     },
