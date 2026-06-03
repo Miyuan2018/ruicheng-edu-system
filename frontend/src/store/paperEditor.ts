@@ -15,6 +15,7 @@ interface PaperEditorState {
   generateReport: GenerateReport | null;
   pendingDraft: any | null;
   draftId: string | null;  // V4.4: 草稿记录 ID，用于精确删除
+  knowledgeNodes: any[];  // V5.01: 知识节点列表跨步骤共享 (C4)
 
   // Actions
   initNew: () => void;
@@ -49,6 +50,7 @@ interface PaperEditorState {
   autoSave: () => Promise<void>;
   saveAll: () => Promise<void>;
   setDirty: (dirty: boolean) => void;
+  setKnowledgeNodes: (nodes: any[]) => void;  // V5.01: C4
   setUnitQuestions: (uid: string, questions: ExamPaperUnitQuestion[]) => void;
   regenerateAll: () => Promise<void>;
   fillGaps: () => Promise<void>;
@@ -125,7 +127,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   pendingDraft: null,
   draftId: null,
 
-  initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null }),
+  initNew: () => set({ paper: newEmptyPaper(), currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null, knowledgeNodes: [] }),
 
   loadDraft: async (id: string) => {
     set({ loading: true });
@@ -667,6 +669,7 @@ export const usePaperEditorStore = create<PaperEditorState>((set, get) => ({
   },
 
   setDirty: (dirty) => set({ dirty }),
+  setKnowledgeNodes: (knowledgeNodes) => set({ knowledgeNodes }),
   setGenerateReport: (report) => set({ generateReport: report ? { constraint_dashboard: report.constraint_dashboard } : null }),
   reset: () => set({ paper: null, currentStep: 0, dirty: false, lastSaved: null, autoSelectReports: [], generateReport: null, pendingDraft: null, draftId: null }),
 }));

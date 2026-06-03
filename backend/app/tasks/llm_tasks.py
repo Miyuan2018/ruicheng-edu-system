@@ -89,7 +89,6 @@ def generate_questions_task(
                 score=item.get("score", 5),
                 correct_answer=correct_answer or "",
                 explanation=item.get("explanation", ""),
-                meta_data={"knowledge_points": [knowledge_point]},
                 source="LLM_GENERATED", review_status="PENDING",
                 source_task_id=uuid.UUID(task_id),
                 created_by=creator_uuid,
@@ -172,7 +171,6 @@ def scrape_questions_task(
                 source="SCRAPED", review_status="PENDING",
                 source_task_id=uuid.UUID(task_id),
                 created_by=creator_uuid,
-                meta_data={"knowledge_points": kps},
             ))
             saved += 1
 

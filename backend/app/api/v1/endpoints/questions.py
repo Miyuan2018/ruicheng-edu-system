@@ -24,9 +24,7 @@ async def create_question(
     if current_user.user_type not in ("TEACHER", "QUESTION_ADMIN", "SYS_ADMIN"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅教师和题库管理员可创建试题")
 
-    data = question_in.model_dump(exclude={"content", "knowledge_points"}, exclude_none=True)
-    if question_in.knowledge_points:
-        data["meta_data"] = {"knowledge_points": question_in.knowledge_points}
+    data = question_in.model_dump(exclude={"content"}, exclude_none=True)
     data["source"] = data.get("source") or "MANUAL"
     data["review_status"] = data.get("review_status") or "APPROVED"
     data["created_by"] = current_user.id
@@ -78,9 +76,13 @@ async def search_questions(
     if source:
         query = query.where(Question.source == source)
     if question_type:
-        query = query.where(Question.question_type == question_type)
+        type_list = [t.strip() for t in question_type.split(",") if t.strip()]
+        if type_list:
+            query = query.where(Question.question_type.in_(type_list))
     if difficulty:
-        query = query.where(Question.difficulty == difficulty)
+        diff_list = [d.strip() for d in difficulty.split(",") if d.strip()]
+        if diff_list:
+            query = query.where(Question.difficulty.in_(diff_list))
     if review_status:
         query = query.where(Question.review_status == review_status)
     if keyword:
@@ -191,8 +193,8 @@ async def export_questions(
     # Filter knowledge_point in Python (more reliable on SQLite)
     output = []
     for q in questions:
-        meta = q.meta_data or {}
-        kps = meta.get("knowledge_points", [])
+        gl = q.grade_level or {}
+        kps = gl.get("knowledge_points", [])
         if knowledge_point and knowledge_point not in str(kps):
             continue
         output.append({
@@ -605,6 +607,7 @@ async def get_questions(
     source: Optional[str] = None,
     question_type: Optional[str] = None,
     difficulty: Optional[str] = None,
+    knowledge_points: Optional[str] = None,
     review_status: Optional[str] = None,
     is_typical: Optional[bool] = None,
     keyword: Optional[str] = None,
@@ -636,9 +639,19 @@ async def get_questions(
     if source:
         query = query.where(Question.source == source)
     if question_type:
-        query = query.where(Question.question_type == question_type)
+        type_list = [t.strip() for t in question_type.split(",") if t.strip()]
+        if type_list:
+            query = query.where(Question.question_type.in_(type_list))
     if difficulty:
-        query = query.where(Question.difficulty == difficulty)
+        diff_list = [d.strip() for d in difficulty.split(",") if d.strip()]
+        if diff_list:
+            query = query.where(Question.difficulty.in_(diff_list))
+    if knowledge_points:
+        kp_list = [kp.strip() for kp in knowledge_points.split(",") if kp.strip()]
+        if kp_list:
+            query = query.where(
+                Question.grade_level['knowledge_points'].contains(kp_list)
+            )
     if review_status:
         query = query.where(Question.review_status == review_status)
     if is_typical is not None:

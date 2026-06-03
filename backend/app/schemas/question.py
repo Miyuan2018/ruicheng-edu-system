@@ -14,7 +14,6 @@ class QuestionBase(BaseModel):
     grade_level: Optional[GradeLevel] = None
     question_type: str = Field(..., pattern="^(SINGLE_CHOICE|MULTIPLE_CHOICE|FILL_BLANK|SUBJECTIVE)$")
     difficulty: str = Field(..., pattern="^(EASY|MEDIUM|HARD)$")
-    knowledge_points: Optional[List[str]] = None
     correct_answer: Optional[Union[str, CorrectAnswerUnion]] = None
     explanation: Optional[str] = None
     score: int = Field(default=5, ge=1)
@@ -42,7 +41,6 @@ class QuestionUpdate(BaseModel):
     grade_level: Optional[GradeLevel] = None
     question_type: Optional[str] = Field(None, pattern="^(SINGLE_CHOICE|MULTIPLE_CHOICE|FILL_BLANK|SUBJECTIVE)$")
     difficulty: Optional[str] = Field(None, pattern="^(EASY|MEDIUM|HARD)$")
-    knowledge_points: Optional[List[str]] = None
     correct_answer: Optional[Union[str, CorrectAnswerUnion]] = None
     explanation: Optional[str] = None
     score: Optional[int] = Field(None, ge=1)

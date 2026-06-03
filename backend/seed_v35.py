@@ -162,8 +162,12 @@ Q = {f"q{i}": _uid() for i in range(1, 81)}
 # ═══════════════════════════════════════════════════════════════════════════════════
 def _q(idx, title, qtype, difficulty, subject, grade_scope, grades,
        correct_answer, explanation, score=5, is_typical=False, source="MANUAL",
-       created_by=T_MATH_ID):
-    grade_level = json.dumps({"scope": grade_scope, "grades": grades})
+       created_by=T_MATH_ID, knowledge_points=None):
+    gl_data = {"scope": grade_scope, "grades": grades}
+    if knowledge_points:
+        gl_data["knowledge_points"] = knowledge_points
+        gl_data["chapter"] = knowledge_points[0]
+    grade_level = json.dumps(gl_data, ensure_ascii=False)
     return {
         "id": Q[f"q{idx}"],
         "title": title,
@@ -593,12 +597,12 @@ async def step6_questions(db: AsyncSession):
            "SINGLE_CHOICE", "MEDIUM", "数学", "grade", ["G8"],
            {"options": ["A. x=2或x=3", "B. x=2或x=-3", "C. x=-2或x=3", "D. x=-2或x=-3"], "correct_answer": "A"},
            "因式分解：x²-5x+6=(x-2)(x-3)=0，所以x=2或x=3。",
-           score=3),
+           score=3, knowledge_points=["一元二次方程", "因式分解"]),
         _q(3, "等腰三角形的两边长分别为4和7，则其周长为（ ）\nA. 15  B. 18  C. 15或18  D. 11",
            "SINGLE_CHOICE", "MEDIUM", "数学", "grade", ["G8"],
            {"options": ["A. 15", "B. 18", "C. 15或18", "D. 11"], "correct_answer": "B"},
            "若腰=4，两腰之和=8<底7，不构成三角形；故腰=7，周长=7+7+4=18。",
-           score=3, is_typical=True),
+           score=3, is_typical=True, knowledge_points=["三角形", "等腰三角形"]),
         _q(4, "下列图形中，既是轴对称图形又是中心对称图形的是（ ）\nA. 等边三角形  B. 正方形  C. 等腰梯形  D. 平行四边形",
            "SINGLE_CHOICE", "EASY", "数学", "grade", ["G8"],
            {"options": ["A. 等边三角形", "B. 正方形", "C. 等腰梯形", "D. 平行四边形"], "correct_answer": "B"},

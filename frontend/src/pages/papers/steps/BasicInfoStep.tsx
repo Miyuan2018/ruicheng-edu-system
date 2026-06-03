@@ -15,6 +15,7 @@ export default function BasicInfoStep() {
   const [syllabi, setSyllabi] = useState<any[]>([]);
   const [selectedSyllabus, setSelectedSyllabus] = useState<string>('');
   const [knowledgeNodes, setKnowledgeNodes] = useState<any[]>([]);
+  const storeSetKnowledgeNodes = usePaperEditorStore(s => s.setKnowledgeNodes);
 
   useEffect(() => {
     apiClient.get('/subjects/all').then((resp) => {
@@ -62,6 +63,7 @@ export default function BasicInfoStep() {
       };
       walk(resp.data.tree || resp.data || []);
       setKnowledgeNodes(points);
+      storeSetKnowledgeNodes(points);
     } catch { /* ignore */ }
   };
 

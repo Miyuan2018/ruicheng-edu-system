@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Drawer, Input } from 'antd';
-import { SyncOutlined, SwapOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { Card, Button, Tag, Space, message, Spin, Empty, Popconfirm, Tooltip, Drawer, Input, Select, TreeSelect } from 'antd';
+import { SyncOutlined, SwapOutlined, DeleteOutlined, SearchOutlined, FilterOutlined } from '@ant-design/icons';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { paperApi } from '../../../api/papers';
 import type { ExamPaperUnitQuestion, AlternativeQuestion } from '../../../types/paper';
@@ -16,6 +16,7 @@ export default function RecommendStep() {
     paper, generateReport,
     removeQuestionFromUnit, clearAllQuestions, setDirty,
     regenerateAll, fillGaps, replaceQuestion, syncScoresFromConfig, autoSave,
+    knowledgeNodes,
   } = usePaperEditorStore();
 
   const hasAutoAdjusted = useRef(false);
@@ -73,6 +74,13 @@ export default function RecommendStep() {
   const [manualLoading, setManualLoading] = useState(false);
   const [manualKeyword, setManualKeyword] = useState('');
 
+  // V5.01: 筛选条件
+  const [filterExpanded, setFilterExpanded] = useState(true);
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
+  const [filterDifficulties, setFilterDifficulties] = useState<string[]>(['EASY', 'MEDIUM', 'HARD']);
+  const [filterKnIds, setFilterKnIds] = useState<string[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
   /** 从 store 获取最新 paper 状态，避免 async 闭包引用过期值 */
   const getLivePaper = () => usePaperEditorStore.getState().paper;
 
@@ -81,17 +89,46 @@ export default function RecommendStep() {
     setManualKeyword('');
     setManualResults([]);
     setManualOpen(true);
-    fetchManualResults(questionType, '');
+
+    const livePaper = getLivePaper();
+    const unit = livePaper?.units?.find(u => u.id === unitId);
+
+    // 自动填充题型
+    if (unit?.question_config?.length) {
+      setFilterTypes([...new Set(unit.question_config.map(c => c.question_type))]);
+    } else {
+      setFilterTypes([]);
+    }
+
+    // 自动填充难度
+    const ratio = livePaper?.difficulty_ratio;
+    if (ratio) {
+      const diffs = (Object.entries(ratio) as [string, number][])
+        .filter(([_, v]) => v > 0)
+        .map(([k]) => k);
+      setFilterDifficulties(diffs.length > 0 ? diffs : ['EASY', 'MEDIUM', 'HARD']);
+    } else {
+      setFilterDifficulties(['EASY', 'MEDIUM', 'HARD']);
+    }
+
+    // 自动填充知识点
+    const knIds = livePaper?.knowledge_node_ids || [];
+    setFilterKnIds(knIds);
+
+    // 初始搜索
+    fetchManualResults(questionType, '', undefined, undefined, knIds);
   };
 
-  const fetchManualResults = async (questionType: string, keyword: string) => {
+  const fetchManualResults = async (
+    questionType: string,
+    keyword: string,
+    types?: string[],
+    diffs?: string[],
+    knIds?: string[]
+  ) => {
     setManualLoading(true);
     try {
       const livePaper = getLivePaper();
-      console.log('[手工选题] livePaper.subject:', livePaper?.subject);
-      console.log('[手工选题] livePaper.grade_level:', JSON.stringify(livePaper?.grade_level));
-
-      // 归一化 grades 为数组（BasicInfoStep 单选模式下可能为字符串）
       const rawGrades = livePaper?.grade_level?.grades;
       const grades: string[] = Array.isArray(rawGrades)
         ? rawGrades
@@ -99,33 +136,33 @@ export default function RecommendStep() {
           ? [rawGrades]
           : [];
 
+      const kpIds = knIds ?? filterKnIds;
+      const liveKnNodes = usePaperEditorStore.getState().knowledgeNodes;
+      const selectedTitles = kpIds
+        .map(id => liveKnNodes.find((n: any) => n.key === id)?.title)
+        .filter(Boolean) as string[];
+
       const params: any = {
-        question_type: questionType,
+        question_type: (types ?? filterTypes).join(",") || undefined,
+        difficulty: (diffs ?? filterDifficulties).join(",") || undefined,
+        knowledge_points: selectedTitles.join(",") || undefined,
         subject: livePaper?.subject || undefined,
         keyword: keyword || undefined,
         review_status: 'APPROVED',
-        limit: 30,
+        limit: 50,
       };
       if (grades.length === 1) params.grade = grades[0];
-      else if (grades.length > 1) params.grade_level = grades[0]; // API 仅支持单年级过滤
-      console.log('[手工选题] 请求参数:', JSON.stringify(params));
+      else if (grades.length > 1) params.grade_level = grades[0];
 
       const resp = await paperApi.getQuestions(params);
-      console.log('[手工选题] 原始响应:', resp);
-      console.log('[手工选题] resp.data 类型:', typeof resp.data, Array.isArray(resp.data) ? 'array' : typeof resp.data);
-
       const data = Array.isArray(resp.data) ? resp.data : (resp.data?.items || resp.data?.data || []);
-      console.log('[手工选题] data 条数:', data?.length);
 
-      // 排除已在试卷中的题
       const allQids = new Set(
         (getLivePaper()?.units || []).flatMap(u => (u.questions || []).map(q => q.question_id))
       );
       const filtered = data.filter((q: any) => !allQids.has(q.id));
-      console.log('[手工选题] 过滤后条数:', filtered.length);
       setManualResults(filtered);
     } catch (e: any) {
-      console.error('[手工选题] 异常:', e);
       const detail = e?.response?.data?.detail || e?.message || '获取题目失败';
       message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
       setManualResults([]);
@@ -138,6 +175,11 @@ export default function RecommendStep() {
     if (!manualTarget || !paper) return;
     const { questionId, unitId } = manualTarget;
     const unit = paper.units?.find(u => u.id === unitId);
+    if (!unit) {
+      message.warning('该单元已被移除');
+      setManualOpen(false);
+      return;
+    }
     const oldQ = unit?.questions?.find(q => q.question_id === questionId);
     // 用配置的 score_per_question 而非题目默认分
     const cfg = unit?.question_config?.find(c => c.question_type === manualTarget.questionType);
@@ -374,18 +416,88 @@ export default function RecommendStep() {
         title="手工选题"
         open={manualOpen}
         onClose={() => setManualOpen(false)}
-        width={560}
+        width={640}
       >
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <Input.Search
             placeholder="搜索题目关键词..."
             value={manualKeyword}
-            onChange={(e) => setManualKeyword(e.target.value)}
+            onChange={(e) => {
+              setManualKeyword(e.target.value);
+              if (debounceRef.current) clearTimeout(debounceRef.current);
+              debounceRef.current = setTimeout(() => {
+                fetchManualResults(manualTarget?.questionType || '', e.target.value);
+              }, 300);
+            }}
             onSearch={(v) => fetchManualResults(manualTarget?.questionType || '', v)}
             enterButton={<><SearchOutlined /> 搜索</>}
             allowClear
           />
         </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <Button
+            size="small"
+            icon={<FilterOutlined />}
+            onClick={() => setFilterExpanded(!filterExpanded)}
+            type={filterExpanded ? 'primary' : 'default'}
+          >
+            筛选 {filterExpanded ? '▲' : '▼'}
+          </Button>
+          {filterExpanded && (
+            <div style={{
+              background: '#fafafa', borderRadius: 6, padding: 10, marginTop: 8,
+              display: 'flex', gap: 8, flexWrap: 'wrap',
+            }}>
+              <Select
+                mode="multiple"
+                placeholder="题型"
+                value={filterTypes}
+                onChange={(v) => { setFilterTypes(v); fetchManualResults(manualTarget?.questionType || '', manualKeyword); }}
+                options={[
+                  { value: 'SINGLE_CHOICE', label: '单选题' },
+                  { value: 'MULTIPLE_CHOICE', label: '多选题' },
+                  { value: 'FILL_BLANK', label: '填空题' },
+                  { value: 'SUBJECTIVE', label: '解答题' },
+                ]}
+                style={{ minWidth: 110, flex: 1 }}
+                size="small"
+                allowClear
+              />
+              <Select
+                mode="multiple"
+                placeholder="难度"
+                value={filterDifficulties}
+                onChange={(v) => { setFilterDifficulties(v); fetchManualResults(manualTarget?.questionType || '', manualKeyword); }}
+                options={[
+                  { value: 'EASY', label: '简单' },
+                  { value: 'MEDIUM', label: '中等' },
+                  { value: 'HARD', label: '困难' },
+                ]}
+                style={{ minWidth: 110, flex: 1 }}
+                size="small"
+                allowClear
+              />
+              <TreeSelect
+                treeData={knowledgeNodes.map((n: any) => ({
+                  value: n.key,
+                  title: n.title,
+                  children: n.children,
+                }))}
+                placeholder="知识点"
+                treeCheckable
+                showCheckedStrategy={TreeSelect.SHOW_CHILD}
+                value={filterKnIds}
+                onChange={(v) => { setFilterKnIds(v); fetchManualResults(manualTarget?.questionType || '', manualKeyword, undefined, undefined, v); }}
+                style={{ minWidth: 150, flex: 1 }}
+                size="small"
+                allowClear
+                maxTagCount={2}
+              />
+            </div>
+          )}
+        </div>
+
         <Spin spinning={manualLoading}>
           {manualResults.length === 0 && !manualLoading && (
             <Empty description="未找到匹配题目" />
@@ -399,11 +511,17 @@ export default function RecommendStep() {
               onClick={() => handleManualReplace(q)}
             >
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>{q.title?.substring(0, 120)}</div>
-              <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
+              <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Tag color={DIFF_COLORS[q.difficulty] || 'default'} style={{ fontSize: 10 }}>
                   {DIFF_LABELS[q.difficulty] || q.difficulty}
                 </Tag>
-                {q.subject && <Tag style={{ fontSize: 10 }}>{q.subject}</Tag>}
+                <Tag color="blue" style={{ fontSize: 10 }}>
+                  {QTYPE_LABELS[q.question_type] || q.question_type}
+                </Tag>
+                {q.score != null && <Tag color="orange" style={{ fontSize: 10 }}>{q.score}分</Tag>}
+                {(q.grade_level?.knowledge_points || []).slice(0, 2).map((kp: string, i: number) => (
+                  <Tag key={i} color="purple" style={{ fontSize: 10 }}>{kp}</Tag>
+                ))}
                 <span style={{ fontSize: 11, color: '#999' }}>点击替换</span>
               </div>
             </Card>

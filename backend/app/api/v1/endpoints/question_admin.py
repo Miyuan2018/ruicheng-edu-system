@@ -176,7 +176,6 @@ async def generate_questions(
             score=item.get("score", 5),
             correct_answer=correct_answer or "",
             explanation=item.get("explanation", ""),
-            meta_data={"knowledge_points": [knowledge_point]},
             source="LLM_GENERATED", review_status="PENDING",
             source_task_id=task.id,
             created_by=current_user.id,
@@ -473,7 +472,7 @@ async def start_scrape(
             correct_answer=ca,
             explanation=q.get("explanation", ""),
             source="SCRAPED", review_status="PENDING",
-            created_by=uid, meta_data={"knowledge_points": kps},
+            created_by=uid,
         ))
         saved += 1
 
@@ -520,7 +519,7 @@ async def start_dedup(
 
     query = select(Question).where(Question.review_status == "APPROVED")
     if knowledge_point:
-        query = query.where(Question.meta_data.contains({"knowledge_points": [knowledge_point]}))
+        query = query.where(Question.grade_level['knowledge_points'].contains([knowledge_point]))
     if difficulty:
         query = query.where(Question.difficulty == difficulty)
 
