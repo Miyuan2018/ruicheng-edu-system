@@ -20,6 +20,8 @@ export default function PreviewFinalizeStep() {
   const [submitting, setSubmitting] = useState(false);
 
   const units = paper?.units || [];
+  const templateType = paper?.template_type || 'generic';
+  const isFlatView = templateType === 'question_type';
   // 归一化 grades 为数组（防御旧版草稿数据中 grades 为字符串的情况）
   const grades: string[] = (() => {
     const raw = paper?.grade_level?.grades;
@@ -145,32 +147,69 @@ export default function PreviewFinalizeStep() {
       })()}
 
       <Card title="选题清单" size="small">
-        {units.map((unit, uIdx) => {
-          const unitKey = unit.id || String(uIdx);
-          const qs = unit.questions || [];
-          return (
-            <Collapse key={unitKey} size="small" style={{ marginBottom: 8 }}
-              items={[{
-                key: unitKey,
-                label: <span><Tag>{unit.name || '分组' + (uIdx + 1)}</Tag><span style={{ fontSize: 12, color: '#999' }}>{qs.length + '题'}</span></span>,
-                children: qs.length === 0
-                  ? <div style={{ color: '#ccc', fontSize: 12, padding: 8, textAlign: 'center' }}>暂无选题</div>
-                  : qs.map((q, qIdx) => (
-                    <div key={q.question_id} style={{ padding: '6px 0', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ color: '#999', fontSize: 11, width: 24 }}>{qIdx + 1}</span>
-                      <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {(q.question?.title || '').substring(0, 80)}
-                      </span>
-                      <Tag color={diffColors[q.question?.difficulty || '']?.color || 'default'} style={{ fontSize: 10 }}>
-                        {diffLabels[q.question?.difficulty || ''] || q.question?.difficulty}
-                      </Tag>
-                      <span style={{ fontSize: 12, color: '#999' }}>{q.score + '分'}</span>
-                    </div>
-                  )),
-              }]}
-            />
-          );
-        })}
+        {isFlatView ? (
+          (() => {
+            const allQuestions = units.flatMap(u => u.questions || []);
+            const typeGroups: Record<string, typeof allQuestions> = {};
+            allQuestions.forEach(q => {
+              const qt = q.question_type || 'SINGLE_CHOICE';
+              if (!typeGroups[qt]) typeGroups[qt] = [];
+              typeGroups[qt].push(q);
+            });
+            return Object.entries(typeGroups).map(([qt, qs]) => {
+              const qtypeLabels: Record<string, string> = { SINGLE_CHOICE: '单选题', MULTIPLE_CHOICE: '多选题', FILL_BLANK: '填空题', SUBJECTIVE: '解答题' };
+              return (
+                <Collapse key={qt} size="small" style={{ marginBottom: 8 }}
+                  items={[{
+                    key: qt,
+                    label: <span><Tag color="blue">{qtypeLabels[qt] || qt}</Tag><span style={{ fontSize: 12, color: '#999' }}>{qs.length + '题'}</span></span>,
+                    children: qs.length === 0
+                      ? <div style={{ color: '#ccc', fontSize: 12, padding: 8, textAlign: 'center' }}>暂无选题</div>
+                      : qs.map((q, qIdx) => (
+                        <div key={q.question_id} style={{ padding: '6px 0', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ color: '#999', fontSize: 11, width: 24 }}>{qIdx + 1}</span>
+                          <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {(q.question?.title || '').substring(0, 80)}
+                          </span>
+                          <Tag color={diffColors[q.question?.difficulty || '']?.color || 'default'} style={{ fontSize: 10 }}>
+                            {diffLabels[q.question?.difficulty || ''] || q.question?.difficulty}
+                          </Tag>
+                          <span style={{ fontSize: 12, color: '#999' }}>{q.score + '分'}</span>
+                        </div>
+                      )),
+                  }]}
+                />
+              );
+            });
+          })()
+        ) : (
+          units.map((unit, uIdx) => {
+            const unitKey = unit.id || String(uIdx);
+            const qs = unit.questions || [];
+            return (
+              <Collapse key={unitKey} size="small" style={{ marginBottom: 8 }}
+                items={[{
+                  key: unitKey,
+                  label: <span><Tag>{unit.name || '分组' + (uIdx + 1)}</Tag><span style={{ fontSize: 12, color: '#999' }}>{qs.length + '题'}</span></span>,
+                  children: qs.length === 0
+                    ? <div style={{ color: '#ccc', fontSize: 12, padding: 8, textAlign: 'center' }}>暂无选题</div>
+                    : qs.map((q, qIdx) => (
+                      <div key={q.question_id} style={{ padding: '6px 0', borderBottom: '1px solid #f5f5f5', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#999', fontSize: 11, width: 24 }}>{qIdx + 1}</span>
+                        <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {(q.question?.title || '').substring(0, 80)}
+                        </span>
+                        <Tag color={diffColors[q.question?.difficulty || '']?.color || 'default'} style={{ fontSize: 10 }}>
+                          {diffLabels[q.question?.difficulty || ''] || q.question?.difficulty}
+                        </Tag>
+                        <span style={{ fontSize: 12, color: '#999' }}>{q.score + '分'}</span>
+                      </div>
+                    )),
+                }]}
+              />
+            );
+          })
+        )}
       </Card>
     </div>
   );
@@ -278,7 +317,7 @@ export default function PreviewFinalizeStep() {
       ) : null}
 
       {(() => {
-        const showUnits = paper?.show_units ?? false;
+        const showUnits = templateType !== 'question_type';
         const numLabels = ['一', '二', '三', '四', '五', '六', '七', '八'];
         let sectionIndex = 0;
 
