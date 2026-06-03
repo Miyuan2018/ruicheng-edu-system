@@ -334,7 +334,7 @@ async def list_exam_papers(
     query = (
         query.offset(skip)
         .limit(limit)
-        .order_by(ExamPaper.created_at.desc())
+        .order_by(ExamPaper.updated_at.desc())
     )
     result = await db.execute(query)
     papers = result.scalars().all()
@@ -404,7 +404,7 @@ async def list_my_papers(
     query = (
         query.offset(skip)
         .limit(limit)
-        .order_by(ExamPaper.created_at.desc())
+        .order_by(ExamPaper.updated_at.desc())
     )
     result = await db.execute(query)
     papers = result.scalars().all()
