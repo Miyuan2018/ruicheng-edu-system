@@ -22,7 +22,7 @@ export default function RecommendStep() {
 
   // 到步即自动检测缺口或自动选题
   useEffect(() => {
-    if (!paper?.id || hasAutoAdjusted.current) return;
+    if (hasAutoAdjusted.current) return;
     const units = paper?.units || [];
     const hasConfigs = units.some(u => (u.question_config || []).some(c => (c.count || 0) > 0));
     if (!hasConfigs) return;
@@ -41,7 +41,7 @@ export default function RecommendStep() {
       );
       if (hasGaps) {
         setLoading(true);
-        fillGaps(paper.id).then(() => {
+        fillGaps().then(() => {
           message.info('已自动补充缺口题目');
         }).catch((e: any) => {
           const detail = e?.response?.data?.detail || e?.message || '自动补充缺口失败';
@@ -51,7 +51,7 @@ export default function RecommendStep() {
     } else {
       hasAutoAdjusted.current = true;
       setLoading(true);
-      regenerateAll(paper.id).then(() => {
+      regenerateAll().then(() => {
         message.success('已自动生成题目');
       }).catch((e: any) => {
         const detail = e?.response?.data?.detail || e?.message || '自动选题失败';
@@ -60,7 +60,7 @@ export default function RecommendStep() {
     }
     // Zustand actions 和 antd message 引用稳定，不需要加入依赖数组
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paper?.id]);
+  }, [paper?.units]);
 
   const [loading, setLoading] = useState(false);
   // loading 状态用于按钮和自动触发的加载反馈
@@ -136,10 +136,19 @@ export default function RecommendStep() {
   const units = paper?.units || [];
 
   const handleSwap = async (questionId: string, unitId: string) => {
-    if (!paper?.id) return;
     setSwapLoading(prev => ({ ...prev, [questionId]: true }));
     try {
-      const resp = await paperApi.swapQuestion(paper.id, questionId);
+      const st = usePaperEditorStore.getState();
+      const p = st.paper;
+      const allQids = (p?.units || []).flatMap(u =>
+        (u.questions || []).map(q => q.question_id)
+      );
+      const resp = await paperApi.swapQuestionPaperless(questionId, {
+        subject: p?.subject,
+        grade_level: p?.grade_level,
+        knowledge_node_ids: p?.knowledge_node_ids,
+        exclude_ids: allQids,
+      });
       const alts: any[] = resp.data?.alternatives || [];
       if (alts.length === 0) { message.warning('没有可替换的题目'); return; }
       const alt = alts[0];
@@ -149,10 +158,8 @@ export default function RecommendStep() {
         difficulty: a.difficulty || '',
         tags: a.tags || [],
       }));
-      // 原地替换，保持题目顺序
       const unit = units.find(u => u.id === unitId);
       const oldQ = unit?.questions?.find(q => q.question_id === questionId);
-      // 用配置的 score_per_question 而非题目默认分
       const cfg = unit?.question_config?.find(c => c.question_type === alt.question_type);
       const swapScore = cfg?.score_per_question || alt.score || 5;
       replaceQuestion(unitId, questionId, {
@@ -165,7 +172,7 @@ export default function RecommendStep() {
           title: alt.title,
           question_type: alt.question_type,
           difficulty: alt.difficulty,
-          subject: paper.subject,
+          subject: p?.subject,
         },
         recommendation_tags: ['已替换'],
         alternatives: remainingAlts,
@@ -254,35 +261,16 @@ export default function RecommendStep() {
             <span style={{ fontSize: 13, color: '#999' }}>点击"一键选题"自动选题</span>
           )}
         </div>
-        <Button type="primary" icon={<SyncOutlined />} loading={loading} onClick={async () => {
-          let pid = paper?.id;
-          if (!pid) {
-            // 强制保存：创建主表记录拿 id
+        <Button type="primary" icon={<SyncOutlined />} loading={loading}
+          onClick={async () => {
+            setLoading(true);
+            clearAllQuestions();
             const st = usePaperEditorStore.getState();
-            if (!st.paper?.title) { message.warning('请先填写试卷标题'); return; }
-            try {
-              const resp = await paperApi.create({
-                title: st.paper?.title || '未命名试卷',
-                subject: st.paper?.subject || '',
-                grade_level: (st.paper?.grade_level && Array.isArray(st.paper.grade_level.grades) && st.paper.grade_level.grades.length > 0
-                  ? st.paper.grade_level : { scope: 'grade', grades: ['G8'] }),
-                status: 'READY',
-              });
-              pid = resp.data?.id || resp.data;
-              usePaperEditorStore.setState({ paper: { ...st.paper, id: pid } });
-            } catch (e: any) {
-              message.error('创建试卷失败: ' + (e?.response?.data?.detail || e?.message || ''));
-              return;
-            }
-          }
-          if (!pid) { message.warning('无法创建试卷，请重试'); return; }
-          setLoading(true);
-          clearAllQuestions();
-          regenerateAll(pid).catch((e: any) => {
-            const detail = e?.response?.data?.detail || e?.message || '选题失败';
-            message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-          }).finally(() => setLoading(false));
-        }}>
+            st.regenerateAll().catch((e: any) => {
+              const detail = e?.response?.data?.detail || e?.message || '选题失败';
+              message.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+            }).finally(() => setLoading(false));
+          }}>
           一键选题
         </Button>
       </div>
