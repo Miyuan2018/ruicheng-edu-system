@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Button, message, Collapse, Tag, Tabs, Space } from 'antd';
 import { CheckCircleOutlined } from '@ant-design/icons';
@@ -6,7 +6,19 @@ import apiClient from '../../../api/client';
 import { usePaperEditorStore } from '../../../store/paperEditor';
 import { useReferenceValues, toLabelMap, toColorMap } from '../../../hooks/useReferenceValues';
 
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return <div style={{ padding: 40, color: 'red', fontSize: 14 }}>渲染错误: {this.state.error.message}<pre style={{ fontSize: 11 }}>{this.state.error.stack}</pre></div>;
+    }
+    return this.props.children;
+  }
+}
+
 export default function PreviewFinalizeStep() {
+  console.log('[PreviewFinalizeStep] 渲染开始');
   const navigate = useNavigate();
   const { paper, saveAll, setDirty } = usePaperEditorStore();
   const { 'difficulty-levels': diffs, 'question-types': qtypes } = useReferenceValues();
@@ -335,24 +347,26 @@ export default function PreviewFinalizeStep() {
   ];
 
   return (
-    <div>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16 }}>
-        <Space>
-          <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSave}>
-            保存
-          </Button>
-          <Button type="primary" size="large" ghost icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSaveAndPublish}>
-            保存并发布
-          </Button>
-          {paper?.id && (
-            <Button size="large" danger onClick={handleCancelEdit}>取消修改</Button>
-          )}
-        </Space>
-      </div>
+    <ErrorBoundary>
+      <div>
+        {/* Toolbar */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16 }}>
+          <Space>
+            <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSave}>
+              保存
+            </Button>
+            <Button type="primary" size="large" ghost icon={<CheckCircleOutlined />} loading={submitting} onClick={handleSaveAndPublish}>
+              保存并发布
+            </Button>
+            {paper?.id && (
+              <Button size="large" danger onClick={handleCancelEdit}>取消修改</Button>
+            )}
+          </Space>
+        </div>
 
-      {/* Tabs */}
-      <Tabs defaultActiveKey="finalize" items={tabItems} />
-    </div>
+        {/* Tabs */}
+        <Tabs defaultActiveKey="finalize" items={tabItems} />
+      </div>
+    </ErrorBoundary>
   );
 }

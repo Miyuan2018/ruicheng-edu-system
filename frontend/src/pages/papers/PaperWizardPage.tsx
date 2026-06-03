@@ -7,6 +7,7 @@ import BasicInfoStep from './steps/BasicInfoStep';
 import StructureStep from './steps/StructureStep';
 import RecommendStep from './steps/RecommendStep';
 import PreviewFinalizeStep from './steps/PreviewFinalizeStep';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
 const STEP_TITLES = ['基本信息', '试卷结构', '选题', '预览保存'];
 
@@ -301,7 +302,9 @@ export default function PaperWizardPage() {
 
       {/* Step content */}
       <div style={{ minHeight: 400 }}>
-        {renderStep()}
+        <ErrorBoundary>
+          {renderStep()}
+        </ErrorBoundary>
       </div>
 
       {/* Bottom navigation */}
